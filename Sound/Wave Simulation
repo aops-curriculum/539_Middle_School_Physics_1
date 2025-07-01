@@ -1,1 +1,267 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Wave Propagation Simulation</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            background-color: #0a0a0a;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+        }
+        
+        #canvas-container {
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            width: 1000px;
+            height: 600px;
+            position: relative;
+            background-color: #0a0a0a;
+        }
+        
+        #controls {
+            margin-top: 20px;
+            display: flex;
+            align-items: center;
+            gap: 20px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 15px 30px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+        }
+        
+        #play-pause-btn {
+            background: #00ff88;
+            color: #0a0a0a;
+            border: none;
+            padding: 8px 20px;
+            border-radius: 6px;
+            font-size: 14px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+        }
+        
+        #play-pause-btn:hover {
+            background: #00cc6a;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+            transform: translateY(-1px);
+        }
+        
+        #play-pause-btn:active {
+            transform: translateY(0);
+        }
+        
+        label {
+            color: #fff;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        input[type="range"] {
+            width: 200px;
+            height: 6px;
+            background: #333;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #00ff88;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #00ff88;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        #frequency-display {
+            color: #00ff88;
+            font-size: 16px;
+            font-weight: bold;
+            min-width: 60px;
+            text-align: center;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.2.4/pixi.min.js"></script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="controls">
+        <button id="play-pause-btn">Pause</button>
+        <label for="frequency-slider">Vibration Rate:</label>
+        <input type="range" id="frequency-slider" min="0.1" max="5" step="0.1" value="2">
+        <span id="frequency-display">2.0 Hz</span>
+    </div>
 
+    <script>
+        // Initialize PIXI Application
+        const app = new PIXI.Application({
+            width: 1000,
+            height: 600,
+            backgroundColor: 0x0a0a0a,
+            antialias: true
+        });
+        
+        document.getElementById('canvas-container').appendChild(app.view);
+
+        // Create container for all elements
+        const mainContainer = new PIXI.Container();
+        app.stage.addChild(mainContainer);
+
+        // Speaker parameters
+        const speakerX = 100;
+        const speakerCenterY = app.screen.height / 2;
+        const speakerHeight = 500;
+        const speakerWidth = 60;
+        
+        // Create speaker cone
+        const speaker = new PIXI.Graphics();
+        speaker.x = speakerX;
+        speaker.y = speakerCenterY;
+        
+        // Draw initial speaker shape
+        speaker.lineStyle(3, 0x00ff88, 1);
+        speaker.beginFill(0x003333, 0.8);
+        speaker.moveTo(-speakerWidth/2, -speakerHeight/3);
+        speaker.lineTo(speakerWidth/2, -speakerHeight/2);
+        speaker.lineTo(speakerWidth/2, speakerHeight/2);
+        speaker.lineTo(-speakerWidth/2, speakerHeight/3);
+        speaker.closePath();
+        speaker.endFill();
+        
+        mainContainer.addChild(speaker);
+
+        // Air molecules setup
+        const moleculeCount = 1200;
+        const molecules = [];
+        const moleculeContainer = new PIXI.Container();
+        mainContainer.addChild(moleculeContainer);
+
+        // Create air molecules
+        for (let i = 0; i < moleculeCount; i++) {
+            const molecule = new PIXI.Graphics();
+            molecule.beginFill(0x88ddff, 0.8);
+            molecule.drawCircle(0, 0, 4);
+            molecule.endFill();
+            
+            // Random position across the canvas (excluding speaker area)
+            molecule.x = speakerX + speakerWidth/2 + 40 + Math.random() * (app.screen.width - speakerX - speakerWidth/2 - 60);
+            molecule.y = 20 + Math.random() * (app.screen.height - 40);
+            
+            // Store initial position
+            molecule.initialX = molecule.x;
+            molecule.initialY = molecule.y;
+            
+            moleculeContainer.addChild(molecule);
+            molecules.push(molecule);
+        }
+
+        // Wave parameters
+        let frequency = 2.0;
+        let time = 0;
+        const waveSpeed = 200; // pixels per second
+        const amplitude = 20;
+
+        // Update frequency display
+        const frequencySlider = document.getElementById('frequency-slider');
+        const frequencyDisplay = document.getElementById('frequency-display');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        
+        let isPlaying = true;
+        
+        frequencySlider.addEventListener('input', (e) => {
+            frequency = parseFloat(e.target.value);
+            frequencyDisplay.textContent = frequency.toFixed(1) + ' Hz';
+        });
+        
+        // Play/Pause functionality
+        playPauseBtn.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                app.ticker.start();
+                playPauseBtn.textContent = 'Pause';
+            } else {
+                app.ticker.stop();
+                playPauseBtn.textContent = 'Play';
+            }
+        });
+
+        // Animation loop
+        app.ticker.add((delta) => {
+            time += delta / 60; // Convert to seconds
+            
+            // Calculate speaker oscillation
+            const speakerOffset = Math.sin(time * frequency * Math.PI * 2) * 15;
+            
+            // Redraw speaker with oscillation
+            speaker.clear();
+            speaker.lineStyle(3, 0x00ff88, 1);
+            speaker.beginFill(0x003333, 0.8);
+            
+            // Draw speaker shape (trapezoid) with offset
+            speaker.moveTo(-speakerWidth/2 + speakerOffset, -speakerHeight/3);
+            speaker.lineTo(speakerWidth/2 + speakerOffset, -speakerHeight/2);
+            speaker.lineTo(speakerWidth/2 + speakerOffset, speakerHeight/2);
+            speaker.lineTo(-speakerWidth/2 + speakerOffset, speakerHeight/3);
+            speaker.closePath();
+            speaker.endFill();
+            
+            // Update air molecules
+            molecules.forEach((molecule) => {
+                const distanceFromSpeaker = molecule.initialX - speakerX;
+                
+                // Calculate wave phase at this distance
+                const wavePhase = (time * frequency * Math.PI * 2) - (distanceFromSpeaker / waveSpeed * Math.PI * 2);
+                
+                // Apply compression wave effect
+                const compressionFactor = Math.sin(wavePhase);
+                const displacement = compressionFactor * amplitude * Math.exp(-distanceFromSpeaker / 1000);
+                
+                // Update molecule position
+                molecule.x = molecule.initialX + displacement;
+                
+                // Add slight vertical oscillation for visual effect
+                molecule.y = molecule.initialY + Math.sin(time * 3 + molecule.initialX * 0.01) * 2;
+                
+                // Update opacity based on compression (brighter when compressed)
+                const compressionEffect = Math.abs(compressionFactor) * Math.exp(-distanceFromSpeaker / 1500);
+                molecule.alpha = 0.2 + compressionEffect * 0.8;
+                
+                // Also scale the molecule slightly for more dramatic effect
+                const scale = 1 + compressionEffect * 0.3;
+                molecule.scale.set(scale);
+            });
+        });
+    </script>
+</body>
+</html>
