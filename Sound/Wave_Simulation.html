@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sound Wave Propagation Simulation</title>
+    <title>Sound Wave Simulation</title>
     <style>
         html, body {
             width: 100%;
@@ -150,7 +150,7 @@
         const speakerX = 60;
         const speakerCenterY = app.screen.height / 2;
         const speakerHeight = 400;
-        const speakerWidth = 50;
+        const speakerWidth = 60;
         
         // Create speaker cone
         const speaker = new PIXI.Graphics();
@@ -160,11 +160,7 @@
         // Draw initial speaker shape
         speaker.lineStyle(3, 0x00ff88, 1);
         speaker.beginFill(0x003333, 0.8);
-        speaker.moveTo(-speakerWidth/2, -speakerHeight/3);
-        speaker.lineTo(speakerWidth/2, -speakerHeight/2);
-        speaker.lineTo(speakerWidth/2, speakerHeight/2);
-        speaker.lineTo(-speakerWidth/2, speakerHeight/3);
-        speaker.closePath();
+        speaker.drawRect(-speakerWidth/2, -speakerHeight/2, speakerWidth, speakerHeight);
         speaker.endFill();
         
         mainContainer.addChild(speaker);
@@ -229,19 +225,15 @@
             time += delta / 60; // Convert to seconds
             
             // Calculate speaker oscillation
-            const speakerOffset = Math.sin(time * frequency * Math.PI * 2) * 10;
+            const speakerOffset = Math.sin(time * frequency * Math.PI * 2) * 12;
             
             // Redraw speaker with oscillation
             speaker.clear();
             speaker.lineStyle(3, 0x00ff88, 1);
             speaker.beginFill(0x003333, 0.8);
             
-            // Draw speaker shape (trapezoid) with offset
-            speaker.moveTo(-speakerWidth/2 + speakerOffset, -speakerHeight/3);
-            speaker.lineTo(speakerWidth/2 + speakerOffset, -speakerHeight/2);
-            speaker.lineTo(speakerWidth/2 + speakerOffset, speakerHeight/2);
-            speaker.lineTo(-speakerWidth/2 + speakerOffset, speakerHeight/3);
-            speaker.closePath();
+            // Draw speaker shape (rectangle) with offset
+            speaker.drawRect(-speakerWidth/2 + speakerOffset, -speakerHeight/2, speakerWidth, speakerHeight);
             speaker.endFill();
             
             // Update air molecules
