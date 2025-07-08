@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dual Frequency Oscillation</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .top-section {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+            align-items: start;
+        }
+        #canvas-container {
+            border: 2px solid #333;
+            display: inline-block;
+            background-color: #0a0a0a;
+            width: 380px;
+            height: 300px;
+        }
+        .graph-container {
+            border: 2px solid #333;
+            background-color: #0a0a0a;
+            width: 380px;
+            height: 300px;
+            position: relative;
+        }
+        .graph-container h4 {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            margin: 0;
+            color: #4fc3f7;
+            font-size: 14px;
+            font-weight: normal;
+        }
+        .controls {
+            background-color: #2a2a2a;
+            padding: 15px 20px 20px 20px;
+            border-radius: 8px;
+            max-width: 780px;
+        }
+        .control-group {
+            margin-bottom: 15px;
+            padding: 12px 15px;
+            background-color: #333;
+            border-radius: 6px;
+            display: flex;
+            gap: 15px;
+        }
+        .control-group:last-child {
+            margin-bottom: 0;
+        }
+        .control-inputs {
+            flex: 1;
+            min-width: 0;
+        }
+        .wave-graph {
+            width: 180px;
+            height: 120px;
+            border: 1px solid #444;
+            background-color: #0a0a0a;
+            border-radius: 4px;
+            flex-shrink: 0;
+        }
+        .control-group h3 {
+            margin-top: 0;
+            color: #4fc3f7;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+        label {
+            width: 75px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            background: #555;
+            outline: none;
+            border-radius: 3px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4fc3f7;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .value-display {
+            width: 50px;
+            text-align: right;
+            font-family: monospace;
+            color: #4fc3f7;
+            font-size: 13px;
+        }
+        #error-display {
+            color: #ff6b6b;
+            padding: 10px;
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-section">
+        <div id="canvas-container"></div>
+        <div class="graph-container">
+            <h4>Combined Waveform</h4>
+            <canvas id="sum-graph" width="380" height="300"></canvas>
+        </div>
+    </div>
+    
+    <div id="error-display"></div>
+    
+    <div class="controls">
+        <div class="control-group">
+            <div class="control-inputs">
+                <h3>Wave A</h3>
+                <div class="control-row">
+                    <input type="checkbox" id="enable1" checked>
+                    <label for="enable1">Enable</label>
+                </div>
+                <div class="control-row">
+                    <label for="freq1">Frequency:</label>
+                    <input type="range" id="freq1" min="0.1" max="5" step="0.1" value="0.5">
+                    <span class="value-display" id="freq1-value">0.5 Hz</span>
+                </div>
+                <div class="control-row">
+                    <label for="amp1">Amplitude:</label>
+                    <input type="range" id="amp1" min="10" max="200" step="5" value="100">
+                    <span class="value-display" id="amp1-value">100 px</span>
+                </div>
+                <div class="control-row">
+                    <label for="phase1">Phase:</label>
+                    <input type="range" id="phase1" min="0" max="360" step="1" value="0">
+                    <span class="value-display" id="phase1-value">0°</span>
+                </div>
+            </div>
+            <canvas class="wave-graph" id="wave1-graph" width="180" height="120"></canvas>
+        </div>
+        
+        <div class="control-group">
+            <div class="control-inputs">
+                <h3>Wave B</h3>
+                <div class="control-row">
+                    <input type="checkbox" id="enable2" checked>
+                    <label for="enable2">Enable</label>
+                </div>
+                <div class="control-row">
+                    <label for="freq2">Frequency:</label>
+                    <input type="range" id="freq2" min="0.1" max="10" step="0.1" value="3">
+                    <span class="value-display" id="freq2-value">3.0 Hz</span>
+                </div>
+                <div class="control-row">
+                    <label for="amp2">Amplitude:</label>
+                    <input type="range" id="amp2" min="5" max="100" step="5" value="20">
+                    <span class="value-display" id="amp2-value">20 px</span>
+                </div>
+                <div class="control-row">
+                    <label for="phase2">Phase:</label>
+                    <input type="range" id="phase2" min="0" max="360" step="1" value="0">
+                    <span class="value-display" id="phase2-value">0°</span>
+                </div>
+            </div>
+            <canvas class="wave-graph" id="wave2-graph" width="180" height="120"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // Show errors if any
+        function showError(message) {
+            const errorDiv = document.getElementById('error-display');
+            errorDiv.textContent = 'Error: ' + message;
+            errorDiv.style.display = 'block';
+        }
+
+        // Graph drawing function
+        function drawWaveform(canvasId, frequency, amplitude, phase, color, maxAmp, enabled = true) {
+            const canvas = document.getElementById(canvasId);
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw grid
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            
+            // Horizontal center line
+            ctx.beginPath();
+            ctx.moveTo(0, height / 2);
+            ctx.lineTo(width, height / 2);
+            ctx.stroke();
+            
+            // Vertical lines
+            for (let x = 0; x < width; x += 36) {
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+            }
+            
+            if (!enabled) return;
+            
+            // Draw waveform
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const timeSpan = 3; // Show 3 seconds of waveform
+            const centerY = height / 2;
+            const scale = (height * 0.4) / maxAmp; // Scale to fit in graph
+            
+            for (let x = 0; x < width; x++) {
+                const t = (x / width) * timeSpan;
+                const y = centerY - amplitude * scale * Math.sin(2 * Math.PI * frequency * t + phase);
+                
+                if (x === 0) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+
+        function drawCombinedWaveform() {
+            const canvas = document.getElementById('sum-graph');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw grid
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            
+            // Horizontal center line
+            ctx.beginPath();
+            ctx.moveTo(40, height / 2);
+            ctx.lineTo(width - 20, height / 2);
+            ctx.stroke();
+            
+            // Vertical lines
+            for (let x = 40; x < width - 20; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 40);
+                ctx.lineTo(x, height - 30);
+                ctx.stroke();
+            }
+            
+            // Draw axis labels
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Time', width / 2, height - 20);
+            
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Displacement', 0, 0);
+            ctx.restore();
+            
+            // Get parameters
+            const freq1 = parseFloat(controls.freq1.value);
+            const amp1 = parseFloat(controls.amp1.value);
+            const phase1 = parseFloat(controls.phase1.value) * Math.PI / 180;
+            const enabled1 = controls.enable1.checked;
+            
+            const freq2 = parseFloat(controls.freq2.value);
+            const amp2 = parseFloat(controls.amp2.value);
+            const phase2 = parseFloat(controls.phase2.value) * Math.PI / 180;
+            const enabled2 = controls.enable2.checked;
+            
+            // Draw individual components with transparency
+            if (enabled1) {
+                ctx.strokeStyle = 'rgba(255, 0, 255, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                const timeSpan = 3;
+                const centerY = height / 2;
+                const scale = (height * 0.35) / 200;
+                
+                for (let x = 40; x < width - 20; x++) {
+                    const t = ((x - 40) / (width - 60)) * timeSpan;
+                    const y = centerY - amp1 * scale * Math.sin(2 * Math.PI * freq1 * t + phase1);
+                    if (x === 40) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+            
+            if (enabled2) {
+                ctx.strokeStyle = 'rgba(255, 217, 102, 0.3)';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                const timeSpan = 3;
+                const centerY = height / 2;
+                const scale = (height * 0.35) / 200;
+                
+                for (let x = 40; x < width - 20; x++) {
+                    const t = ((x - 40) / (width - 60)) * timeSpan;
+                    const y = centerY - amp2 * scale * Math.sin(2 * Math.PI * freq2 * t + phase2);
+                    if (x === 40) ctx.moveTo(x, y);
+                    else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+            }
+            
+            // Draw combined waveform
+            ctx.strokeStyle = '#4fc3f7';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const timeSpan = 3;
+            const centerY = height / 2;
+            const scale = (height * 0.35) / 200;
+            
+            for (let x = 40; x < width - 20; x++) {
+                const t = ((x - 40) / (width - 60)) * timeSpan;
+                let y = centerY;
+                
+                if (enabled1) {
+                    y -= amp1 * scale * Math.sin(2 * Math.PI * freq1 * t + phase1);
+                }
+                if (enabled2) {
+                    y -= amp2 * scale * Math.sin(2 * Math.PI * freq2 * t + phase2);
+                }
+                
+                if (x === 40) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+
+        // Initialize PIXI
+        let app;
+        let container;
+        let dot;
+        let trail;
+        let trailPoints = [];
+        const maxTrailPoints = 100;
+        let time = 0;
+        let controls;
+        
+        try {
+            // Create and configure PIXI Application
+            app = new PIXI.Application({
+                width: 380,
+                height: 300,
+                backgroundColor: 0x0a0a0a,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true
+            });
+            
+            // Add canvas to DOM
+            document.getElementById('canvas-container').appendChild(app.view);
+            
+            // Create main container
+            container = new PIXI.Container();
+            container.x = app.screen.width / 2;
+            container.y = app.screen.height / 2;
+            app.stage.addChild(container);
+            
+            // Create center line
+            const centerLine = new PIXI.Graphics();
+            centerLine.lineStyle(1, 0x444444);
+            centerLine.moveTo(-app.screen.width/2, 0);
+            centerLine.lineTo(app.screen.width/2, 0);
+            container.addChild(centerLine);
+            
+            // Add "Molecule Displacement" label
+            const label = new PIXI.Text('Molecule Displacement', {
+                fontFamily: 'Arial',
+                fontSize: 14,
+                fill: 0x666666,
+                align: 'center'
+            });
+            label.x = app.screen.width / 2;
+            label.y = app.screen.height - 25;
+            label.anchor.set(0.5, 0.5);
+            app.stage.addChild(label);
+            
+            // Create amplitude guides
+            const guides = new PIXI.Graphics();
+            container.addChild(guides);
+            
+            // Create trail
+            trail = new PIXI.Graphics();
+            trail.alpha = 0.3;
+            container.addChild(trail);
+            
+            // Create the main dot
+            dot = new PIXI.Graphics();
+            dot.beginFill(0x4fc3f7);
+            dot.drawCircle(0, 0, 8);
+            dot.endFill();
+            container.addChild(dot);
+            
+            // Create position indicators
+            const pos1Indicator = new PIXI.Graphics();
+            pos1Indicator.lineStyle(2, 0xff00ff, 0.5);
+            pos1Indicator.drawCircle(0, 0, 4);
+            pos1Indicator.y = -30;
+            container.addChild(pos1Indicator);
+            
+            const pos2Indicator = new PIXI.Graphics();
+            pos2Indicator.lineStyle(2, 0xffd966, 0.5);
+            pos2Indicator.drawCircle(0, 0, 4);
+            pos2Indicator.y = 30;
+            container.addChild(pos2Indicator);
+            
+            // Get control elements
+            controls = {
+                enable1: document.getElementById('enable1'),
+                freq1: document.getElementById('freq1'),
+                amp1: document.getElementById('amp1'),
+                phase1: document.getElementById('phase1'),
+                enable2: document.getElementById('enable2'),
+                freq2: document.getElementById('freq2'),
+                amp2: document.getElementById('amp2'),
+                phase2: document.getElementById('phase2')
+            };
+            
+            // Update graphs
+            function updateGraphs() {
+                drawWaveform('wave1-graph', 
+                    parseFloat(controls.freq1.value), 
+                    parseFloat(controls.amp1.value), 
+                    parseFloat(controls.phase1.value) * Math.PI / 180,
+                    '#ff00ff',
+                    200,
+                    controls.enable1.checked
+                );
+                
+                drawWaveform('wave2-graph', 
+                    parseFloat(controls.freq2.value), 
+                    parseFloat(controls.amp2.value), 
+                    parseFloat(controls.phase2.value) * Math.PI / 180,
+                    '#ffd966',
+                    100,
+                    controls.enable2.checked
+                );
+                
+                drawCombinedWaveform();
+            }
+            
+            // Update value displays and graphs
+            controls.freq1.addEventListener('input', (e) => {
+                document.getElementById('freq1-value').textContent = `${e.target.value} Hz`;
+                updateGraphs();
+            });
+            controls.amp1.addEventListener('input', (e) => {
+                document.getElementById('amp1-value').textContent = `${e.target.value} px`;
+                updateGuides();
+                updateGraphs();
+            });
+            controls.phase1.addEventListener('input', (e) => {
+                document.getElementById('phase1-value').textContent = `${e.target.value}°`;
+                updateGraphs();
+            });
+            controls.freq2.addEventListener('input', (e) => {
+                document.getElementById('freq2-value').textContent = `${e.target.value} Hz`;
+                updateGraphs();
+            });
+            controls.amp2.addEventListener('input', (e) => {
+                document.getElementById('amp2-value').textContent = `${e.target.value} px`;
+                updateGuides();
+                updateGraphs();
+            });
+            controls.phase2.addEventListener('input', (e) => {
+                document.getElementById('phase2-value').textContent = `${e.target.value}°`;
+                updateGraphs();
+            });
+            
+            controls.enable1.addEventListener('change', () => {
+                updateGuides();
+                updateGraphs();
+            });
+            controls.enable2.addEventListener('change', () => {
+                updateGuides();
+                updateGraphs();
+            });
+            
+            // Update amplitude guides
+            function updateGuides() {
+                guides.clear();
+                
+                if (controls.enable1.checked) {
+                    const amp1 = parseFloat(controls.amp1.value);
+                    guides.lineStyle(1, 0xff00ff, 0.3);
+                    guides.moveTo(-amp1, -40);
+                    guides.lineTo(-amp1, -20);
+                    guides.moveTo(amp1, -40);
+                    guides.lineTo(amp1, -20);
+                }
+                
+                if (controls.enable2.checked) {
+                    const amp2 = parseFloat(controls.amp2.value);
+                    guides.lineStyle(1, 0xffd966, 0.3);
+                    guides.moveTo(-amp2, 20);
+                    guides.lineTo(-amp2, 40);
+                    guides.moveTo(amp2, 20);
+                    guides.lineTo(amp2, 40);
+                }
+            }
+            
+            // Initial setup
+            updateGuides();
+            updateGraphs();
+            
+            // Animation function
+            function animate(delta) {
+                time += delta / 60; // Convert to seconds
+                
+                let x1 = 0, x2 = 0;
+                
+                // Calculate position from oscillation 1
+                if (controls.enable1.checked) {
+                    const freq1 = parseFloat(controls.freq1.value);
+                    const amp1 = parseFloat(controls.amp1.value);
+                    const phase1 = parseFloat(controls.phase1.value) * Math.PI / 180;
+                    x1 = amp1 * Math.sin(2 * Math.PI * freq1 * time + phase1);
+                    pos1Indicator.x = x1;
+                }
+                
+                // Calculate position from oscillation 2
+                if (controls.enable2.checked) {
+                    const freq2 = parseFloat(controls.freq2.value);
+                    const amp2 = parseFloat(controls.amp2.value);
+                    const phase2 = parseFloat(controls.phase2.value) * Math.PI / 180;
+                    x2 = amp2 * Math.sin(2 * Math.PI * freq2 * time + phase2);
+                    pos2Indicator.x = x2;
+                }
+                
+                // Combine the oscillations
+                const totalX = x1 + x2;
+                dot.x = totalX;
+                
+                // Update trail
+                trailPoints.push({x: totalX, y: 0});
+                if (trailPoints.length > maxTrailPoints) {
+                    trailPoints.shift();
+                }
+                
+                trail.clear();
+                if (trailPoints.length > 1) {
+                    trail.lineStyle(2, 0x4fc3f7, 0.2);
+                    trail.moveTo(trailPoints[0].x, trailPoints[0].y);
+                    for (let i = 1; i < trailPoints.length; i++) {
+                        trail.lineTo(trailPoints[i].x, trailPoints[i].y);
+                    }
+                }
+            }
+            
+            // Start animation
+            app.ticker.add(animate);
+            
+        } catch (error) {
+            showError(error.message);
+            console.error('PIXI initialization error:', error);
+        }
+    </script>
+</body>
+</html>
