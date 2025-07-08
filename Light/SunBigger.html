@@ -1,1 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sun Getting Larger</title>
+    <style>
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            margin: 0;
+            font-family: Arial, sans-serif;
+            background-color: #f5f5f5;
+        }
+        
+        .container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 30px;
+        }
+        
+        .circle-container {
+            position: relative;
+            width: 300px;
+            height: 300px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .circle {
+            width: 200px;
+            height: 200px;
+            background-color: white;
+            border-radius: 50%;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            position: relative;
+            z-index: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            font-weight: normal;
+            color: #333;
+            font-family: "Times New Roman", Times, serif;
+            font-style: italic;
+            border: 2px solid black;
+        }
+        
+        .border {
+            position: absolute;
+            border-radius: 50%;
+            border: 0px solid orange;
+            width: 200px;
+            height: 200px;
+            transition: border-width 0.3s ease;
+            z-index: 1;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            width: 300px;
+        }
+        
+        .slider-container {
+            width: 100%;
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            width: 100%;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 10px;
+        }
+        
+        #border-value {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Sun Getting Larger</h1>
+        
+        <div class="circle-container">
+            <div class="circle">Moon</div>
+            <div class="border" id="border"></div>
+        </div>
+        
+        <div class="controls">
+            <div class="slider-container">
+                <div class="slider-label">
+                    <span>Sun Size</span>
+                </div>
+                <input type="range" id="border-slider" min="0" max="50" value="0">
+            </div>
+        </div>
+    </div>
 
+    <script>
+        // Get DOM elements
+        const borderSlider = document.getElementById('border-slider');
+        const borderElement = document.getElementById('border');
+        
+        // Update border when slider changes
+        borderSlider.addEventListener('input', function() {
+            const borderWidth = this.value;
+            borderElement.style.borderWidth = borderWidth + 'px';
+        });
+    </script>
+</body>
+</html>
