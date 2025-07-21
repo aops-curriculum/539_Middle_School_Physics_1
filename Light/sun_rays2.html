@@ -314,8 +314,10 @@
                         allRaysComplete = false;
                     }
                     
-                    const endX = sun.x + Math.cos(rayInfo.angle) * rayInfo.currentLength;
-                    const endY = sun.y + Math.sin(rayInfo.angle) * rayInfo.currentLength;
+                    // Make sure we don't draw past the collision point
+                    const drawLength = Math.min(rayInfo.currentLength, rayInfo.maxLength);
+                    const endX = sun.x + Math.cos(rayInfo.angle) * drawLength;
+                    const endY = sun.y + Math.sin(rayInfo.angle) * drawLength;
                     
                     rays.push({ endX, endY });
                 });
