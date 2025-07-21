@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sun Rays and Block Tower</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: Arial, sans-serif;
+            background: #f0f0f0;
+            overflow: hidden;
+        }
+        
+        .container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        
+        .canvas-wrapper {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            max-width: 800px;
+            max-height: 600px;
+        }
+        
+        canvas {
+            width: 100%;
+            height: 100%;
+            display: block;
+            cursor: grab;
+            border: 1px solid #333;
+        }
+        
+        canvas:active {
+            cursor: grabbing;
+        }
+        
+        .controls {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 10;
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        button {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
+        button:hover:not(:disabled) {
+            background: rgba(69, 160, 73, 0.9);
+        }
+        
+        button:disabled {
+            background: rgba(204, 204, 204, 0.9);
+            cursor: not-allowed;
+        }
+        
+        .shoot-btn {
+            background: rgba(255, 107, 53, 0.9);
+        }
+        
+        .shoot-btn:hover:not(:disabled) {
+            background: rgba(229, 90, 43, 0.9);
+        }
+        
+        .info {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 11px;
+            z-index: 10;
+            background: rgba(0, 0, 0, 0.5);
+            padding: 4px 8px;
+            border-radius: 4px;
+            max-width: 200px;
+        }
+        
+        #blockCount {
+            margin: 2px 0;
+            font-weight: bold;
+        }
+
+        @media (max-width: 600px) {
+            button {
+                padding: 6px 12px;
+                font-size: 11px;
+            }
+            
+            .info {
+                font-size: 10px;
+                max-width: 150px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="canvas-wrapper">
+            <canvas id="gameCanvas" width="800" height="600"></canvas>
+            
+            <div class="controls">
+                <button id="shootBtn" class="shoot-btn">Shoot Rays</button>
+                <button id="addBlockBtn">Add Block</button>
+                <button id="removeBlockBtn">Remove Block</button>
+            </div>
+            
+            <div class="info">
+                <div>Drag sun & tower to move</div>
+                <div id="blockCount">Blocks: 5</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const shootBtn = document.getElementById('shootBtn');
+        const addBlockBtn = document.getElementById('addBlockBtn');
+        const removeBlockBtn = document.getElementById('removeBlockBtn');
+        const blockCountDisplay = document.getElementById('blockCount');
+
+        // Game state
+        let sun = { x: 120, y: 80, radius: 20, isDragging: false };
+        let tower = { x: 400, y: 0, blockCount: 5, blockSize: 35, isDragging: false };
+        let rays = [];
+        let isAnimatingRays = false;
+        let groundLevel = canvas.height - 80;
+        
+        // Mouse state
+        let mousePos = { x: 0, y: 0 };
+        let dragOffset = { x: 0, y: 0 };
+
+        function draw() {
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw sky
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, groundLevel);
+            
+            // Draw ground
+            ctx.fillStyle = '#90EE90';
+            ctx.fillRect(0, groundLevel, canvas.width, canvas.height - groundLevel);
+            
+            // Draw ground/sky line
+            ctx.strokeStyle = '#228B22';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, groundLevel);
+            ctx.lineTo(canvas.width, groundLevel);
+            ctx.stroke();
+            
+            // Draw sun
+            ctx.fillStyle = 'white';
+            ctx.beginPath();
+            ctx.arc(sun.x, sun.y, sun.radius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Draw tower blocks
+            ctx.fillStyle = '#8B4513';
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 2;
+            
+            for (let i = 0; i < tower.blockCount; i++) {
+                let blockX = tower.x - tower.blockSize / 2;
+                let blockY = groundLevel - tower.blockSize * (i + 1);
+                
+                ctx.fillRect(blockX, blockY, tower.blockSize, tower.blockSize);
+                ctx.strokeRect(blockX, blockY, tower.blockSize, tower.blockSize);
+            }
+            
+            // Draw rays
+            ctx.strokeStyle = 'white';
+            ctx.lineWidth = 1;
+            rays.forEach(ray => {
+                ctx.beginPath();
+                ctx.moveTo(sun.x, sun.y);
+                ctx.lineTo(ray.endX, ray.endY);
+                ctx.stroke();
+            });
+        }
+
+        function getCollisionPoint(startX, startY, angle, maxLength) {
+            const dirX = Math.cos(angle);
+            const dirY = Math.sin(angle);
+            let closestDistance = maxLength;
+            
+            // Check ground collision
+            if (dirY > 0) { // Ray going downward
+                const distanceToGround = (groundLevel - startY) / dirY;
+                if (distanceToGround > 0 && distanceToGround < closestDistance) {
+                    closestDistance = distanceToGround;
+                }
+            }
+            
+            // Check block collisions
+            for (let i = 0; i < tower.blockCount; i++) {
+                const blockLeft = tower.x - tower.blockSize / 2;
+                const blockRight = tower.x + tower.blockSize / 2;
+                const blockTop = groundLevel - tower.blockSize * (i + 1);
+                const blockBottom = groundLevel - tower.blockSize * i;
+                
+                // Check intersection with each edge of the block
+                const intersections = [];
+                
+                // Left edge
+                if (dirX !== 0) {
+                    const t = (blockLeft - startX) / dirX;
+                    if (t > 0) {
+                        const y = startY + t * dirY;
+                        if (y >= blockTop && y <= blockBottom) {
+                            intersections.push(t);
+                        }
+                    }
+                }
+                
+                // Right edge
+                if (dirX !== 0) {
+                    const t = (blockRight - startX) / dirX;
+                    if (t > 0) {
+                        const y = startY + t * dirY;
+                        if (y >= blockTop && y <= blockBottom) {
+                            intersections.push(t);
+                        }
+                    }
+                }
+                
+                // Top edge
+                if (dirY !== 0) {
+                    const t = (blockTop - startY) / dirY;
+                    if (t > 0) {
+                        const x = startX + t * dirX;
+                        if (x >= blockLeft && x <= blockRight) {
+                            intersections.push(t);
+                        }
+                    }
+                }
+                
+                // Bottom edge
+                if (dirY !== 0) {
+                    const t = (blockBottom - startY) / dirY;
+                    if (t > 0) {
+                        const x = startX + t * dirX;
+                        if (x >= blockLeft && x <= blockRight) {
+                            intersections.push(t);
+                        }
+                    }
+                }
+                
+                // Find closest intersection with this block
+                for (let intersection of intersections) {
+                    if (intersection < closestDistance) {
+                        closestDistance = intersection;
+                    }
+                }
+            }
+            
+            return closestDistance;
+        }
+
+        function shootRays() {
+            if (isAnimatingRays) return;
+            
+            rays = [];
+            isAnimatingRays = true;
+            shootBtn.disabled = true;
+            
+            // Create 80 rays in different directions
+            const rayCount = 80;
+            const rayData = [];
+            
+            for (let i = 0; i < rayCount; i++) {
+                const angle = (Math.PI * 2 * i) / rayCount;
+                const collisionDistance = getCollisionPoint(sun.x, sun.y, angle, 1000);
+                
+                rayData.push({
+                    angle: angle,
+                    currentLength: 0,
+                    maxLength: collisionDistance,
+                    speed: 8
+                });
+            }
+            
+            function animateRays() {
+                rays = [];
+                let allRaysComplete = true;
+                
+                rayData.forEach(rayInfo => {
+                    if (rayInfo.currentLength < rayInfo.maxLength) {
+                        rayInfo.currentLength += rayInfo.speed;
+                        allRaysComplete = false;
+                    }
+                    
+                    const endX = sun.x + Math.cos(rayInfo.angle) * rayInfo.currentLength;
+                    const endY = sun.y + Math.sin(rayInfo.angle) * rayInfo.currentLength;
+                    
+                    rays.push({ endX, endY });
+                });
+                
+                draw();
+                
+                if (allRaysComplete) {
+                    isAnimatingRays = false;
+                    shootBtn.disabled = false;
+                } else {
+                    requestAnimationFrame(animateRays);
+                }
+            }
+            
+            animateRays();
+        }
+
+        function updateBlockCount() {
+            blockCountDisplay.textContent = `Blocks: ${tower.blockCount}`;
+            addBlockBtn.style.display = tower.blockCount >= 10 ? 'none' : 'inline-block';
+            removeBlockBtn.style.display = tower.blockCount <= 0 ? 'none' : 'inline-block';
+        }
+
+        function addBlock() {
+            if (tower.blockCount < 10) {
+                tower.blockCount++;
+                updateBlockCount();
+                rays = []; // Clear existing rays since collision geometry changed
+                draw();
+            }
+        }
+
+        function removeBlock() {
+            if (tower.blockCount > 0) {
+                tower.blockCount--;
+                updateBlockCount();
+                rays = []; // Clear existing rays since collision geometry changed
+                draw();
+            }
+        }
+
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const scaleX = canvas.width / rect.width;
+            const scaleY = canvas.height / rect.height;
+            
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        function isPointInCircle(point, circle) {
+            const dx = point.x - circle.x;
+            const dy = point.y - circle.y;
+            return Math.sqrt(dx * dx + dy * dy) <= circle.radius;
+        }
+
+        function isPointInTower(point) {
+            if (tower.blockCount === 0) return false;
+            
+            const towerLeft = tower.x - tower.blockSize / 2;
+            const towerRight = tower.x + tower.blockSize / 2;
+            const towerTop = groundLevel - tower.blockSize * tower.blockCount;
+            const towerBottom = groundLevel;
+            
+            return point.x >= towerLeft && point.x <= towerRight && 
+                   point.y >= towerTop && point.y <= towerBottom;
+        }
+
+        // Event listeners
+        canvas.addEventListener('mousedown', (e) => {
+            mousePos = getMousePos(e);
+            
+            if (isPointInCircle(mousePos, sun)) {
+                sun.isDragging = true;
+                dragOffset.x = mousePos.x - sun.x;
+                dragOffset.y = mousePos.y - sun.y;
+                rays = []; // Clear rays when starting to move sun
+                
+                // Stop any ongoing ray animation
+                if (isAnimatingRays) {
+                    isAnimatingRays = false;
+                    shootBtn.disabled = false;
+                }
+            } else if (isPointInTower(mousePos)) {
+                tower.isDragging = true;
+                dragOffset.x = mousePos.x - tower.x;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (sun.isDragging || tower.isDragging) {
+                mousePos = getMousePos(e);
+                
+                if (sun.isDragging) {
+                    sun.x = mousePos.x - dragOffset.x;
+                    sun.y = mousePos.y - dragOffset.y;
+                    
+                    // Keep sun within canvas bounds
+                    sun.x = Math.max(sun.radius, Math.min(canvas.width - sun.radius, sun.x));
+                    sun.y = Math.max(sun.radius, Math.min(canvas.height - sun.radius, sun.y));
+                }
+                
+                if (tower.isDragging) {
+                    tower.x = mousePos.x - dragOffset.x;
+                    
+                    // Keep tower within canvas bounds
+                    tower.x = Math.max(tower.blockSize / 2, Math.min(canvas.width - tower.blockSize / 2, tower.x));
+                    
+                    // Clear rays when tower moves since collision geometry changes
+                    rays = [];
+                }
+                
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            sun.isDragging = false;
+            tower.isDragging = false;
+        });
+
+        shootBtn.addEventListener('click', shootRays);
+        addBlockBtn.addEventListener('click', addBlock);
+        removeBlockBtn.addEventListener('click', removeBlock);
+
+        // Initial setup
+        updateBlockCount();
+        draw();
+    </script>
+</body>
+</html>
