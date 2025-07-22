@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Wave Propagation Simulation</title>
+    <style>
+        html, body {
+            width: 100%;
+            height: 100%;
+            max-width: 600px;
+            max-height: 600px;
+        // Add some molecules very close to the eardrum for better visualization
+        for (let i = 0; i < 200; i++) {
+            const molecule = new PIXI.Graphics();
+            molecule.beginFill(0x88ddff, 0.7);
+            molecule.drawCircle(0, 0, 1.5);
+            molecule.endFill();
+            
+            // Position these molecules right around the eardrum curve
+            const offset = -5 + Math.random() * 20; // From slightly behind to slightly in front
+            molecule.x = eardrumX + offset;
+            molecule.y = 5 + Math.random() * (app.screen.height - 10);
+            
+            // Store initial position
+            molecule.initialX = molecule.x;
+            molecule.initialY = molecule.y;
+            
+            moleculeContainer.addChild(molecule);
+            molecules.push(molecule);
+        }
+        
+        body {
+            margin: 0;
+            padding: 10px;
+            background-color: #0a0a0a;
+            font-family: Arial, sans-serif;
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-sizing: border-box;
+        }
+        
+        #canvas-container {
+            border: 2px solid #333;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
+            width: 600px;
+            height: 500px;
+            position: relative;
+            background-color: #0a0a0a;
+            cursor: crosshair;
+        }
+        
+        #controls {
+            margin-top: 10px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 10px 20px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            font-size: 12px;
+        }
+        
+        #play-pause-btn {
+            background: #00ff88;
+            color: #0a0a0a;
+            border: none;
+            padding: 6px 16px;
+            border-radius: 6px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 0 15px rgba(0, 255, 136, 0.3);
+        }
+        
+        #play-pause-btn:hover {
+            background: #00cc6a;
+            box-shadow: 0 0 20px rgba(0, 255, 136, 0.5);
+            transform: translateY(-1px);
+        }
+        
+        #play-pause-btn:active {
+            transform: translateY(0);
+        }
+        
+        label {
+            color: #fff;
+            font-size: 12px;
+            font-weight: 500;
+        }
+        
+        input[type="range"] {
+            width: 150px;
+            height: 5px;
+            background: #333;
+            outline: none;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        
+        input[type="range"]:hover {
+            opacity: 1;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 14px;
+            height: 14px;
+            background: #00ff88;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 14px;
+            height: 14px;
+            background: #00ff88;
+            cursor: pointer;
+            border-radius: 50%;
+            box-shadow: 0 0 10px rgba(0, 255, 136, 0.5);
+        }
+        
+        #frequency-display {
+            color: #00ff88;
+            font-size: 14px;
+            font-weight: bold;
+            min-width: 50px;
+            text-align: center;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.2.4/pixi.min.js"></script>
+</head>
+<body>
+    <div id="canvas-container"></div>
+    <div id="controls">
+        <button id="play-pause-btn">Pause</button>
+        <label for="frequency-slider">Frequency:</label>
+        <input type="range" id="frequency-slider" min="0.1" max="5" step="0.1" value="2">
+        <span id="frequency-display">2.0 Hz</span>
+    </div>
+
+    <script>
+        // Initialize PIXI Application
+        const app = new PIXI.Application({
+            width: 600,
+            height: 500,
+            backgroundColor: 0x0a0a0a,
+            antialias: true
+        });
+        
+        document.getElementById('canvas-container').appendChild(app.view);
+
+        // Create container for all elements
+        const mainContainer = new PIXI.Container();
+        app.stage.addChild(mainContainer);
+        
+        // Create a separate UI container that stays on top
+        const uiContainer = new PIXI.Container();
+        app.stage.addChild(uiContainer);
+
+        // Speaker parameters
+        const speakerX = 60;
+        const speakerCenterY = app.screen.height / 2;
+        const speakerHeight = 400;
+        const speakerWidth = 60;
+        
+        // Create speaker cone
+        const speaker = new PIXI.Graphics();
+        speaker.x = speakerX;
+        speaker.y = speakerCenterY;
+        
+        // Draw initial speaker shape
+        speaker.lineStyle(3, 0x00ff88, 1);
+        speaker.beginFill(0x003333, 0.8);
+        speaker.drawRect(-speakerWidth/2, -speakerHeight/2, speakerWidth, speakerHeight);
+        speaker.endFill();
+        
+        mainContainer.addChild(speaker);
+
+        // Add speaker label
+        const speakerLabel = new PIXI.Text('Source', {
+            fontFamily: 'Arial',
+            fontSize: 12,
+            fill: 0x00ff88,
+            align: 'center'
+        });
+        speakerLabel.x = speakerX;
+        speakerLabel.y = speakerCenterY + speakerHeight/2 + 10;
+        speakerLabel.anchor.set(0.5, 0);
+        uiContainer.addChild(speakerLabel);
+
+        // Eardrum parameters
+        const eardrumX = app.screen.width - 60;
+        const eardrumHeight = speakerHeight;
+        const eardrumCenterY = speakerCenterY;
+        
+        // Create eardrum membrane
+        const eardrum = new PIXI.Graphics();
+        eardrum.x = eardrumX;
+        eardrum.y = eardrumCenterY;
+        mainContainer.addChild(eardrum);
+        
+        // Add eardrum label
+        const eardrumLabel = new PIXI.Text('Receiver', {
+            fontFamily: 'Arial',
+            fontSize: 12,
+            fill: 0xff8844,
+            align: 'center'
+        });
+        eardrumLabel.x = eardrumX;
+        eardrumLabel.y = eardrumCenterY + eardrumHeight/2 + 10;
+        eardrumLabel.anchor.set(0.5, 0);
+        uiContainer.addChild(eardrumLabel);
+        
+        // Add medium label at the midpoint
+        const mediumLabel = new PIXI.Text('Medium', {
+            fontFamily: 'Arial',
+            fontSize: 12,
+            fill: 0xffffff,
+            align: 'center'
+        });
+        mediumLabel.x = (speakerX + eardrumX) / 2;
+        mediumLabel.y = speakerCenterY + speakerHeight/2 + 10;
+        mediumLabel.anchor.set(0.5, 0);
+        uiContainer.addChild(mediumLabel);
+
+        // Timer functionality
+        let timerDot = null;
+        let timerText = null;
+        let timerStartTime = null;
+        let timerInterval = null;
+        let isTimerActive = false;
+        
+        // Create timer display
+        const timerDisplay = new PIXI.Text('Click to start timer', {
+            fontFamily: 'Arial',
+            fontSize: 20,
+            fill: 0xff6666,
+            align: 'center',
+            fontWeight: 'bold'
+        });
+        timerDisplay.x = app.screen.width / 2;
+        timerDisplay.y = 25;
+        timerDisplay.anchor.set(0.5, 0);
+        
+        // Create background box for timer
+        const timerBackground = new PIXI.Graphics();
+        const updateTimerBackground = () => {
+            const padding = 20;
+            const textWidth = timerDisplay.width;
+            const textHeight = timerDisplay.height;
+            
+            timerBackground.clear();
+            timerBackground.lineStyle(1, 0x666666, 0.5);
+            timerBackground.beginFill(0x000000, 0.95);
+            timerBackground.drawRoundedRect(
+                -textWidth/2 - padding, 
+                -5, 
+                textWidth + padding * 2, 
+                textHeight + 10, 
+                8
+            );
+            timerBackground.endFill();
+        };
+        
+        timerBackground.x = app.screen.width / 2;
+        timerBackground.y = 25;
+        updateTimerBackground();
+        
+        uiContainer.addChild(timerBackground);
+        uiContainer.addChild(timerDisplay);
+        
+        // Handle clicks on the canvas
+        app.view.addEventListener('click', (event) => {
+            // Get click position relative to canvas
+            const rect = app.view.getBoundingClientRect();
+            const x = (event.clientX - rect.left) * (app.screen.width / rect.width);
+            const y = (event.clientY - rect.top) * (app.screen.height / rect.height);
+            
+            if (!isTimerActive) {
+                // First click - start timer
+                if (timerDot) {
+                    mainContainer.removeChild(timerDot);
+                }
+                
+                // Create red dot with pulsing effect
+                timerDot = new PIXI.Graphics();
+                timerDot.beginFill(0xff0000, 1);
+                timerDot.drawCircle(0, 0, 5);
+                timerDot.endFill();
+                timerDot.x = x;
+                timerDot.y = y;
+                
+                // Add outer ring for visibility
+                timerDot.lineStyle(2, 0xff0000, 0.5);
+                timerDot.drawCircle(0, 0, 8);
+                
+                // Add dot after molecules for visibility
+                mainContainer.addChild(timerDot);
+                
+                // Start timer
+                timerStartTime = Date.now();
+                isTimerActive = true;
+                
+                // Add pulsing animation to dot
+                timerDot.pulseScale = 1;
+                
+                // Update timer display
+                timerDisplay.style.fill = 0xff0000;
+                timerInterval = setInterval(() => {
+                    const elapsed = (Date.now() - timerStartTime) / 1000;
+                    timerDisplay.text = `Timer: ${elapsed.toFixed(3)}s`;
+                    updateTimerBackground();
+                    
+                    // Pulse the dot
+                    if (timerDot) {
+                        timerDot.pulseScale = 1 + Math.sin(elapsed * 10) * 0.1;
+                        timerDot.scale.set(timerDot.pulseScale);
+                    }
+                }, 10);
+                
+            } else {
+                // Second click - stop timer and fade dot
+                isTimerActive = false;
+                clearInterval(timerInterval);
+                
+                // Show final time
+                const finalTime = (Date.now() - timerStartTime) / 1000;
+                timerDisplay.text = `Final time: ${finalTime.toFixed(3)}s`;
+                timerDisplay.style.fill = 0x00ff00;
+                updateTimerBackground();
+                
+                // Fade out dot
+                const fadeOut = () => {
+                    if (timerDot && timerDot.alpha > 0) {
+                        timerDot.alpha -= 0.02;
+                        timerDot.scale.set(1); // Reset scale during fade
+                        if (timerDot.alpha <= 0) {
+                            mainContainer.removeChild(timerDot);
+                            timerDot = null;
+                            // Reset timer display after fade
+                            setTimeout(() => {
+                                timerDisplay.text = 'Click to start timer';
+                                timerDisplay.style.fill = 0xff6666;
+                                updateTimerBackground();
+                            }, 1000);
+                        } else {
+                            requestAnimationFrame(fadeOut);
+                        }
+                    }
+                };
+                fadeOut();
+            }
+        });
+
+        // Air molecules setup
+        const moleculeCount = 4200;
+        const molecules = [];
+        const moleculeContainer = new PIXI.Container();
+        mainContainer.addChild(moleculeContainer);
+
+        // Create air molecules
+        for (let i = 0; i < moleculeCount; i++) {
+            const molecule = new PIXI.Graphics();
+            molecule.beginFill(0x88ddff, 0.7);
+            molecule.drawCircle(0, 0, 1.5);
+            molecule.endFill();
+            
+            // Random position across the canvas (all the way to the eardrum)
+            const moleculeAreaStart = speakerX + speakerWidth/2 + 25;
+            const moleculeAreaEnd = eardrumX; // Go right up to the eardrum position
+            molecule.x = moleculeAreaStart + Math.random() * (moleculeAreaEnd - moleculeAreaStart);
+            molecule.y = 5 + Math.random() * (app.screen.height - 10);
+            
+            // Store initial position
+            molecule.initialX = molecule.x;
+            molecule.initialY = molecule.y;
+            
+            moleculeContainer.addChild(molecule);
+            molecules.push(molecule);
+        }
+
+        // Wave parameters
+        let frequency = 2.0;
+        let time = 0;
+        const waveSpeed = 150; // pixels per second
+        const amplitude = 12;
+
+        // Update frequency display
+        const frequencySlider = document.getElementById('frequency-slider');
+        const frequencyDisplay = document.getElementById('frequency-display');
+        const playPauseBtn = document.getElementById('play-pause-btn');
+        
+        let isPlaying = true;
+        
+        frequencySlider.addEventListener('input', (e) => {
+            frequency = parseFloat(e.target.value);
+            frequencyDisplay.textContent = frequency.toFixed(1) + ' Hz';
+        });
+        
+        // Play/Pause functionality
+        playPauseBtn.addEventListener('click', () => {
+            isPlaying = !isPlaying;
+            if (isPlaying) {
+                app.ticker.start();
+                playPauseBtn.textContent = 'Pause';
+            } else {
+                app.ticker.stop();
+                playPauseBtn.textContent = 'Play';
+            }
+        });
+
+        // Animation loop
+        app.ticker.add((delta) => {
+            time += delta / 60; // Convert to seconds
+            
+            // Calculate speaker oscillation
+            const speakerOffset = Math.sin(time * frequency * Math.PI * 2) * 10;
+            
+            // Redraw speaker with oscillation
+            speaker.clear();
+            speaker.lineStyle(3, 0x00ff88, 1);
+            speaker.beginFill(0x003333, 0.8);
+            
+            // Draw speaker shape (rectangle) with offset
+            speaker.drawRect(-speakerWidth/2 + speakerOffset, -speakerHeight/2, speakerWidth, speakerHeight);
+            speaker.endFill();
+            
+            // Calculate eardrum response
+            const distanceToEardrum = eardrumX - speakerX;
+            const eardrumPhase = (time * frequency * Math.PI * 2) - (distanceToEardrum / waveSpeed * Math.PI * 2);
+            const eardrumOffset = Math.sin(eardrumPhase) * 15 * Math.exp(-distanceToEardrum / 1500);
+            
+            // Draw eardrum membrane
+            eardrum.clear();
+            
+            // Define membrane boundaries
+            const topY = -eardrumHeight/2;
+            const bottomY = eardrumHeight/2;
+            
+            // Draw clamped points at top and bottom
+            eardrum.beginFill(0xff8844, 1);
+            eardrum.drawCircle(0, topY, 5);
+            eardrum.drawCircle(0, bottomY, 5);
+            eardrum.endFill();
+            
+            // Draw the membrane curve
+            eardrum.lineStyle(5, 0xff8844, 1);
+            eardrum.beginFill(0x442211, 0.3); // More visible fill
+            
+            // Create curved membrane shape
+            const restCurve = 15; // Natural outward curve when at rest (away from speaker)
+            const curveAmount = restCurve - eardrumOffset; // Subtract to make it move toward speaker when compressed
+            
+            // Draw curve using multiple points for smoothness
+            const segments = 20;
+            eardrum.moveTo(0, topY);
+            for (let i = 0; i <= segments; i++) {
+                const t = i / segments;
+                const y = topY + (bottomY - topY) * t;
+                
+                // Calculate curve based on position (more curve in middle, less at ends)
+                const curveIntensity = Math.sin(t * Math.PI);
+                const x = curveAmount * curveIntensity;
+                
+                eardrum.lineTo(x, y);
+            }
+            eardrum.endFill();
+            
+            // Update air molecules
+            molecules.forEach((molecule) => {
+                const distanceFromSpeaker = molecule.initialX - speakerX;
+                
+                // Calculate wave phase at this distance
+                const wavePhase = (time * frequency * Math.PI * 2) - (distanceFromSpeaker / waveSpeed * Math.PI * 2);
+                
+                // Apply compression wave effect
+                const compressionFactor = Math.sin(wavePhase);
+                const displacement = compressionFactor * amplitude * Math.exp(-distanceFromSpeaker / 800);
+                
+                // Update molecule position
+                molecule.x = molecule.initialX + displacement;
+                
+                // Add slight vertical oscillation for visual effect
+                molecule.y = molecule.initialY + Math.sin(time * 3 + molecule.initialX * 0.01) * 1;
+                
+                // Keep constant brightness and size
+                molecule.alpha = 0.7;
+                molecule.scale.set(1);
+            });
+        });
+    </script>
+</body>
+</html>
