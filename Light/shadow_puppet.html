@@ -1,0 +1,355 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Puppet Show</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+        }
+        
+        #canvas {
+            display: block;
+            cursor: grab;
+            touch-action: none;
+        }
+        
+        #canvas:active {
+            cursor: grabbing;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas"></canvas>
+    
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        
+        let width, height;
+        let puppet = { x: 0, y: 0, width: 40, height: 60 };
+        let isDragging = false;
+        let dragOffset = { x: 0, y: 0 };
+        let lightBulb = { x: 0, y: 0, radius: 20 };
+        let screen = { y: 0, height: 120 };
+        
+        function resize() {
+            width = window.innerWidth;
+            height = window.innerHeight;
+            canvas.width = width;
+            canvas.height = height;
+            
+            // Position elements based on window size
+            lightBulb.x = width / 2;
+            lightBulb.y = height - 60;
+            
+            puppet.x = width / 2;
+            puppet.y = height / 2;
+            
+            screen.y = 20;
+        }
+        
+        function drawLightRays() {
+            const numRays = 100;
+            ctx.strokeStyle = 'rgba(255, 255, 200, 0.1)';
+            ctx.lineWidth = 2;
+            
+            for (let i = 0; i < numRays; i++) {
+                const angle = (Math.PI * i) / numRays; // 180 degrees spread upward
+                const endX = lightBulb.x + Math.cos(angle) * height * 2;
+                const endY = lightBulb.y - Math.sin(angle) * height * 2;
+                
+                // Check if ray intersects with puppet
+                const intersection = getRayPuppetIntersection(
+                    lightBulb.x, lightBulb.y, endX, endY
+                );
+                
+                ctx.beginPath();
+                ctx.moveTo(lightBulb.x, lightBulb.y);
+                
+                if (intersection) {
+                    ctx.lineTo(intersection.x, intersection.y);
+                } else {
+                    ctx.lineTo(endX, endY);
+                }
+                
+                ctx.stroke();
+            }
+        }
+        
+        function getRayPuppetIntersection(x1, y1, x2, y2) {
+            // Simple bounding box check for the puppet
+            const puppetLeft = puppet.x - puppet.width / 2;
+            const puppetRight = puppet.x + puppet.width / 2;
+            const puppetTop = puppet.y - puppet.height / 2;
+            const puppetBottom = puppet.y + puppet.height / 2;
+            
+            // Ray direction
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            
+            // Check intersection with puppet rectangle
+            let tmin = 0;
+            let tmax = 1;
+            
+            for (let i = 0; i < 2; i++) {
+                let low, high, d, p;
+                if (i === 0) {
+                    low = puppetLeft;
+                    high = puppetRight;
+                    d = dx;
+                    p = x1;
+                } else {
+                    low = puppetTop;
+                    high = puppetBottom;
+                    d = dy;
+                    p = y1;
+                }
+                
+                if (Math.abs(d) < 0.0001) {
+                    if (p < low || p > high) return null;
+                } else {
+                    const t1 = (low - p) / d;
+                    const t2 = (high - p) / d;
+                    
+                    tmin = Math.max(tmin, Math.min(t1, t2));
+                    tmax = Math.min(tmax, Math.max(t1, t2));
+                    
+                    if (tmin > tmax) return null;
+                }
+            }
+            
+            if (tmin >= 0 && tmin <= 1) {
+                return {
+                    x: x1 + tmin * dx,
+                    y: y1 + tmin * dy
+                };
+            }
+            
+            return null;
+        }
+        
+        function drawShadow() {
+            // Calculate the exact shadow bounds based on light ray projections
+            const puppetLeft = puppet.x - puppet.width / 2;
+            const puppetRight = puppet.x + puppet.width / 2;
+            const puppetTop = puppet.y - puppet.height / 2;
+            
+            // Project puppet edges to screen
+            const leftShadowEdge = projectToScreen(puppetLeft, puppetTop);
+            const rightShadowEdge = projectToScreen(puppetRight, puppetTop);
+            const shadowScale = Math.abs((screen.y - lightBulb.y) / (puppet.y - lightBulb.y));
+            
+            ctx.save();
+            
+            // Clip to screen area
+            ctx.beginPath();
+            ctx.rect(0, screen.y, width, screen.height);
+            ctx.clip();
+            
+            // Position shadow
+            const shadowX = projectToScreen(puppet.x, puppet.y);
+            ctx.translate(shadowX, screen.y + screen.height / 2);
+            
+            // Set solid black for shadow
+            ctx.fillStyle = '#000000';
+            ctx.shadowColor = 'transparent';
+            ctx.shadowBlur = 0;
+            
+            // Scale shadow proportionally
+            const scaleX = (rightShadowEdge - leftShadowEdge) / puppet.width;
+            const scaleY = shadowScale * 0.8; // Slightly reduce height to fit within screen
+            
+            ctx.scale(scaleX, scaleY);
+            
+            // Draw person shape shadow
+            // Head
+            ctx.beginPath();
+            ctx.arc(0, -puppet.height / 2 + 10, 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Body
+            ctx.fillRect(-8, -puppet.height / 2 + 20, 16, 25);
+            
+            // Arms
+            ctx.fillRect(-puppet.width / 2, -puppet.height / 2 + 25, puppet.width, 4);
+            
+            // Legs
+            ctx.fillRect(-5, -puppet.height / 2 + 45, 4, 15);
+            ctx.fillRect(1, -puppet.height / 2 + 45, 4, 15);
+            
+            ctx.restore();
+        }
+        
+        function projectToScreen(x, y) {
+            // Project a point from puppet position to screen using light source
+            const ratio = (screen.y - lightBulb.y) / (y - lightBulb.y);
+            return lightBulb.x + (x - lightBulb.x) * ratio;
+        }
+        
+        function drawPuppet() {
+            ctx.save();
+            ctx.translate(puppet.x, puppet.y);
+            
+            // Draw a simple person shape
+            ctx.fillStyle = '#2c2c2c';
+            
+            // Head
+            ctx.beginPath();
+            ctx.arc(0, -puppet.height / 2 + 10, 10, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Body
+            ctx.fillRect(-8, -puppet.height / 2 + 20, 16, 25);
+            
+            // Arms
+            ctx.fillRect(-puppet.width / 2, -puppet.height / 2 + 25, puppet.width, 4);
+            
+            // Legs
+            ctx.fillRect(-5, -puppet.height / 2 + 45, 4, 15);
+            ctx.fillRect(1, -puppet.height / 2 + 45, 4, 15);
+            
+            ctx.restore();
+        }
+        
+        function drawLightBulb() {
+            // Glow effect
+            const glowGradient = ctx.createRadialGradient(
+                lightBulb.x, lightBulb.y, 0,
+                lightBulb.x, lightBulb.y, lightBulb.radius * 3
+            );
+            glowGradient.addColorStop(0, 'rgba(255, 255, 200, 0.6)');
+            glowGradient.addColorStop(1, 'rgba(255, 255, 200, 0)');
+            
+            ctx.fillStyle = glowGradient;
+            ctx.fillRect(
+                lightBulb.x - lightBulb.radius * 3,
+                lightBulb.y - lightBulb.radius * 3,
+                lightBulb.radius * 6,
+                lightBulb.radius * 6
+            );
+            
+            // Bulb
+            ctx.fillStyle = '#ffffcc';
+            ctx.beginPath();
+            ctx.arc(lightBulb.x, lightBulb.y, lightBulb.radius, 0, Math.PI * 2);
+            ctx.fill();
+            
+            // Socket
+            ctx.fillStyle = '#666';
+            ctx.fillRect(lightBulb.x - 10, lightBulb.y + lightBulb.radius - 5, 20, 10);
+        }
+        
+        function drawScreen() {
+            // Screen gradient
+            const screenGradient = ctx.createLinearGradient(0, screen.y, 0, screen.y + screen.height);
+            screenGradient.addColorStop(0, '#f0f0f0');
+            screenGradient.addColorStop(1, '#d0d0d0');
+            
+            ctx.fillStyle = screenGradient;
+            ctx.fillRect(0, screen.y, width, screen.height);
+            
+            // Screen frame
+            ctx.fillStyle = '#333';
+            ctx.fillRect(0, screen.y - 5, width, 5);
+            ctx.fillRect(0, screen.y + screen.height, width, 5);
+        }
+        
+        function draw() {
+            // Clear canvas
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, width, height);
+            
+            // Draw components in order
+            drawScreen();
+            drawLightRays();
+            drawShadow(); // Shadow after rays so it covers them on the screen
+            drawPuppet();
+            drawLightBulb();
+            
+            requestAnimationFrame(draw);
+        }
+        
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+            const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+            return {
+                x: clientX - rect.left,
+                y: clientY - rect.top
+            };
+        }
+        
+        function isPointInPuppet(x, y) {
+            return Math.abs(x - puppet.x) < puppet.width / 2 &&
+                   Math.abs(y - puppet.y) < puppet.height / 2;
+        }
+        
+        // Mouse events
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            if (isPointInPuppet(pos.x, pos.y)) {
+                isDragging = true;
+                dragOffset.x = pos.x - puppet.x;
+                dragOffset.y = pos.y - puppet.y;
+            }
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                const pos = getMousePos(e);
+                puppet.x = pos.x - dragOffset.x;
+                puppet.y = pos.y - dragOffset.y;
+                
+                // Keep puppet in bounds
+                puppet.x = Math.max(puppet.width / 2, Math.min(width - puppet.width / 2, puppet.x));
+                puppet.y = Math.max(screen.y + screen.height + puppet.height / 2, 
+                                  Math.min(lightBulb.y - lightBulb.radius - puppet.height / 2, puppet.y));
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        // Touch events
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const pos = getMousePos(e);
+            if (isPointInPuppet(pos.x, pos.y)) {
+                isDragging = true;
+                dragOffset.x = pos.x - puppet.x;
+                dragOffset.y = pos.y - puppet.y;
+            }
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            if (isDragging) {
+                const pos = getMousePos(e);
+                puppet.x = pos.x - dragOffset.x;
+                puppet.y = pos.y - dragOffset.y;
+                
+                // Keep puppet in bounds
+                puppet.x = Math.max(puppet.width / 2, Math.min(width - puppet.width / 2, puppet.x));
+                puppet.y = Math.max(screen.y + screen.height + puppet.height / 2, 
+                                  Math.min(lightBulb.y - lightBulb.radius - puppet.height / 2, puppet.y));
+            }
+        });
+        
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+        
+        // Initialize
+        window.addEventListener('resize', resize);
+        resize();
+        draw();
+    </script>
+</body>
+</html>
