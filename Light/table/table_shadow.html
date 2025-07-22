@@ -1,0 +1,406 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Photo with Adjustable Lines</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #333;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        
+        #photoCanvas {
+            display: block;
+            max-width: 95vw;
+            max-height: calc(100vh - 100px);
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+        
+        #overlayCanvas {
+            position: absolute;
+            cursor: crosshair;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+        }
+        
+        #controls {
+            margin-top: 20px;
+            background: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            z-index: 10;
+            text-align: center;
+        }
+        
+        #info {
+            font-size: 14px;
+            color: #666;
+            line-height: 1.5;
+        }
+        
+        #loadingMessage {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 18px;
+            background: rgba(0, 0, 0, 0.7);
+            padding: 20px;
+            border-radius: 8px;
+        }
+        
+        .line-handle {
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <div id="loadingMessage">Loading photo...</div>
+        <img id="photoCanvas" style="display: none;">
+        <canvas id="overlayCanvas"></canvas>
+        <div id="controls">
+            <div id="info">
+                Click and drag lines horizontally to move them<br>
+                Click and drag the circular handles to adjust slope
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const PHOTO_URL = '01_script_table_shadow_side_view_white.jpg';
+        
+        const photoImg = document.getElementById('photoCanvas');
+        const canvas = document.getElementById('overlayCanvas');
+        const ctx = canvas.getContext('2d');
+        const loadingMessage = document.getElementById('loadingMessage');
+        
+        // Two lines with position and angle
+        let lines = [
+            { x: 0, angle: 0, color: 'red', isDragging: false, handleDragging: false },
+            { x: 0, angle: 0, color: 'red', isDragging: false, handleDragging: false }
+        ];
+        
+        let draggedLineIndex = -1;
+        let dragOffset = { x: 0, y: 0 };
+        const handleRadius = 10;
+
+        // Load the photo
+        photoImg.onload = function() {
+            loadingMessage.style.display = 'none';
+            photoImg.style.display = 'block';
+            
+            // Set canvas size to match photo
+            canvas.width = photoImg.width;
+            canvas.height = photoImg.height;
+            
+            // Set initial line positions
+            lines[0].x = canvas.width * 0.3;
+            lines[1].x = canvas.width * 0.7;
+            
+            draw();
+        };
+        
+        photoImg.onerror = function() {
+            loadingMessage.innerHTML = 'Failed to load photo. Please ensure the file "01_script_table_shadow_side_view_white.jpg" is in the same folder as this HTML file.';
+        };
+        
+        // Start loading the photo
+        photoImg.src = PHOTO_URL;
+
+        function draw() {
+            // Clear overlay canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw each line
+            lines.forEach((line, index) => {
+                drawLine(line, index);
+            });
+        }
+        
+        function drawLine(line, index) {
+            ctx.save();
+            
+            // Calculate line endpoints based on angle
+            const centerY = canvas.height / 2;
+            const lineLength = Math.sqrt(canvas.width * canvas.width + canvas.height * canvas.height);
+            
+            // Calculate endpoints
+            const dx = Math.cos(line.angle) * lineLength / 2;
+            const dy = Math.sin(line.angle) * lineLength / 2;
+            
+            const x1 = line.x - dx;
+            const y1 = centerY - dy;
+            const x2 = line.x + dx;
+            const y2 = centerY + dy;
+            
+            // Draw the line
+            ctx.strokeStyle = line.color;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.stroke();
+            
+            // Draw handle at the top endpoint for angle adjustment
+            const handleX = line.x + Math.cos(line.angle) * 100;
+            const handleY = centerY + Math.sin(line.angle) * 100;
+            
+            ctx.fillStyle = 'white';
+            ctx.strokeStyle = line.color;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(handleX, handleY, handleRadius, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+            
+            // Add line number in the handle
+            ctx.fillStyle = line.color;
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText((index + 1).toString(), handleX, handleY);
+            
+            ctx.restore();
+        }
+        
+        // Helper function to get mouse position relative to canvas
+        function getMousePos(e) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (e.clientX - rect.left) * (canvas.width / rect.width),
+                y: (e.clientY - rect.top) * (canvas.height / rect.height)
+            };
+        }
+        
+        // Check if point is near a line
+        function isPointNearLine(point, line) {
+            const centerY = canvas.height / 2;
+            const lineLength = Math.sqrt(canvas.width * canvas.width + canvas.height * canvas.height);
+            
+            // Calculate endpoints
+            const dx = Math.cos(line.angle) * lineLength / 2;
+            const dy = Math.sin(line.angle) * lineLength / 2;
+            
+            const x1 = line.x - dx;
+            const y1 = centerY - dy;
+            const x2 = line.x + dx;
+            const y2 = centerY + dy;
+            
+            // Calculate distance from point to line
+            const A = point.x - x1;
+            const B = point.y - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+            
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let param = -1;
+            
+            if (lenSq !== 0) {
+                param = dot / lenSq;
+            }
+            
+            let xx, yy;
+            
+            if (param < 0) {
+                xx = x1;
+                yy = y1;
+            } else if (param > 1) {
+                xx = x2;
+                yy = y2;
+            } else {
+                xx = x1 + param * C;
+                yy = y1 + param * D;
+            }
+            
+            const dx2 = point.x - xx;
+            const dy2 = point.y - yy;
+            const distance = Math.sqrt(dx2 * dx2 + dy2 * dy2);
+            
+            return distance < 10; // 10 pixel tolerance
+        }
+        
+        // Check if point is in handle
+        function isPointInHandle(point, line) {
+            const centerY = canvas.height / 2;
+            const handleX = line.x + Math.cos(line.angle) * 100;
+            const handleY = centerY + Math.sin(line.angle) * 100;
+            
+            const dx = point.x - handleX;
+            const dy = point.y - handleY;
+            const distance = Math.sqrt(dx * dx + dy * dy);
+            
+            return distance <= handleRadius;
+        }
+
+        // Mouse event handlers
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getMousePos(e);
+            
+            // Check handles first (they have priority)
+            for (let i = 0; i < lines.length; i++) {
+                if (isPointInHandle(pos, lines[i])) {
+                    draggedLineIndex = i;
+                    lines[i].handleDragging = true;
+                    return;
+                }
+            }
+            
+            // Then check lines
+            for (let i = 0; i < lines.length; i++) {
+                if (isPointNearLine(pos, lines[i])) {
+                    draggedLineIndex = i;
+                    lines[i].isDragging = true;
+                    dragOffset.x = pos.x - lines[i].x;
+                    return;
+                }
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const pos = getMousePos(e);
+            
+            if (draggedLineIndex >= 0) {
+                const line = lines[draggedLineIndex];
+                
+                if (line.isDragging) {
+                    // Move line horizontally
+                    line.x = pos.x - dragOffset.x;
+                    
+                    // Keep line within canvas bounds
+                    line.x = Math.max(0, Math.min(canvas.width, line.x));
+                    
+                    draw();
+                } else if (line.handleDragging) {
+                    // Adjust angle based on handle position
+                    const centerY = canvas.height / 2;
+                    const dx = pos.x - line.x;
+                    const dy = pos.y - centerY;
+                    line.angle = Math.atan2(dy, dx);
+                    
+                    draw();
+                }
+            }
+            
+            // Update cursor
+            let overHandle = false;
+            let overLine = false;
+            
+            for (let i = 0; i < lines.length; i++) {
+                if (isPointInHandle(pos, lines[i])) {
+                    overHandle = true;
+                    break;
+                }
+                if (isPointNearLine(pos, lines[i])) {
+                    overLine = true;
+                }
+            }
+            
+            if (overHandle) {
+                canvas.style.cursor = 'grab';
+            } else if (overLine) {
+                canvas.style.cursor = 'ew-resize';
+            } else {
+                canvas.style.cursor = 'default';
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            if (draggedLineIndex >= 0) {
+                lines[draggedLineIndex].isDragging = false;
+                lines[draggedLineIndex].handleDragging = false;
+                draggedLineIndex = -1;
+            }
+        });
+
+        // Touch events for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const pos = {
+                x: (touch.clientX - rect.left) * (canvas.width / rect.width),
+                y: (touch.clientY - rect.top) * (canvas.height / rect.height)
+            };
+            
+            // Check handles first
+            for (let i = 0; i < lines.length; i++) {
+                if (isPointInHandle(pos, lines[i])) {
+                    draggedLineIndex = i;
+                    lines[i].handleDragging = true;
+                    return;
+                }
+            }
+            
+            // Then check lines
+            for (let i = 0; i < lines.length; i++) {
+                if (isPointNearLine(pos, lines[i])) {
+                    draggedLineIndex = i;
+                    lines[i].isDragging = true;
+                    dragOffset.x = pos.x - lines[i].x;
+                    return;
+                }
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const pos = {
+                x: (touch.clientX - rect.left) * (canvas.width / rect.width),
+                y: (touch.clientY - rect.top) * (canvas.height / rect.height)
+            };
+            
+            if (draggedLineIndex >= 0) {
+                const line = lines[draggedLineIndex];
+                
+                if (line.isDragging) {
+                    line.x = pos.x - dragOffset.x;
+                    line.x = Math.max(0, Math.min(canvas.width, line.x));
+                    draw();
+                } else if (line.handleDragging) {
+                    const centerY = canvas.height / 2;
+                    const dx = pos.x - line.x;
+                    const dy = pos.y - centerY;
+                    line.angle = Math.atan2(dy, dx);
+                    draw();
+                }
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            if (draggedLineIndex >= 0) {
+                lines[draggedLineIndex].isDragging = false;
+                lines[draggedLineIndex].handleDragging = false;
+                draggedLineIndex = -1;
+            }
+        });
+
+        // Handle window resize
+        window.addEventListener('resize', () => {
+            if (photoImg.complete && photoImg.naturalHeight !== 0) {
+                draw();
+            }
+        });
+    </script>
+</body>
+</html>
