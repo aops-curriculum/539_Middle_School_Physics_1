@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Demonstration - Point Light</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        canvas {
+            background-color: #87CEEB;
+            display: block;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            cursor: crosshair;
+        }
+        
+        #controls {
+            margin-top: 20px;
+            background: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        #info {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .checkbox-container {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        input[type="checkbox"] {
+            cursor: pointer;
+        }
+        
+        label {
+            cursor: pointer;
+            user-select: none;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="shadowCanvas"></canvas>
+        <div id="controls">
+            <div id="info">Click and drag to move the light bulb or ruler</div>
+            <div class="checkbox-container">
+                <input type="checkbox" id="showRuler" checked>
+                <label for="showRuler">Show Ruler</label>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('shadowCanvas');
+        const ctx = canvas.getContext('2d');
+        const showRulerCheckbox = document.getElementById('showRuler');
+        
+        let lightX = 0;
+        let lightY = 0;
+        let isDragging = false;
+        let rulerDragging = false;
+        let showRuler = true;
+        
+        // Scale: 1 cm = 2 pixels (to fit 300 cm ruler in reasonable space)
+        const cmScale = 2;
+        
+        // Ruler properties
+        let ruler = {
+            x: 0,
+            y: 0,
+            length: 300 * cmScale, // 300 cm
+            thickness: 45, // Wider to fit numbers better
+            isDragging: false
+        };
+
+        // Responsive canvas sizing
+        function resizeCanvas() {
+            const container = document.getElementById('container');
+            const maxWidth = container.clientWidth * 0.9;
+            const maxHeight = (container.clientHeight - 100) * 0.9;
+            
+            canvas.width = Math.min(maxWidth, 800);
+            canvas.height = Math.min(maxHeight, 600);
+            
+            // Set initial light position
+            lightX = canvas.width * 0.5;
+            lightY = canvas.height * 0.2;
+            
+            // Set initial ruler position (left side of canvas)
+            // Ruler will be positioned so zero is at ground level
+            const groundY = canvas.height * 0.85; // Ground is now at 85% of canvas height
+            ruler.x = 50;
+            ruler.y = groundY - ruler.length; // Position ruler so bottom is at ground
+            
+            // Adjust ruler length if needed to fit from ground to top of canvas
+            ruler.length = Math.min(300 * cmScale, groundY);
+            
+            draw();
+        }
+
+        // Table properties (75 cm tall)
+        function getTableProps() {
+            const groundY = canvas.height * 0.85; // Ground at 85% of canvas height
+            const tableHeightCm = 75;
+            const tableHeightPx = tableHeightCm * cmScale;
+            
+            return {
+                width: 100 * cmScale, // 100 cm wide
+                height: 2 * cmScale, // 2 cm thick top
+                legWidth: 4 * cmScale, // 4 cm leg width
+                legHeight: tableHeightPx - 2 * cmScale, // Total height minus top thickness
+                x: canvas.width * 0.5,
+                y: groundY // Table bottom touches ground
+            };
+        }
+
+        function drawRuler() {
+            if (!showRuler) return;
+            
+            ctx.save();
+            
+            // Draw ruler background
+            ctx.fillStyle = 'rgba(255, 255, 220, 0.9)';
+            ctx.fillRect(ruler.x - ruler.thickness/2, ruler.y, ruler.thickness, ruler.length);
+            
+            // Draw ruler border
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(ruler.x - ruler.thickness/2, ruler.y, ruler.thickness, ruler.length);
+            
+            // Draw tick marks and labels
+            ctx.fillStyle = '#000';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            
+            // Draw marks every 10 cm, starting from 0 at bottom
+            const totalCm = ruler.length / cmScale;
+            for (let cm = 0; cm <= totalCm; cm += 10) {
+                // Calculate position from bottom
+                const tickY = ruler.y + ruler.length - (cm * cmScale);
+                
+                // Don't draw if outside ruler bounds
+                if (tickY < ruler.y) break;
+                
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 1;
+                
+                // Draw tick mark from right edge extending left
+                ctx.beginPath();
+                ctx.moveTo(ruler.x + ruler.thickness/2, tickY);
+                ctx.lineTo(ruler.x + ruler.thickness/2 - 15, tickY);
+                ctx.stroke();
+                
+                // Draw number
+                ctx.fillText(cm.toString(), ruler.x + ruler.thickness/2 - 20, tickY);
+                
+                // Draw minor ticks at 5 cm intervals
+                if (cm + 5 <= totalCm) {
+                    const minorTickY = ruler.y + ruler.length - ((cm + 5) * cmScale);
+                    if (minorTickY >= ruler.y) {
+                        ctx.beginPath();
+                        ctx.moveTo(ruler.x + ruler.thickness/2, minorTickY);
+                        ctx.lineTo(ruler.x + ruler.thickness/2 - 8, minorTickY);
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            // Add "cm" label at top
+            ctx.font = '14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('cm', ruler.x, ruler.y - 8);
+            
+            ctx.restore();
+        }
+
+        function draw() {
+            const table = getTableProps();
+            const groundY = table.y;
+            const tableTopY = table.y - table.legHeight - table.height;
+            const tableLeftX = table.x - table.width/2;
+            const tableRightX = table.x + table.width/2;
+            
+            // Always position ruler so zero is at ground level
+            ruler.y = groundY - ruler.length;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw ground first (light green)
+            ctx.fillStyle = '#5a8c5a';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            
+            // Calculate shadow from edge rays
+            let leftShadowX, rightShadowX;
+            
+            if (lightY < tableTopY) {
+                // Left edge ray angle
+                const leftAngle = Math.atan2(tableTopY - lightY, tableLeftX - lightX);
+                const leftDirX = Math.cos(leftAngle);
+                const leftDirY = Math.sin(leftAngle);
+                
+                // Find where left ray hits ground
+                const leftT = (groundY - lightY) / leftDirY;
+                leftShadowX = lightX + leftDirX * leftT;
+                
+                // Right edge ray angle
+                const rightAngle = Math.atan2(tableTopY - lightY, tableRightX - lightX);
+                const rightDirX = Math.cos(rightAngle);
+                const rightDirY = Math.sin(rightAngle);
+                
+                // Find where right ray hits ground
+                const rightT = (groundY - lightY) / rightDirY;
+                rightShadowX = lightX + rightDirX * rightT;
+            }
+            
+            // Draw shadow (darker green)
+            if (lightY < tableTopY && leftShadowX !== undefined && rightShadowX !== undefined) {
+                ctx.fillStyle = '#2d5a2d';
+                ctx.fillRect(
+                    Math.min(leftShadowX, rightShadowX),
+                    groundY,
+                    Math.abs(rightShadowX - leftShadowX),
+                    canvas.height - groundY
+                );
+            }
+            
+            // Draw ground line
+            ctx.strokeStyle = '#4a7c4a';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(canvas.width, groundY);
+            ctx.stroke();
+            
+            // Draw regular light rays
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 5]);
+            
+            // Draw rays in a circle from the light bulb
+            const numRays = 36;
+            for (let i = 0; i < numRays; i++) {
+                const angle = (i / numRays) * Math.PI * 2;
+                const rayDirX = Math.cos(angle);
+                const rayDirY = Math.sin(angle);
+                
+                ctx.beginPath();
+                ctx.moveTo(lightX, lightY);
+                
+                // Extend ray to find intersection
+                let endX = lightX + rayDirX * canvas.width;
+                let endY = lightY + rayDirY * canvas.width;
+                let hitSomething = false;
+                
+                // Check intersection with table if ray is going down
+                if (rayDirY > 0) {
+                    // Check table top intersection
+                    if (endY > tableTopY) {
+                        const t = (tableTopY - lightY) / rayDirY;
+                        const intersectX = lightX + rayDirX * t;
+                        
+                        if (intersectX > tableLeftX && intersectX < tableRightX) {
+                            endX = intersectX;
+                            endY = tableTopY;
+                            hitSomething = true;
+                        }
+                    }
+                    
+                    // Check ground intersection if haven't hit table
+                    if (!hitSomething && endY > groundY) {
+                        const t = (groundY - lightY) / rayDirY;
+                        endX = lightX + rayDirX * t;
+                        endY = groundY;
+                    }
+                }
+                
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+            
+            // Draw edge-grazing rays (thicker and brighter)
+            ctx.strokeStyle = '#FFFFFF';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([]);
+            
+            if (lightY < tableTopY) {
+                // Left edge ray - straight line from light through table edge to ground
+                const leftAngle = Math.atan2(tableTopY - lightY, tableLeftX - lightX);
+                const leftDirX = Math.cos(leftAngle);
+                const leftDirY = Math.sin(leftAngle);
+                
+                ctx.beginPath();
+                ctx.moveTo(lightX, lightY);
+                
+                // Extend ray to ground
+                const leftT = (groundY - lightY) / leftDirY;
+                const leftGroundX = lightX + leftDirX * leftT;
+                ctx.lineTo(leftGroundX, groundY);
+                ctx.stroke();
+                
+                // Right edge ray - straight line from light through table edge to ground
+                const rightAngle = Math.atan2(tableTopY - lightY, tableRightX - lightX);
+                const rightDirX = Math.cos(rightAngle);
+                const rightDirY = Math.sin(rightAngle);
+                
+                ctx.beginPath();
+                ctx.moveTo(lightX, lightY);
+                
+                // Extend ray to ground
+                const rightT = (groundY - lightY) / rightDirY;
+                const rightGroundX = lightX + rightDirX * rightT;
+                ctx.lineTo(rightGroundX, groundY);
+                ctx.stroke();
+            }
+            
+            // Draw table
+            // Table top
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(
+                tableLeftX,
+                tableTopY,
+                table.width,
+                table.height
+            );
+            
+            // Table leg
+            ctx.fillRect(
+                table.x - table.legWidth/2,
+                table.y - table.legHeight,
+                table.legWidth,
+                table.legHeight
+            );
+            
+            // Table edge highlights
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+                tableLeftX,
+                tableTopY,
+                table.width,
+                table.height
+            );
+            ctx.strokeRect(
+                table.x - table.legWidth/2,
+                table.y - table.legHeight,
+                table.legWidth,
+                table.legHeight
+            );
+            
+            // Draw ruler
+            drawRuler();
+            
+            // Draw light bulb
+            ctx.beginPath();
+            ctx.arc(lightX, lightY, 10, 0, Math.PI * 2);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fill();
+            ctx.strokeStyle = '#CCCCCC';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            
+            // Add glow effect
+            const gradient = ctx.createRadialGradient(lightX, lightY, 0, lightX, lightY, 30);
+            gradient.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+            gradient.addColorStop(1, 'rgba(255, 255, 255, 0)');
+            ctx.fillStyle = gradient;
+            ctx.beginPath();
+            ctx.arc(lightX, lightY, 30, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Helper function to check if point is in ruler
+        function isPointInRuler(x, y) {
+            return x >= ruler.x - ruler.thickness/2 && 
+                   x <= ruler.x + ruler.thickness/2 &&
+                   y >= ruler.y &&
+                   y <= ruler.y + ruler.length;
+        }
+
+        // Mouse event handlers
+        canvas.addEventListener('mousedown', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            // Check if clicking on ruler first
+            if (showRuler && isPointInRuler(mouseX, mouseY)) {
+                ruler.isDragging = true;
+                ruler.dragOffsetX = mouseX - ruler.x;
+                ruler.dragOffsetY = mouseY - ruler.y;
+                return;
+            }
+            
+            // Check if clicking near the light bulb
+            const dist = Math.sqrt((mouseX - lightX) ** 2 + (mouseY - lightY) ** 2);
+            if (dist < 20) {
+                isDragging = true;
+            }
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            
+            if (isDragging) {
+                lightX = mouseX;
+                lightY = mouseY;
+                
+                // Keep light within canvas bounds
+                lightX = Math.max(10, Math.min(canvas.width - 10, lightX));
+                lightY = Math.max(10, Math.min(canvas.height - 10, lightY));
+                
+                draw();
+            }
+            
+            if (ruler.isDragging) {
+                ruler.x = mouseX - ruler.dragOffsetX;
+                // ruler.y is not updated - only horizontal movement allowed
+                
+                // Keep ruler within canvas bounds horizontally
+                ruler.x = Math.max(ruler.thickness/2, Math.min(canvas.width - ruler.thickness/2, ruler.x));
+                
+                draw();
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+            ruler.isDragging = false;
+        });
+
+        // Touch events for mobile
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const touchX = touch.clientX - rect.left;
+            const touchY = touch.clientY - rect.top;
+            
+            // Check if touching ruler first
+            if (showRuler && isPointInRuler(touchX, touchY)) {
+                ruler.isDragging = true;
+                ruler.dragOffsetX = touchX - ruler.x;
+                ruler.dragOffsetY = touchY - ruler.y;
+                return;
+            }
+            
+            const dist = Math.sqrt((touchX - lightX) ** 2 + (touchY - lightY) ** 2);
+            if (dist < 20) {
+                isDragging = true;
+            }
+        });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches[0];
+            const touchX = touch.clientX - rect.left;
+            const touchY = touch.clientY - rect.top;
+            
+            if (isDragging) {
+                lightX = touchX;
+                lightY = touchY;
+                
+                lightX = Math.max(10, Math.min(canvas.width - 10, lightX));
+                lightY = Math.max(10, Math.min(canvas.height - 10, lightY));
+                
+                draw();
+            }
+            
+            if (ruler.isDragging) {
+                ruler.x = touchX - ruler.dragOffsetX;
+                // ruler.y is not updated - only horizontal movement allowed
+                
+                ruler.x = Math.max(ruler.thickness/2, Math.min(canvas.width - ruler.thickness/2, ruler.x));
+                
+                draw();
+            }
+        });
+
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+            ruler.isDragging = false;
+        });
+
+        // Checkbox event listener
+        showRulerCheckbox.addEventListener('change', (e) => {
+            showRuler = e.target.checked;
+            draw();
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initial setup
+        resizeCanvas();
+    </script>
+</body>
+</html>
