@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shadow Demonstration</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        
+        #container {
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        canvas {
+            background-color: #87CEEB;
+            display: block;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        #controls {
+            margin-top: 20px;
+            background: white;
+            padding: 15px 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+        
+        #angleSlider {
+            width: 200px;
+        }
+        
+        label {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        #angleValue {
+            font-weight: normal;
+            color: #666;
+            min-width: 40px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <div id="container">
+        <canvas id="shadowCanvas"></canvas>
+        <div id="controls">
+            <label for="angleSlider">Light Angle:</label>
+            <input type="range" id="angleSlider" min="-60" max="60" value="0" step="1">
+            <span id="angleValue">0°</span>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('shadowCanvas');
+        const ctx = canvas.getContext('2d');
+        const angleSlider = document.getElementById('angleSlider');
+        const angleValue = document.getElementById('angleValue');
+
+        // Responsive canvas sizing
+        function resizeCanvas() {
+            const container = document.getElementById('container');
+            const maxWidth = container.clientWidth * 0.9;
+            const maxHeight = (container.clientHeight - 100) * 0.9;
+            
+            canvas.width = Math.min(maxWidth, 800);
+            canvas.height = Math.min(maxHeight, 600);
+            
+            draw();
+        }
+
+        // Table properties (relative to canvas size)
+        function getTableProps() {
+            const groundY = canvas.height * 0.7;
+            return {
+                width: canvas.width * 0.2,
+                height: canvas.width * 0.015,
+                legWidth: canvas.width * 0.02,
+                legHeight: canvas.height * 0.15,
+                x: canvas.width * 0.5,
+                y: groundY // Table bottom touches ground
+            };
+        }
+
+        function draw() {
+            const table = getTableProps();
+            const groundY = table.y;
+            const angle = parseFloat(angleSlider.value);
+            const angleRad = (angle * Math.PI) / 180;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw ground first (light green)
+            ctx.fillStyle = '#5a8c5a';
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            
+            // Calculate shadow boundaries
+            const tableTopY = table.y - table.legHeight - table.height;
+            const tableLeftX = table.x - table.width/2;
+            const tableRightX = table.x + table.width/2;
+            
+            // Calculate where edge rays hit the ground
+            let shadowLeftX, shadowRightX;
+            
+            if (angle !== 0) {
+                // Calculate based on ray continuation
+                const rayDirX = Math.sin(angleRad);
+                const rayDirY = Math.cos(angleRad);
+                const rayGroundDist = (groundY - tableTopY) / rayDirY;
+                
+                shadowLeftX = tableLeftX + rayDirX * rayGroundDist;
+                shadowRightX = tableRightX + rayDirX * rayGroundDist;
+            } else {
+                // Light from directly above
+                shadowLeftX = tableLeftX;
+                shadowRightX = tableRightX;
+            }
+            
+            // Draw shadow (darker green)
+            ctx.fillStyle = '#2d5a2d';
+            ctx.fillRect(
+                shadowLeftX,
+                groundY,
+                shadowRightX - shadowLeftX,
+                canvas.height - groundY
+            );
+            
+            // Draw ground line
+            ctx.strokeStyle = '#4a7c4a';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(canvas.width, groundY);
+            ctx.stroke();
+            
+            // Draw regular light rays
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([5, 5]);
+            
+            const raySpacing = 30;
+            // Calculate extra rays needed based on angle
+            const extraWidth = Math.abs(Math.tan(angleRad)) * canvas.height;
+            const totalWidth = canvas.width + extraWidth * 2;
+            const numRays = Math.ceil(totalWidth / raySpacing) + 5;
+            const startX = -totalWidth/2;
+            
+            for (let i = 0; i < numRays; i++) {
+                const rayX = startX + i * raySpacing;
+                const rayStartY = 0;
+                const rayStartX = rayX - Math.tan(angleRad) * canvas.height;
+                
+                ctx.beginPath();
+                ctx.moveTo(rayStartX, rayStartY);
+                
+                // Calculate where ray intersects with table or ground
+                let endX = rayStartX + Math.sin(angleRad) * canvas.height * 2;
+                let endY = rayStartY + Math.cos(angleRad) * canvas.height * 2;
+                
+                // Check intersection with table top
+                const rayAtTableY = rayStartX + (tableTopY - rayStartY) * Math.tan(angleRad);
+                
+                if (rayAtTableY > tableLeftX && rayAtTableY < tableRightX && endY > tableTopY) {
+                    endX = rayAtTableY;
+                    endY = tableTopY;
+                } else if (endY > groundY) {
+                    // Ray hits ground
+                    const t = (groundY - rayStartY) / (endY - rayStartY);
+                    endX = rayStartX + t * (endX - rayStartX);
+                    endY = groundY;
+                }
+                
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+            }
+            
+            // Draw edge-grazing rays (thicker and brighter)
+            ctx.strokeStyle = '#FFFF00';
+            ctx.lineWidth = 2.5;
+            ctx.setLineDash([]);
+            
+            // Calculate ray direction vector
+            const rayDirX = Math.sin(angleRad);
+            const rayDirY = Math.cos(angleRad);
+            
+            // Left edge ray
+            ctx.beginPath();
+            const leftRayStartY = 0;
+            const leftRayStartX = tableLeftX - Math.tan(angleRad) * tableTopY;
+            ctx.moveTo(leftRayStartX, leftRayStartY);
+            ctx.lineTo(tableLeftX, tableTopY);
+            
+            // Continue ray from table edge to ground at same angle
+            const leftRayGroundDist = (groundY - tableTopY) / rayDirY;
+            const leftRayGroundX = tableLeftX + rayDirX * leftRayGroundDist;
+            ctx.lineTo(leftRayGroundX, groundY);
+            ctx.stroke();
+            
+            // Right edge ray
+            ctx.beginPath();
+            const rightRayStartY = 0;
+            const rightRayStartX = tableRightX - Math.tan(angleRad) * tableTopY;
+            ctx.moveTo(rightRayStartX, rightRayStartY);
+            ctx.lineTo(tableRightX, tableTopY);
+            
+            // Continue ray from table edge to ground at same angle
+            const rightRayGroundDist = (groundY - tableTopY) / rayDirY;
+            const rightRayGroundX = tableRightX + rayDirX * rightRayGroundDist;
+            ctx.lineTo(rightRayGroundX, groundY);
+            ctx.stroke();
+            
+            ctx.setLineDash([]);
+            
+            // Draw table
+            // Table top
+            ctx.fillStyle = '#8B4513';
+            ctx.fillRect(
+                table.x - table.width/2,
+                table.y - table.legHeight - table.height,
+                table.width,
+                table.height
+            );
+            
+            // Table leg
+            ctx.fillRect(
+                table.x - table.legWidth/2,
+                table.y - table.legHeight,
+                table.legWidth,
+                table.legHeight
+            );
+            
+            // Table edge highlights
+            ctx.strokeStyle = '#654321';
+            ctx.lineWidth = 2;
+            ctx.strokeRect(
+                table.x - table.width/2,
+                table.y - table.legHeight - table.height,
+                table.width,
+                table.height
+            );
+            ctx.strokeRect(
+                table.x - table.legWidth/2,
+                table.y - table.legHeight,
+                table.legWidth,
+                table.legHeight
+            );
+        }
+
+        // Event listeners
+        angleSlider.addEventListener('input', (e) => {
+            angleValue.textContent = `${e.target.value}°`;
+            draw();
+        });
+
+        window.addEventListener('resize', resizeCanvas);
+
+        // Initial setup
+        resizeCanvas();
+    </script>
+</body>
+</html>
