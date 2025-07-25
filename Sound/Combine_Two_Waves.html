@@ -25,6 +25,7 @@
             background-color: #0a0a0a;
             width: 380px;
             height: 300px;
+            position: relative;
         }
         .graph-container {
             border: 2px solid #333;
@@ -118,11 +119,50 @@
             padding: 10px;
             display: none;
         }
+        #canvas-container input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            cursor: pointer;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        #canvas-container label {
+            vertical-align: middle;
+            user-select: none;
+        }
+        .pause-button {
+            background-color: #4fc3f7;
+            color: #0a0a0a;
+            border: none;
+            padding: 4px 12px;
+            border-radius: 4px;
+            font-size: 13px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: background-color 0.2s;
+        }
+        .pause-button:hover {
+            background-color: #6dd3f7;
+        }
+        .pause-button.paused {
+            background-color: #ff6b6b;
+        }
+        .pause-button.paused:hover {
+            background-color: #ff8888;
+        }
     </style>
 </head>
 <body>
     <div class="top-section">
-        <div id="canvas-container"></div>
+        <div id="canvas-container">
+            <div style="position: absolute; top: 10px; left: 10px; z-index: 10; background-color: rgba(42, 42, 42, 0.8); padding: 5px 10px; border-radius: 4px;">
+                <input type="checkbox" id="showWave" checked>
+                <label for="showWave" style="color: #aaa; font-size: 13px; cursor: pointer;">Make Graph</label>
+            </div>
+            <div style="position: absolute; bottom: 10px; left: 10px; z-index: 10;">
+                <button id="pauseButton" class="pause-button">Pause</button>
+            </div>
+        </div>
         <div class="graph-container">
             <h4>Combined Waveform</h4>
             <canvas id="sum-graph" width="380" height="300"></canvas>
@@ -367,12 +407,18 @@
         // Initialize PIXI
         let app;
         let container;
+        let gridContainer;
+        let grid;
         let dot;
         let trail;
-        let trailPoints = [];
-        const maxTrailPoints = 100;
         let time = 0;
         let controls;
+        let gridOffset = 0;
+        let isPaused = false;
+        
+        // Wave component indicators
+        let wave1Trail, wave2Trail;
+        let pos1Indicator, pos2Indicator;
         
         try {
             // Create and configure PIXI Application
@@ -386,7 +432,9 @@
             });
             
             // Add canvas to DOM
-            document.getElementById('canvas-container').appendChild(app.view);
+            const canvasContainer = document.getElementById('canvas-container');
+            canvasContainer.appendChild(app.view);
+            app.view.style.position = 'relative';
             
             // Create main container
             container = new PIXI.Container();
@@ -394,15 +442,23 @@
             container.y = app.screen.height / 2;
             app.stage.addChild(container);
             
-            // Create center line
+            // Create grid container for scrolling grid
+            gridContainer = new PIXI.Container();
+            container.addChild(gridContainer);
+            
+            // Create grid graphics
+            grid = new PIXI.Graphics();
+            gridContainer.addChild(grid);
+            
+            // Create center line (vertical now)
             const centerLine = new PIXI.Graphics();
-            centerLine.lineStyle(1, 0x444444);
-            centerLine.moveTo(-app.screen.width/2, 0);
-            centerLine.lineTo(app.screen.width/2, 0);
+            centerLine.lineStyle(2, 0x444444);
+            centerLine.moveTo(0, -app.screen.height/2);
+            centerLine.lineTo(0, app.screen.height/2);
             container.addChild(centerLine);
             
-            // Add "Molecule Displacement" label
-            const label = new PIXI.Text('Displacement', {
+            // Add "Displacement" label
+            const label = new PIXI.Text('Combined Displacement', {
                 fontFamily: 'Arial',
                 fontSize: 14,
                 fill: 0x666666,
@@ -413,34 +469,44 @@
             label.anchor.set(0.5, 0.5);
             app.stage.addChild(label);
             
-            // Create amplitude guides
+            // Create amplitude guides (now horizontal)
             const guides = new PIXI.Graphics();
             container.addChild(guides);
             
-            // Create trail
+            // Create individual wave trails
+            wave1Trail = new PIXI.Graphics();
+            wave1Trail.alpha = 0.3;
+            container.addChild(wave1Trail);
+            
+            wave2Trail = new PIXI.Graphics();
+            wave2Trail.alpha = 0.3;
+            container.addChild(wave2Trail);
+            
+            // Create combined trail graphics
             trail = new PIXI.Graphics();
-            trail.alpha = 0.3;
             container.addChild(trail);
+            
+            // Create position indicators for individual waves
+            pos1Indicator = new PIXI.Graphics();
+            pos1Indicator.lineStyle(2, 0xff00ff, 0.7);
+            pos1Indicator.drawCircle(0, 0, 4);
+            container.addChild(pos1Indicator);
+            
+            pos2Indicator = new PIXI.Graphics();
+            pos2Indicator.lineStyle(2, 0xffd966, 0.7);
+            pos2Indicator.drawCircle(0, 0, 4);
+            container.addChild(pos2Indicator);
             
             // Create the main dot
             dot = new PIXI.Graphics();
             dot.beginFill(0x4fc3f7);
             dot.drawCircle(0, 0, 8);
             dot.endFill();
+            // Add a white center for better visibility
+            dot.beginFill(0xffffff);
+            dot.drawCircle(0, 0, 3);
+            dot.endFill();
             container.addChild(dot);
-            
-            // Create position indicators
-            const pos1Indicator = new PIXI.Graphics();
-            pos1Indicator.lineStyle(2, 0xff00ff, 0.5);
-            pos1Indicator.drawCircle(0, 0, 4);
-            pos1Indicator.y = -30;
-            container.addChild(pos1Indicator);
-            
-            const pos2Indicator = new PIXI.Graphics();
-            pos2Indicator.lineStyle(2, 0xffd966, 0.5);
-            pos2Indicator.drawCircle(0, 0, 4);
-            pos2Indicator.y = 30;
-            container.addChild(pos2Indicator);
             
             // Get control elements
             controls = {
@@ -451,8 +517,17 @@
                 enable2: document.getElementById('enable2'),
                 freq2: document.getElementById('freq2'),
                 amp2: document.getElementById('amp2'),
-                phase2: document.getElementById('phase2')
+                phase2: document.getElementById('phase2'),
+                showWave: document.getElementById('showWave')
             };
+            
+            // Add pause button functionality
+            const pauseButton = document.getElementById('pauseButton');
+            pauseButton.addEventListener('click', () => {
+                isPaused = !isPaused;
+                pauseButton.textContent = isPaused ? 'Resume' : 'Pause';
+                pauseButton.classList.toggle('paused', isPaused);
+            });
             
             // Update graphs
             function updateGraphs() {
@@ -508,10 +583,31 @@
             controls.enable1.addEventListener('change', () => {
                 updateGuides();
                 updateGraphs();
+                if (!controls.enable1.checked) {
+                    wave1Trail.clear();
+                    pos1Indicator.visible = false;
+                } else {
+                    pos1Indicator.visible = true;
+                }
             });
             controls.enable2.addEventListener('change', () => {
                 updateGuides();
                 updateGraphs();
+                if (!controls.enable2.checked) {
+                    wave2Trail.clear();
+                    pos2Indicator.visible = false;
+                } else {
+                    pos2Indicator.visible = true;
+                }
+            });
+            
+            controls.showWave.addEventListener('change', () => {
+                if (!controls.showWave.checked) {
+                    trail.clear();
+                    wave1Trail.clear();
+                    wave2Trail.clear();
+                    grid.clear();
+                }
             });
             
             // Update amplitude guides
@@ -521,19 +617,21 @@
                 if (controls.enable1.checked) {
                     const amp1 = parseFloat(controls.amp1.value);
                     guides.lineStyle(1, 0xff00ff, 0.3);
-                    guides.moveTo(-amp1, -40);
-                    guides.lineTo(-amp1, -20);
-                    guides.moveTo(amp1, -40);
-                    guides.lineTo(amp1, -20);
+                    // Horizontal guides
+                    guides.moveTo(-amp1 - 10, 0);
+                    guides.lineTo(-amp1 + 10, 0);
+                    guides.moveTo(amp1 - 10, 0);
+                    guides.lineTo(amp1 + 10, 0);
                 }
                 
                 if (controls.enable2.checked) {
                     const amp2 = parseFloat(controls.amp2.value);
                     guides.lineStyle(1, 0xffd966, 0.3);
-                    guides.moveTo(-amp2, 20);
-                    guides.lineTo(-amp2, 40);
-                    guides.moveTo(amp2, 20);
-                    guides.lineTo(amp2, 40);
+                    // Horizontal guides
+                    guides.moveTo(-amp2 - 10, 0);
+                    guides.lineTo(-amp2 + 10, 0);
+                    guides.moveTo(amp2 - 10, 0);
+                    guides.lineTo(amp2 + 10, 0);
                 }
             }
             
@@ -543,44 +641,139 @@
             
             // Animation function
             function animate(delta) {
-                time += delta / 60; // Convert to seconds
+                // Only update time if not paused
+                if (!isPaused) {
+                    time += delta / 60; // Convert to seconds
+                }
                 
+                // Scroll speed (pixels per frame)
+                const scrollSpeed = 2;
+                
+                // Update grid offset only if showWave is checked and not paused
+                if (controls.showWave.checked && !isPaused) {
+                    gridOffset -= scrollSpeed;
+                    if (gridOffset <= -30) {
+                        gridOffset += 30; // Reset when moved one grid unit
+                    }
+                }
+                
+                // Redraw grid with offset
+                grid.clear();
+                
+                // Only draw the moving grid if showWave is checked
+                if (controls.showWave.checked) {
+                    grid.lineStyle(1, 0x444444, 0.5);
+                    
+                    // Vertical lines (static)
+                    for (let x = -180; x <= 180; x += 30) {
+                        grid.moveTo(x, -app.screen.height / 2);
+                        grid.lineTo(x, app.screen.height / 2);
+                    }
+                    
+                    // Horizontal lines (moving)
+                    for (let y = -app.screen.height / 2 - 30; y <= app.screen.height / 2 + 30; y += 30) {
+                        const adjustedY = y + gridOffset;
+                        grid.moveTo(-180, adjustedY);
+                        grid.lineTo(180, adjustedY);
+                    }
+                }
+                
+                // Get wave parameters
+                const freq1 = parseFloat(controls.freq1.value);
+                const amp1 = parseFloat(controls.amp1.value);
+                const phase1 = parseFloat(controls.phase1.value) * Math.PI / 180;
+                const enabled1 = controls.enable1.checked;
+                
+                const freq2 = parseFloat(controls.freq2.value);
+                const amp2 = parseFloat(controls.amp2.value);
+                const phase2 = parseFloat(controls.phase2.value) * Math.PI / 180;
+                const enabled2 = controls.enable2.checked;
+                
+                // Calculate current positions
                 let x1 = 0, x2 = 0;
-                
-                // Calculate position from oscillation 1
-                if (controls.enable1.checked) {
-                    const freq1 = parseFloat(controls.freq1.value);
-                    const amp1 = parseFloat(controls.amp1.value);
-                    const phase1 = parseFloat(controls.phase1.value) * Math.PI / 180;
+                if (enabled1) {
                     x1 = amp1 * Math.sin(2 * Math.PI * freq1 * time + phase1);
                     pos1Indicator.x = x1;
+                    pos1Indicator.y = 0;
                 }
                 
-                // Calculate position from oscillation 2
-                if (controls.enable2.checked) {
-                    const freq2 = parseFloat(controls.freq2.value);
-                    const amp2 = parseFloat(controls.amp2.value);
-                    const phase2 = parseFloat(controls.phase2.value) * Math.PI / 180;
+                if (enabled2) {
                     x2 = amp2 * Math.sin(2 * Math.PI * freq2 * time + phase2);
                     pos2Indicator.x = x2;
+                    pos2Indicator.y = 0;
                 }
                 
-                // Combine the oscillations
+                // Combined position
                 const totalX = x1 + x2;
                 dot.x = totalX;
+                dot.y = 0;
                 
-                // Update trail
-                trailPoints.push({x: totalX, y: 0});
-                if (trailPoints.length > maxTrailPoints) {
-                    trailPoints.shift();
-                }
-                
+                // Clear all trails
                 trail.clear();
-                if (trailPoints.length > 1) {
-                    trail.lineStyle(2, 0x4fc3f7, 0.2);
-                    trail.moveTo(trailPoints[0].x, trailPoints[0].y);
-                    for (let i = 1; i < trailPoints.length; i++) {
-                        trail.lineTo(trailPoints[i].x, trailPoints[i].y);
+                wave1Trail.clear();
+                wave2Trail.clear();
+                
+                // Draw the continuous waves if showWave is checked
+                if (controls.showWave.checked && (enabled1 || enabled2)) {
+                    const startY = app.screen.height / 2;
+                    const endY = -app.screen.height / 2;
+                    const step = 2;
+                    const pixelsPerSecond = scrollSpeed * 60;
+                    
+                    // Draw Wave 1 trail
+                    if (enabled1) {
+                        wave1Trail.lineStyle(1.5, 0xff00ff, 0.5);
+                        let firstPoint = true;
+                        for (let y = startY; y >= endY; y -= step) {
+                            const timeOffset = -y / pixelsPerSecond;
+                            const x = amp1 * Math.sin(2 * Math.PI * freq1 * (time + timeOffset) + phase1);
+                            
+                            if (firstPoint) {
+                                wave1Trail.moveTo(x, -y);
+                                firstPoint = false;
+                            } else {
+                                wave1Trail.lineTo(x, -y);
+                            }
+                        }
+                    }
+                    
+                    // Draw Wave 2 trail
+                    if (enabled2) {
+                        wave2Trail.lineStyle(1.5, 0xffd966, 0.5);
+                        let firstPoint = true;
+                        for (let y = startY; y >= endY; y -= step) {
+                            const timeOffset = -y / pixelsPerSecond;
+                            const x = amp2 * Math.sin(2 * Math.PI * freq2 * (time + timeOffset) + phase2);
+                            
+                            if (firstPoint) {
+                                wave2Trail.moveTo(x, -y);
+                                firstPoint = false;
+                            } else {
+                                wave2Trail.lineTo(x, -y);
+                            }
+                        }
+                    }
+                    
+                    // Draw combined wave trail
+                    trail.lineStyle(2.5, 0x4fc3f7, 1);
+                    let firstPoint = true;
+                    for (let y = startY; y >= endY; y -= step) {
+                        const timeOffset = -y / pixelsPerSecond;
+                        let x = 0;
+                        
+                        if (enabled1) {
+                            x += amp1 * Math.sin(2 * Math.PI * freq1 * (time + timeOffset) + phase1);
+                        }
+                        if (enabled2) {
+                            x += amp2 * Math.sin(2 * Math.PI * freq2 * (time + timeOffset) + phase2);
+                        }
+                        
+                        if (firstPoint) {
+                            trail.moveTo(x, -y);
+                            firstPoint = false;
+                        } else {
+                            trail.lineTo(x, -y);
+                        }
                     }
                 }
             }
