@@ -8,7 +8,708 @@
     <style>
         body {
             margin: 0;
+            padding: 20px;<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Single Wave Displacement</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
+    <style>
+        body {
+            margin: 0;
             padding: 20px;
+            font-family: Arial, sans-serif;
+            background-color: #1a1a1a;
+            color: #ffffff;
+        }
+        .top-section {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+            align-items: start;
+            justify-content: center;
+        }
+        #canvas-container {
+            border: 2px solid #333;
+            display: inline-block;
+            background-color: #0a0a0a;
+            width: 380px;
+            height: 300px;
+            position: relative;
+        }
+        .graph-container {
+            border: 2px solid #333;
+            background-color: #0a0a0a;
+            width: 380px;
+            height: 300px;
+            position: relative;
+        }
+        .controls {
+            background-color: #2a2a2a;
+            padding: 15px 20px 20px 20px;
+            border-radius: 8px;
+            max-width: 780px;
+            margin: 0 auto;
+        }
+        .control-group {
+            padding: 12px 15px;
+            background-color: #333;
+            border-radius: 6px;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+        label {
+            width: 75px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            background: #555;
+            outline: none;
+            border-radius: 3px;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4fc3f7;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="checkbox"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            margin-right: 5px;
+        }
+        .value-display {
+            width: 50px;
+            text-align: right;
+            font-family: monospace;
+            color: #4fc3f7;
+            font-size: 13px;
+        }
+        #error-display {
+            color: #ff6b6b;
+            padding: 10px;
+            display: none;
+            text-align: center;
+        }
+        #canvas-container input[type="checkbox"] {
+            width: 15px;
+            height: 15px;
+            cursor: pointer;
+            margin-right: 5px;
+            vertical-align: middle;
+        }
+        #canvas-container label {
+            vertical-align: middle;
+            user-select: none;
+        }
+        #pause-button {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 10;
+            background-color: rgba(79, 195, 247, 0.9);
+            color: #000;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+            font-size: 14px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            min-width: 80px;
+        }
+        #pause-button:hover {
+            background-color: rgba(79, 195, 247, 1);
+        }
+        #pause-button:active {
+            transform: scale(0.95);
+        }
+    </style>
+</head>
+<body>
+    <div class="top-section">
+        <div id="canvas-container">
+            <div style="position: absolute; top: 10px; left: 10px; z-index: 10; background-color: rgba(42, 42, 42, 0.8); padding: 5px 10px; border-radius: 4px;">
+                <input type="checkbox" id="showWave" checked>
+                <label for="showWave" style="color: #aaa; font-size: 13px; cursor: pointer;">Make Graph</label>
+            </div>
+            <button id="pause-button">Pause</button>
+        </div>
+        <div class="graph-container">
+            <canvas id="wave-graph" width="380" height="300"></canvas>
+        </div>
+    </div>
+    
+    <div id="error-display"></div>
+    
+    <div class="controls">
+        <div class="control-group">
+            <div class="control-row">
+                <input type="checkbox" id="enable" checked>
+                <label for="enable" style="width: auto;">Enable Motion</label>
+                <div style="margin-left: 20px; display: inline-block;">
+                    <input type="checkbox" id="matchGame">
+                    <label for="matchGame" style="width: auto;">Match Game</label>
+                </div>
+            </div>
+            <div class="control-row">
+                <label for="freq">Frequency:</label>
+                <input type="range" id="freq" min="0.1" max="10" step="0.1" value="0.5">
+                <span class="value-display" id="freq-value">0.5 Hz</span>
+            </div>
+            <div class="control-row">
+                <label for="amp">Amplitude:</label>
+                <input type="range" id="amp" min="0" max="100" step="5" value="50">
+                <span class="value-display" id="amp-value">50 px</span>
+            </div>
+            <div class="control-row">
+                <label for="phase">Phase:</label>
+                <input type="range" id="phase" min="0" max="360" step="1" value="0">
+                <span class="value-display" id="phase-value">0°</span>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Show errors if any
+        function showError(message) {
+            const errorDiv = document.getElementById('error-display');
+            errorDiv.textContent = 'Error: ' + message;
+            errorDiv.style.display = 'block';
+        }
+
+        // Graph drawing function
+        function drawWaveform() {
+            const canvas = document.getElementById('wave-graph');
+            const ctx = canvas.getContext('2d');
+            const width = canvas.width;
+            const height = canvas.height;
+            
+            const frequency = parseFloat(controls.freq.value);
+            const amplitude = parseFloat(controls.amp.value);
+            const phase = parseFloat(controls.phase.value) * Math.PI / 180;
+            const enabled = controls.enable.checked;
+            
+            // Clear canvas
+            ctx.clearRect(0, 0, width, height);
+            
+            // Draw grid
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 1;
+            
+            // Horizontal center line
+            ctx.beginPath();
+            ctx.moveTo(40, height / 2);
+            ctx.lineTo(width - 20, height / 2);
+            ctx.stroke();
+            
+            // Vertical lines
+            for (let x = 40; x < width - 20; x += 40) {
+                ctx.beginPath();
+                ctx.moveTo(x, 40);
+                ctx.lineTo(x, height - 30);
+                ctx.stroke();
+            }
+            
+            // Draw axis labels
+            ctx.fillStyle = '#666';
+            ctx.font = '12px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Time', width / 2, height - 20);
+            
+            ctx.save();
+            ctx.translate(15, height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Displacement', 0, 0);
+            ctx.restore();
+            
+            // Draw target wave if match game is active
+            if (controls && controls.matchGame && controls.matchGame.checked) {
+                ctx.strokeStyle = '#ffdd00';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([5, 5]);
+                ctx.beginPath();
+                
+                const timeSpan = 3;
+                const centerY = height / 2;
+                const scale = (height * 0.35) / 100;
+                
+                for (let x = 40; x < width - 20; x++) {
+                    const t = ((x - 40) / (width - 60)) * timeSpan;
+                    const y = centerY - targetWave.amp * scale * Math.sin(2 * Math.PI * targetWave.freq * t + targetWave.phase * Math.PI / 180);
+                    
+                    if (x === 40) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                }
+                
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw target values in corner with background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.fillRect(width - 140, 5, 135, 35);
+                
+                ctx.fillStyle = '#ffdd00';
+                ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'right';
+                ctx.fillText(`Match this wave!`, width - 25, 20);
+                ctx.font = '11px monospace';
+                ctx.fillText(`${targetWave.freq}Hz, ${targetWave.amp}px, ${targetWave.phase}°`, width - 25, 35);
+            }
+            
+            if (!enabled) return;
+            
+            // Draw user waveform
+            ctx.strokeStyle = '#ff00ff';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            
+            const timeSpan = 3; // Show 3 seconds of waveform
+            const centerY = height / 2;
+            const scale = (height * 0.35) / 100; // Scale to fit in graph
+            
+            for (let x = 40; x < width - 20; x++) {
+                const t = ((x - 40) / (width - 60)) * timeSpan;
+                const y = centerY - amplitude * scale * Math.sin(2 * Math.PI * frequency * t + phase);
+                
+                if (x === 40) {
+                    ctx.moveTo(x, y);
+                } else {
+                    ctx.lineTo(x, y);
+                }
+            }
+            
+            ctx.stroke();
+        }
+
+        // Initialize PIXI
+        let app;
+        let container;
+        let gridContainer;
+        let grid;
+        let dot;
+        let trail;
+        let time = 0;
+        let controls;
+        let gridOffset = 0;
+        let isPaused = false;
+        let pauseButton;
+        
+        // Match game variables
+        let targetWave = {
+            freq: 2.0,
+            amp: 75,
+            phase: 0
+        };
+        let matchCelebration = null;
+        let celebrationTime = 0;
+        let hasMatched = false;
+        
+        try {
+            // Create and configure PIXI Application
+            app = new PIXI.Application({
+                width: 380,
+                height: 300,
+                backgroundColor: 0x0a0a0a,
+                antialias: true,
+                resolution: window.devicePixelRatio || 1,
+                autoDensity: true
+            });
+            
+            // Add canvas to DOM
+            const canvasContainer = document.getElementById('canvas-container');
+            canvasContainer.appendChild(app.view);
+            app.view.style.position = 'relative';
+            
+            // Get pause button reference
+            pauseButton = document.getElementById('pause-button');
+            
+            // Add pause button event listener
+            pauseButton.addEventListener('click', () => {
+                isPaused = !isPaused;
+                pauseButton.textContent = isPaused ? 'Play' : 'Pause';
+            });
+            
+            // Create main container
+            container = new PIXI.Container();
+            container.x = app.screen.width / 2;
+            container.y = app.screen.height / 2;
+            app.stage.addChild(container);
+            
+            // Create grid container for scrolling grid
+            gridContainer = new PIXI.Container();
+            container.addChild(gridContainer);
+            
+            // Create grid graphics
+            grid = new PIXI.Graphics();
+            gridContainer.addChild(grid);
+            
+            // Create center line (vertical now)
+            const centerLine = new PIXI.Graphics();
+            centerLine.lineStyle(2, 0x444444);
+            centerLine.moveTo(0, -app.screen.height/2);
+            centerLine.lineTo(0, app.screen.height/2);
+            container.addChild(centerLine);
+            
+            // Add "Displacement" label
+            const label = new PIXI.Text('Displacement', {
+                fontFamily: 'Arial',
+                fontSize: 14,
+                fill: 0x666666,
+                align: 'center'
+            });
+            label.x = app.screen.width / 2;
+            label.y = app.screen.height - 25;
+            label.anchor.set(0.5, 0.5);
+            app.stage.addChild(label);
+            
+            // Create amplitude guides (now horizontal)
+            const guides = new PIXI.Graphics();
+            container.addChild(guides);
+            
+            // Create trail graphics for the wave
+            trail = new PIXI.Graphics();
+            container.addChild(trail);
+            
+            // Create the main dot
+            dot = new PIXI.Graphics();
+            dot.beginFill(0x4fc3f7);
+            dot.drawCircle(0, 0, 8);
+            dot.endFill();
+            // Add a white center for better visibility
+            dot.beginFill(0xffffff);
+            dot.drawCircle(0, 0, 3);
+            dot.endFill();
+            container.addChild(dot);
+            
+            // Create celebration container
+            matchCelebration = new PIXI.Container();
+            app.stage.addChild(matchCelebration);
+            
+            // Get control elements
+            controls = {
+                enable: document.getElementById('enable'),
+                freq: document.getElementById('freq'),
+                amp: document.getElementById('amp'),
+                phase: document.getElementById('phase'),
+                showWave: document.getElementById('showWave'),
+                matchGame: document.getElementById('matchGame')
+            };
+            
+            // Update value displays and graph
+            controls.freq.addEventListener('input', (e) => {
+                document.getElementById('freq-value').textContent = `${e.target.value} Hz`;
+                drawWaveform();
+                checkForMatch();
+            });
+            controls.amp.addEventListener('input', (e) => {
+                document.getElementById('amp-value').textContent = `${e.target.value} px`;
+                updateGuides();
+                drawWaveform();
+                checkForMatch();
+            });
+            controls.phase.addEventListener('input', (e) => {
+                document.getElementById('phase-value').textContent = `${e.target.value}°`;
+                drawWaveform();
+                checkForMatch();
+            });
+            
+            controls.enable.addEventListener('change', () => {
+                updateGuides();
+                drawWaveform();
+                if (!controls.enable.checked) {
+                    trail.clear(); // Clear wave when disabled
+                    dot.x = 0; // Reset particle to center
+                }
+            });
+            
+            controls.showWave.addEventListener('change', () => {
+                if (!controls.showWave.checked) {
+                    trail.clear(); // Clear wave trail when unchecked
+                    grid.clear(); // Clear grid when unchecked
+                }
+            });
+            
+            controls.matchGame.addEventListener('change', () => {
+                if (controls.matchGame.checked) {
+                    hasMatched = false;
+                    drawWaveform();
+                } else {
+                    dot.tint = 0xFFFFFF; // Reset tint
+                    drawWaveform();
+                }
+            });
+            
+            // Update amplitude guides
+            function updateGuides() {
+                guides.clear();
+                
+                if (controls.enable.checked) {
+                    const amp = parseFloat(controls.amp.value);
+                    guides.lineStyle(1, 0xff00ff, 0.3);
+                    // Horizontal guides now
+                    guides.moveTo(-amp - 10, 0);
+                    guides.lineTo(-amp + 10, 0);
+                    guides.moveTo(amp - 10, 0);
+                    guides.lineTo(amp + 10, 0);
+                }
+            }
+            
+            // Check if waves match
+            function checkForMatch() {
+                if (!controls.matchGame.checked || hasMatched) return;
+                
+                const freq = parseFloat(controls.freq.value);
+                const amp = parseFloat(controls.amp.value);
+                const phase = parseFloat(controls.phase.value);
+                
+                // Check with tolerance
+                const freqMatch = Math.abs(freq - targetWave.freq) < 0.15;
+                const ampMatch = Math.abs(amp - targetWave.amp) < 5;
+                const phaseMatch = Math.abs(phase - targetWave.phase) < 15 || Math.abs(phase - targetWave.phase - 360) < 15 || Math.abs(phase - targetWave.phase + 360) < 15;
+                
+                // Visual feedback for near matches
+                const closeMatches = (freqMatch ? 1 : 0) + (ampMatch ? 1 : 0) + (phaseMatch ? 1 : 0);
+                if (closeMatches >= 2) {
+                    dot.tint = 0xFFFF00; // Yellow when close
+                } else {
+                    dot.tint = 0xFFFFFF; // White normally
+                }
+                
+                if (freqMatch && ampMatch && phaseMatch) {
+                    hasMatched = true;
+                    createCelebration();
+                    
+                    // Generate new target after delay
+                    setTimeout(() => {
+                        generateNewTarget();
+                        hasMatched = false;
+                        dot.tint = 0xFFFFFF; // Reset tint
+                        drawWaveform();
+                    }, 2500);
+                }
+            }
+            
+            // Generate new random target wave
+            function generateNewTarget() {
+                targetWave.freq = Math.round((Math.random() * 9 + 1) * 2) / 2; // 1.0 to 10.0 in steps of 0.5
+                targetWave.amp = Math.round((Math.random() * 16 + 4)) * 5; // 20 to 100 in steps of 5
+                targetWave.phase = Math.round(Math.random() * 36) * 10; // 0 to 360 in steps of 10
+            }
+            
+            // Create celebration animation
+            function createCelebration() {
+                celebrationTime = 0;
+                matchCelebration.removeChildren();
+                
+                // Create success text
+                const successText = new PIXI.Text('Perfect Match!', {
+                    fontFamily: 'Arial',
+                    fontSize: 36,
+                    fontWeight: 'bold',
+                    fill: 0xFFD700,
+                    stroke: 0x000000,
+                    strokeThickness: 4,
+                    align: 'center'
+                });
+                successText.x = app.screen.width / 2;
+                successText.y = app.screen.height / 2;
+                successText.anchor.set(0.5, 0.5);
+                matchCelebration.addChild(successText);
+                
+                // Create stars and sparkles
+                for (let i = 0; i < 30; i++) {
+                    const particle = new PIXI.Graphics();
+                    const x = Math.random() * app.screen.width;
+                    const y = Math.random() * app.screen.height;
+                    
+                    if (i < 15) {
+                        // Stars
+                        const size = Math.random() * 4 + 2;
+                        particle.beginFill(0xFFD700);
+                        particle.moveTo(0, -size);
+                        for (let j = 0; j < 5; j++) {
+                            const angle = (j * 2 * Math.PI) / 5 - Math.PI / 2;
+                            const innerAngle = ((j + 0.5) * 2 * Math.PI) / 5 - Math.PI / 2;
+                            particle.lineTo(Math.cos(angle) * size, Math.sin(angle) * size);
+                            particle.lineTo(Math.cos(innerAngle) * size * 0.5, Math.sin(innerAngle) * size * 0.5);
+                        }
+                        particle.closePath();
+                        particle.endFill();
+                    } else {
+                        // Sparkles
+                        const size = Math.random() * 3 + 1;
+                        particle.beginFill(Math.random() > 0.5 ? 0xFFFFFF : 0xFFD700);
+                        particle.drawCircle(0, 0, size);
+                        particle.endFill();
+                    }
+                    
+                    particle.x = x;
+                    particle.y = y;
+                    particle.velocity = {
+                        x: (Math.random() - 0.5) * 6,
+                        y: Math.random() * -5 - 2
+                    };
+                    particle.isStar = i < 15;
+                    
+                    matchCelebration.addChild(particle);
+                }
+            }
+            
+            // Initial setup
+            updateGuides();
+            drawWaveform();
+            
+            // Animation function
+            function animate(delta) {
+                // Only update time if not paused and motion is enabled
+                if (!isPaused && controls.enable.checked) {
+                    time += delta / 60; // Convert to seconds
+                }
+                
+                // Scroll speed (pixels per frame) - adjusted for smooth motion
+                const scrollSpeed = 2;
+                
+                // Update grid offset only if showWave is checked and not paused
+                if (controls.showWave.checked && !isPaused && controls.enable.checked) {
+                    gridOffset -= scrollSpeed;
+                    if (gridOffset <= -30) {
+                        gridOffset += 30; // Reset when moved one grid unit
+                    }
+                }
+                
+                // Redraw grid with offset
+                grid.clear();
+                
+                // Only draw the moving grid if showWave is checked
+                if (controls.showWave.checked) {
+                    grid.lineStyle(1, 0x444444, 0.5);
+                    
+                    // Vertical lines (static)
+                    for (let x = -180; x <= 180; x += 30) {
+                        grid.moveTo(x, -app.screen.height / 2);
+                        grid.lineTo(x, app.screen.height / 2);
+                    }
+                    
+                    // Horizontal lines (moving)
+                    for (let y = -app.screen.height / 2 - 30; y <= app.screen.height / 2 + 30; y += 30) {
+                        const adjustedY = y + gridOffset;
+                        grid.moveTo(-180, adjustedY);
+                        grid.lineTo(180, adjustedY);
+                    }
+                }
+                
+                // Draw the continuous wave
+                trail.clear();
+                if (controls.enable.checked) {
+                    const freq = parseFloat(controls.freq.value);
+                    const amp = parseFloat(controls.amp.value);
+                    const phase = parseFloat(controls.phase.value) * Math.PI / 180;
+                    
+                    // Only draw the wave trail if showWave is checked
+                    if (controls.showWave.checked) {
+                        trail.lineStyle(2.5, 0xff00ff, 1);
+                        
+                        // Draw wave from bottom to top of screen
+                        const startY = app.screen.height / 2;
+                        const endY = -app.screen.height / 2;
+                        const step = 2; // Pixel steps for smooth curve
+                        
+                        // Calculate how many pixels per second the wave travels
+                        const pixelsPerSecond = scrollSpeed * 60;
+                        
+                        let firstPoint = true;
+                        for (let y = startY; y >= endY; y -= step) {
+                            // For a point at position y relative to center:
+                            // - Positive y (below center) shows the wave at a future time
+                            // - Negative y (above center) shows the wave at a past time
+                            // Since the wave scrolls upward, a point below will reach center after y/speed seconds
+                            const timeOffset = -y / pixelsPerSecond;
+                            const x = amp * Math.sin(2 * Math.PI * freq * (time + timeOffset) + phase);
+                            
+                            if (firstPoint) {
+                                trail.moveTo(x, -y);
+                                firstPoint = false;
+                            } else {
+                                trail.lineTo(x, -y);
+                            }
+                        }
+                    }
+                    
+                    // Calculate particle position (at center) - always update this
+                    const particleX = amp * Math.sin(2 * Math.PI * freq * time + phase);
+                    dot.x = particleX;
+                    dot.y = 0;
+                    dot.visible = true;
+                } else {
+                    // Keep dot at center when disabled
+                    dot.x = 0;
+                    dot.y = 0;
+                    dot.visible = true;
+                }
+                
+                // Update celebration animation (continues even when paused for better UX)
+                if (matchCelebration.children.length > 0) {
+                    celebrationTime += delta / 60;
+                    
+                    for (let i = matchCelebration.children.length - 1; i >= 0; i--) {
+                        const child = matchCelebration.children[i];
+                        
+                        // Handle text differently
+                        if (child instanceof PIXI.Text) {
+                            child.alpha = Math.max(0, 1 - celebrationTime / 2.5);
+                            child.scale.set(1 + celebrationTime * 0.1);
+                            if (child.alpha <= 0) {
+                                matchCelebration.removeChild(child);
+                            }
+                        } else {
+                            // Handle particles
+                            child.x += child.velocity.x;
+                            child.y += child.velocity.y;
+                            child.velocity.y += 0.3; // gravity
+                            
+                            // Only rotate stars
+                            if (child.isStar) {
+                                child.rotation += 0.1;
+                            }
+                            
+                            child.alpha = Math.max(0, 1 - celebrationTime / 2);
+                            
+                            if (child.alpha <= 0 || child.y > app.screen.height) {
+                                matchCelebration.removeChild(child);
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Start animation
+            app.ticker.add(animate);
+            
+        } catch (error) {
+            showError(error.message);
+            console.error('PIXI initialization error:', error);
+        }
+    </script>
+</body>
+</html>
             font-family: Arial, sans-serif;
             background-color: #1a1a1a;
             color: #ffffff;
