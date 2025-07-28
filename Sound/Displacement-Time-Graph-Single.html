@@ -267,7 +267,7 @@
             if (!enabled) return;
             
             // Draw user waveform
-            ctx.strokeStyle = '#ff00ff';
+            ctx.strokeStyle = '#4fc3f7';
             ctx.lineWidth = 2;
             ctx.beginPath();
             
@@ -453,7 +453,7 @@
                 
                 if (controls.enable.checked) {
                     const amp = parseFloat(controls.amp.value);
-                    guides.lineStyle(1, 0xff00ff, 0.3);
+                    guides.lineStyle(1, 0x4fc3f7, 0.3);
                     // Horizontal guides now
                     guides.moveTo(-amp - 10, 0);
                     guides.lineTo(-amp + 10, 0);
@@ -615,7 +615,7 @@
                     
                     // Only draw the wave trail if showWave is checked
                     if (controls.showWave.checked) {
-                        trail.lineStyle(2.5, 0xff00ff, 1);
+                        trail.lineStyle(2.5, 0x4fc3f7, 1);
                         
                         // Draw wave from bottom to top of screen
                         const startY = app.screen.height / 2;
