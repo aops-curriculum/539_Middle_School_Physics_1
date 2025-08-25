@@ -110,8 +110,8 @@
         // Responsive canvas sizing
         function resizeCanvas() {
             const container = document.getElementById('container');
-            const maxWidth = container.clientWidth * 0.95;
-            const maxHeight = container.clientHeight * 0.95;
+            const maxWidth = container.clientWidth;
+            const maxHeight = container.clientHeight;
             
             canvas.width = Math.min(maxWidth, 800);
             canvas.height = Math.min(maxHeight, 600);
