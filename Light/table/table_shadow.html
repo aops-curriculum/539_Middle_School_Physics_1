@@ -26,7 +26,7 @@
         #photoCanvas {
             display: block;
             max-width: 95vw;
-            max-height: calc(100vh - 100px);
+            max-height: 100vh;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
         }
         
@@ -39,19 +39,23 @@
         }
         
         #controls {
-            margin-top: 20px;
-            background: white;
-            padding: 15px 30px;
+            position: absolute;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(255, 255, 255, 0.95);
+            padding: 10px 20px;
             border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
             z-index: 10;
             text-align: center;
         }
         
         #info {
-            font-size: 14px;
-            color: #666;
-            line-height: 1.5;
+            font-size: 13px;
+            color: #333;
+            line-height: 1.4;
+            margin: 0;
         }
         
         #loadingMessage {
@@ -78,7 +82,7 @@
         <canvas id="overlayCanvas"></canvas>
         <div id="controls">
             <div id="info">
-                Click and drag lines horizontally to move them<br>
+                Click and drag lines horizontally to move them • 
                 Click and drag the circular handles to adjust slope
             </div>
         </div>
@@ -92,10 +96,10 @@
         const ctx = canvas.getContext('2d');
         const loadingMessage = document.getElementById('loadingMessage');
         
-        // Two lines with position and angle
+        // Two lines with position and angle - starting nearly vertical
         let lines = [
-            { x: 0, angle: 0, color: 'red', isDragging: false, handleDragging: false },
-            { x: 0, angle: 0, color: 'red', isDragging: false, handleDragging: false }
+            { x: 0, angle: -Math.PI/2 + 0.1, color: 'red', isDragging: false, handleDragging: false },
+            { x: 0, angle: -Math.PI/2 - 0.1, color: 'red', isDragging: false, handleDragging: false }
         ];
         
         let draggedLineIndex = -1;
@@ -112,8 +116,8 @@
             canvas.height = photoImg.height;
             
             // Set initial line positions
-            lines[0].x = canvas.width * 0.3;
-            lines[1].x = canvas.width * 0.7;
+            lines[0].x = canvas.width * 0.35;
+            lines[1].x = canvas.width * 0.65;
             
             draw();
         };
