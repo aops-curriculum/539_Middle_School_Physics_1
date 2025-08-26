@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Photo with Adjustable Lines</title>
+    <title>Photo with Adjustable Lines and Intersection</title>
     <style>
         body {
             margin: 0;
@@ -129,6 +129,70 @@
         // Start loading the photo
         photoImg.src = PHOTO_URL;
 
+        function calculateIntersection(line1, line2) {
+            const centerY = canvas.height / 2;
+            
+            // Get line 1 parameters (point and direction)
+            const x1 = line1.x;
+            const y1 = centerY;
+            const dx1 = Math.cos(line1.angle);
+            const dy1 = Math.sin(line1.angle);
+            
+            // Get line 2 parameters (point and direction)
+            const x2 = line2.x;
+            const y2 = centerY;
+            const dx2 = Math.cos(line2.angle);
+            const dy2 = Math.sin(line2.angle);
+            
+            // Solve for intersection using parametric equations
+            // Line 1: (x1 + t*dx1, y1 + t*dy1)
+            // Line 2: (x2 + s*dx2, y2 + s*dy2)
+            
+            const denominator = dx1 * dy2 - dy1 * dx2;
+            
+            // Check if lines are parallel
+            if (Math.abs(denominator) < 0.001) {
+                return null;
+            }
+            
+            // Calculate parameter t for line 1
+            const t = ((x2 - x1) * dy2 - (y2 - y1) * dx2) / denominator;
+            
+            // Calculate intersection point
+            const intersectionX = x1 + t * dx1;
+            const intersectionY = y1 + t * dy1;
+            
+            // Check if intersection is within canvas bounds
+            if (intersectionX < 0 || intersectionX > canvas.width || 
+                intersectionY < 0 || intersectionY > canvas.height) {
+                return null;
+            }
+            
+            return { x: intersectionX, y: intersectionY };
+        }
+        
+        function pixelToCm(pixelX, pixelY) {
+            // Assuming image is 700 pixels tall = 334 cm
+            // And 389 pixels wide = 186 cm
+            // But use actual canvas dimensions with the same aspect ratio
+            
+            const assumedHeight = 700;
+            const assumedWidth = 389;
+            const heightCm = 334;
+            const widthCm = 186;
+            
+            // Scale factors based on actual canvas size
+            const scaleX = canvas.width / assumedWidth;
+            const scaleY = canvas.height / assumedHeight;
+            
+            // Convert to cm
+            const cmX = (pixelX / canvas.width) * widthCm;
+            // Flip Y coordinate since (0,0) should be bottom-left in cm
+            const cmY = ((canvas.height - pixelY) / canvas.height) * heightCm;
+            
+            return { x: Math.round(cmX), y: Math.round(cmY) };
+        }
+
         function draw() {
             // Clear overlay canvas
             ctx.clearRect(0, 0, canvas.width, canvas.height);
@@ -137,6 +201,33 @@
             lines.forEach((line, index) => {
                 drawLine(line, index);
             });
+            
+            // Calculate and draw intersection
+            const intersection = calculateIntersection(lines[0], lines[1]);
+            if (intersection) {
+                // Draw intersection point
+                ctx.fillStyle = 'blue';
+                ctx.beginPath();
+                ctx.arc(intersection.x, intersection.y, 5, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Convert to cm coordinates
+                const cmCoords = pixelToCm(intersection.x, intersection.y);
+                
+                // Draw coordinates text
+                ctx.fillStyle = 'blue';
+                ctx.strokeStyle = 'white';
+                ctx.lineWidth = 3;
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'bottom';
+                
+                const text = `(${cmCoords.x}cm, ${cmCoords.y}cm)`;
+                
+                // Add white outline for better visibility
+                ctx.strokeText(text, intersection.x, intersection.y - 10);
+                ctx.fillText(text, intersection.x, intersection.y - 10);
+            }
         }
         
         function drawLine(line, index) {
