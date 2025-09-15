@@ -7,35 +7,40 @@
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 8px;
             display: flex;
             flex-direction: column;
             align-items: center;
             font-family: Arial, sans-serif;
             background-color: #f0f0f0;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         
         h2 {
             color: #333;
-            margin-bottom: 15px;
+            margin: 0 0 8px 0;
+            font-size: 18px;
         }
         
         #canvas {
             border: 2px solid #333;
             background-color: white;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         
         button {
-            margin-top: 15px;
-            padding: 10px 20px;
-            font-size: 16px;
+            padding: 5px 14px;
+            font-size: 12px;
             background-color: #4CAF50;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
             transition: background-color 0.3s;
+            white-space: nowrap;
+            min-width: 55px;
         }
         
         button:hover {
@@ -51,87 +56,82 @@
         }
         
         .controls {
-            margin-top: 15px;
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            min-width: 300px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 480px;
         }
         
         .slider-container {
-            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: white;
+            padding: 6px 8px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
         
         .slider-label {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            font-size: 14px;
+            font-size: 11px;
             color: #666;
+            white-space: nowrap;
         }
         
         .slider-value {
             font-weight: bold;
             color: #333;
+            font-size: 11px;
+            white-space: nowrap;
+            min-width: 30px;
+            text-align: right;
         }
         
         input[type="range"] {
-            width: 100%;
-            height: 6px;
+            width: 60px;
+            height: 4px;
             background: #ddd;
             outline: none;
-            border-radius: 3px;
+            border-radius: 2px;
             -webkit-appearance: none;
         }
         
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
             background: #4CAF50;
             cursor: pointer;
             border-radius: 50%;
         }
         
         input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
             background: #4CAF50;
             cursor: pointer;
             border-radius: 50%;
-        }
-        
-        .info {
-            margin-top: 10px;
-            color: #666;
-            font-size: 14px;
-            text-align: center;
         }
     </style>
 </head>
 <body>
     <h2>Random Walk Simulation</h2>
-    <canvas id="canvas" width="500" height="300"></canvas>
-    <button id="controlBtn">Start Random Motion</button>
+    <canvas id="canvas" width="480" height="280"></canvas>
     <div class="controls">
+        <button id="controlBtn">Go</button>
         <div class="slider-container">
-            <div class="slider-label">
-                <span>Step Size:</span>
-                <span class="slider-value" id="stepValue">0.300 μm</span>
-            </div>
+            <span class="slider-label">step size:</span>
             <input type="range" id="stepSlider" min="0.001" max="1" step="0.001" value="0.3">
+            <span class="slider-value" id="stepValue" style="min-width: 50px;">0.300 μm</span>
         </div>
         <div class="slider-container">
-            <div class="slider-label">
-                <span>Steps per Second:</span>
-                <span class="slider-value" id="speedValue">1.0</span>
-            </div>
+            <span class="slider-label">steps per second:</span>
             <input type="range" id="speedSlider" min="0.5" max="100" step="0.5" value="1">
+            <span class="slider-value" id="speedValue">1.0</span>
         </div>
     </div>
-    <div class="info">50 particles simulating Brownian motion with adjustable parameters</div>
     
     <script>
         // Get canvas and context
@@ -148,7 +148,7 @@
         const WIDTH = canvas.width;
         const HEIGHT = canvas.height;
         const RANGE = 50; // μm range for X axis
-        const RANGE_Y = 30; // μm range for Y axis (adjusted for 500x300 canvas)
+        const RANGE_Y = 30; // μm range for Y axis (adjusted for canvas)
         
         // Variables
         let STEP_SIZE = 0.3; // μm
