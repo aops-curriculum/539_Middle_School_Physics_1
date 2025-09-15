@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Walk Simulation - Basic</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        
+        h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        #canvas {
+            border: 2px solid #333;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        button {
+            margin-top: 15px;
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button.running {
+            background-color: #f44336;
+        }
+        
+        button.running:hover {
+            background-color: #da190b;
+        }
+        
+        .info {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h2>Random Walk Simulation</h2>
+    <canvas id="canvas" width="500" height="300"></canvas>
+    <button id="controlBtn">Start Random Motion</button>
+    <div class="info">50 particles performing random walks</div>
+    
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const controlBtn = document.getElementById('controlBtn');
+        
+        // Simulation parameters
+        const NUM_DOTS = 50;
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+        const STEP_SIZE = 3; // pixels
+        const DOT_RADIUS = 4; // pixels
+        const SPEED = 10; // FPS
+        
+        // State variables
+        let running = false;
+        let dots = [];
+        let animationId = null;
+        let lastStepTime = 0;
+        
+        // Dot class
+        class Dot {
+            constructor() {
+                // Start anywhere on canvas
+                this.x = Math.random() * WIDTH;
+                this.y = Math.random() * HEIGHT;
+                
+                // Random color
+                this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+            }
+            
+            move() {
+                // Random direction (up, down, left, right)
+                const directions = [
+                    { dx: -1, dy: 0 },  // left
+                    { dx: 1, dy: 0 },   // right
+                    { dx: 0, dy: -1 },  // up
+                    { dx: 0, dy: 1 }    // down
+                ];
+                const dir = directions[Math.floor(Math.random() * 4)];
+                
+                // Move in pixels
+                this.x += dir.dx * STEP_SIZE;
+                this.y += dir.dy * STEP_SIZE;
+            }
+            
+            draw() {
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, DOT_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+        
+        // Initialize dots
+        function init() {
+            dots = [];
+            for (let i = 0; i < NUM_DOTS; i++) {
+                dots.push(new Dot());
+            }
+        }
+        
+        // Setup event listeners
+        controlBtn.addEventListener('click', function() {
+            running = !running;
+            controlBtn.textContent = running ? "Pause Random Motion" : "Start Random Motion";
+            controlBtn.className = running ? "running" : "";
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                controlBtn.click();
+            } else if (e.key.toLowerCase() === 'r') {
+                init();
+                running = false;
+                controlBtn.textContent = "Start Random Motion";
+                controlBtn.className = "";
+            }
+        });
+        
+        // Animation loop
+        function animate(currentTime) {
+            const deltaTime = currentTime - lastStepTime;
+            const stepInterval = 1000 / SPEED;
+            
+            if (deltaTime >= stepInterval) {
+                // Clear canvas
+                ctx.clearRect(0, 0, WIDTH, HEIGHT);
+                
+                // Update and draw dots
+                if (running) {
+                    dots.forEach(dot => dot.move());
+                }
+                
+                dots.forEach(dot => dot.draw());
+                
+                lastStepTime = currentTime;
+            }
+            
+            animationId = requestAnimationFrame(animate);
+        }
+        
+        // Initialize and start
+        init();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>

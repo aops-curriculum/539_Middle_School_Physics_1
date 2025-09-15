@@ -1,0 +1,477 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Random Walk Simulation - Time-Limited Experiments</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            font-family: Arial, sans-serif;
+            background-color: #f0f0f0;
+        }
+        
+        h2 {
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        #canvas {
+            border: 2px solid #333;
+            background-color: white;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+        
+        button {
+            padding: 10px 20px;
+            font-size: 16px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        
+        button:hover {
+            background-color: #45a049;
+        }
+        
+        button.running {
+            background-color: #f44336;
+        }
+        
+        button.running:hover {
+            background-color: #da190b;
+        }
+        
+        .button-row {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .button-row button {
+            flex: 1;
+        }
+        
+        #trailButton {
+            background-color: #2196F3;
+        }
+        
+        #trailButton:hover {
+            background-color: #0b7dda;
+        }
+        
+        #trailButton.off {
+            background-color: #757575;
+        }
+        
+        #trailButton.off:hover {
+            background-color: #616161;
+        }
+        
+        .controls {
+            margin-top: 15px;
+            background: white;
+            padding: 15px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+            min-width: 300px;
+        }
+        
+        .slider-container {
+            margin: 10px 0;
+        }
+        
+        .slider-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 5px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .slider-value {
+            font-weight: bold;
+            color: #333;
+        }
+        
+        input[type="range"] {
+            width: 100%;
+            height: 6px;
+            background: #ddd;
+            outline: none;
+            border-radius: 3px;
+            -webkit-appearance: none;
+        }
+        
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4CAF50;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4CAF50;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        
+        .stats {
+            margin-top: 15px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            font-size: 14px;
+            color: #555;
+        }
+        
+        .stat-line {
+            margin: 5px 0;
+        }
+        
+        .info {
+            margin-top: 10px;
+            color: #666;
+            font-size: 14px;
+            text-align: center;
+        }
+    </style>
+</head>
+<body>
+    <h2>Random Walk Simulation</h2>
+    <canvas id="canvas" width="500" height="300"></canvas>
+    
+    <div class="button-row">
+        <button id="controlBtn">Go</button>
+        <button id="trailButton">Trails: ON</button>
+    </div>
+    
+    <div class="controls">
+        <div class="slider-container">
+            <div class="slider-label">
+                <span>Time Limit:</span>
+                <span class="slider-value" id="timeValue">30 seconds</span>
+            </div>
+            <input type="range" id="timeSlider" min="10" max="120" step="10" value="30">
+        </div>
+        <div class="stats">
+            <div class="stat-line">Avg distance from start: <strong id="avgDistance">0.00 μm</strong></div>
+            <div class="stat-line">Simulation time remaining: <strong id="timeRemaining">30s</strong></div>
+            <div class="stat-line">Real time elapsed: <strong id="realTime">0.0s</strong></div>
+            <div class="stat-line">Total steps: <strong id="totalSteps">0</strong></div>
+            <div class="stat-line">Number of particles: <strong>50</strong></div>
+            <div class="stat-line">Visible range: <strong>±50×30 μm</strong></div>
+        </div>
+    </div>
+    
+    <div class="info">50 particles • Time-limited diffusion experiment (0.1 μm steps at 100 steps/sec) • 10× time acceleration</div>
+    
+    <script>
+        // Get canvas and context
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const controlBtn = document.getElementById('controlBtn');
+        const trailButton = document.getElementById('trailButton');
+        const timeSlider = document.getElementById('timeSlider');
+        const timeValue = document.getElementById('timeValue');
+        const avgDistanceDisplay = document.getElementById('avgDistance');
+        const timeRemainingDisplay = document.getElementById('timeRemaining');
+        const realTimeDisplay = document.getElementById('realTime');
+        const totalStepsDisplay = document.getElementById('totalSteps');
+        
+        // ============================================
+        // TIME ACCELERATION CONTROL
+        // Change this value to adjust simulation speed:
+        // 1 = real time (30 second experiment takes 30 seconds)
+        // 10 = 10x faster (30 second experiment takes 3 seconds)
+        // 100 = 100x faster (30 second experiment takes 0.3 seconds)
+        // ============================================
+        const TIME_ACCELERATION = 10; // Run 10x faster than real time
+        
+        // Fixed simulation parameters
+        const NUM_DOTS = 50;
+        const WIDTH = canvas.width;
+        const HEIGHT = canvas.height;
+        const RANGE = 50; // μm range for X axis
+        const RANGE_Y = 30; // μm range for Y axis
+        const DOT_RADIUS = 4; // pixels (visual radius)
+        const STEP_SIZE = 0.1; // μm
+        const SPEED = 100; // steps per second in simulation time
+        const TRAIL_INTERVAL = 50; // Store trail point every N steps
+        
+        // Scaling
+        const SCALE = WIDTH / (2 * RANGE);
+        
+        // State variables
+        let running = false;
+        let showTrails = true;
+        let dots = [];
+        let steps = 0;
+        let animationId = null;
+        let lastStepTime = 0;
+        let timeLimit = 30; // seconds in simulation time
+        let experimentStartTime = 0;
+        let simulationTime = 0; // Track simulation time separately from real time
+        let hasRunBefore = false;
+        
+        // Dot class
+        class Dot {
+            constructor() {
+                // Start spread across full canvas in μm units
+                this.x = (Math.random() - 0.5) * 2 * RANGE;
+                this.y = (Math.random() - 0.5) * 2 * RANGE_Y;
+                this.initX = this.x;
+                this.initY = this.y;
+                
+                // Random color
+                this.color = `hsl(${Math.random() * 360}, 70%, 50%)`;
+                
+                // Trail
+                this.trail = [];
+                this.stepCount = 0;
+            }
+            
+            move() {
+                // Random direction (up, down, left, right)
+                const directions = [
+                    { dx: -1, dy: 0 },  // left
+                    { dx: 1, dy: 0 },   // right
+                    { dx: 0, dy: -1 },  // up
+                    { dx: 0, dy: 1 }    // down
+                ];
+                const dir = directions[Math.floor(Math.random() * 4)];
+                
+                // Move in μm
+                this.x += dir.dx * STEP_SIZE;
+                this.y += dir.dy * STEP_SIZE;
+                
+                // Store trail points
+                this.stepCount++;
+                if (this.stepCount % TRAIL_INTERVAL === 0 && showTrails) {
+                    this.trail.push({ x: this.x, y: this.y });
+                }
+            }
+            
+            draw() {
+                // Convert μm coordinates to canvas pixels
+                const drawX = (this.x + RANGE) * SCALE;
+                const drawY = (RANGE_Y - this.y) * SCALE;
+                
+                // Draw trail
+                if (showTrails && this.trail.length > 0) {
+                    ctx.strokeStyle = this.color;
+                    ctx.lineWidth = DOT_RADIUS / 2; // Half the width of dots
+                    ctx.globalAlpha = 0.5;
+                    ctx.beginPath();
+                    
+                    // Start from initial position
+                    let trailX = (this.initX + RANGE) * SCALE;
+                    let trailY = (RANGE_Y - this.initY) * SCALE;
+                    ctx.moveTo(trailX, trailY);
+                    
+                    // Draw trail segments
+                    this.trail.forEach(point => {
+                        trailX = (point.x + RANGE) * SCALE;
+                        trailY = (RANGE_Y - point.y) * SCALE;
+                        ctx.lineTo(trailX, trailY);
+                    });
+                    
+                    // Connect to current position
+                    ctx.lineTo(drawX, drawY);
+                    ctx.stroke();
+                    ctx.globalAlpha = 1;
+                }
+                
+                // Draw dot
+                ctx.fillStyle = this.color;
+                ctx.beginPath();
+                ctx.arc(drawX, drawY, DOT_RADIUS, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            
+            getDistanceFromStart() {
+                const dx = this.x - this.initX;
+                const dy = this.y - this.initY;
+                return Math.sqrt(dx * dx + dy * dy);
+            }
+        }
+        
+        // Initialize dots
+        function init() {
+            dots = [];
+            for (let i = 0; i < NUM_DOTS; i++) {
+                dots.push(new Dot());
+            }
+            steps = 0;
+            simulationTime = 0;
+            // Reset statistics display
+            avgDistanceDisplay.textContent = "0.00 μm";
+            timeRemainingDisplay.textContent = timeLimit + "s";
+            realTimeDisplay.textContent = "0.0s";
+            totalStepsDisplay.textContent = "0";
+        }
+        
+        // Update statistics
+        function updateStats() {
+            // Calculate average distance
+            if (steps % 20 === 0) {
+                let totalDistance = 0;
+                dots.forEach(dot => {
+                    totalDistance += dot.getDistanceFromStart();
+                });
+                const avgDist = totalDistance / NUM_DOTS;
+                avgDistanceDisplay.textContent = avgDist.toFixed(2) + " μm";
+            }
+            
+            // Update simulation time (based on steps taken)
+            simulationTime = steps / SPEED;
+            const remaining = Math.max(0, timeLimit - simulationTime);
+            timeRemainingDisplay.textContent = remaining.toFixed(1) + "s";
+            
+            // Update real time elapsed
+            const realElapsed = (Date.now() - experimentStartTime) / 1000;
+            realTimeDisplay.textContent = realElapsed.toFixed(1) + "s";
+            
+            // Update total steps
+            totalStepsDisplay.textContent = steps;
+            
+            // Stop if time limit reached in simulation time
+            if (remaining <= 0 && running) {
+                running = false;
+                hasRunBefore = true;
+                controlBtn.textContent = "Go";
+                controlBtn.className = "";
+                // Show final statistics
+                let totalDistance = 0;
+                dots.forEach(dot => {
+                    totalDistance += dot.getDistanceFromStart();
+                });
+                const avgDist = totalDistance / NUM_DOTS;
+                avgDistanceDisplay.textContent = avgDist.toFixed(2) + " μm";
+            }
+        }
+        
+        // Setup event listeners
+        controlBtn.addEventListener('click', function() {
+            if (running) {
+                // Clicking "Reset" while running
+                running = false;
+                hasRunBefore = true;
+                controlBtn.textContent = "Go";
+                controlBtn.className = "";
+                return;
+            } else if (hasRunBefore) {
+                // Starting a new experiment after one has completed
+                init();
+                hasRunBefore = false;
+            }
+            
+            running = !running;
+            controlBtn.textContent = running ? "Reset" : "Go";
+            controlBtn.className = running ? "running" : "";
+            
+            if (running) {
+                experimentStartTime = Date.now();
+                steps = 0;
+                simulationTime = 0;
+            }
+        });
+        
+        trailButton.addEventListener('click', function() {
+            showTrails = !showTrails;
+            trailButton.textContent = showTrails ? "Trails: ON" : "Trails: OFF";
+            trailButton.className = showTrails ? "" : "off";
+        });
+        
+        timeSlider.addEventListener('input', function() {
+            timeLimit = parseInt(this.value);
+            timeValue.textContent = timeLimit + " seconds";
+            if (!running) {
+                timeRemainingDisplay.textContent = timeLimit + "s";
+            }
+        });
+        
+        // Keyboard shortcuts
+        document.addEventListener('keydown', function(e) {
+            if (e.code === 'Space') {
+                e.preventDefault();
+                controlBtn.click();
+            } else if (e.key.toLowerCase() === 'r') {
+                init();
+                running = false;
+                hasRunBefore = false;
+                controlBtn.textContent = "Go";
+                controlBtn.className = "";
+                avgDistanceDisplay.textContent = "0.00 μm";
+                timeRemainingDisplay.textContent = timeLimit + "s";
+                realTimeDisplay.textContent = "0.0s";
+                totalStepsDisplay.textContent = "0";
+            } else if (e.key.toLowerCase() === 't') {
+                trailButton.click();
+            }
+        });
+        
+        // Animation loop - runs at accelerated speed
+        function animate(currentTime) {
+            const deltaTime = currentTime - lastStepTime;
+            // Target 30 FPS for smooth visual updates
+            const frameInterval = 1000 / 30; // 33.33ms per frame
+            
+            if (deltaTime >= frameInterval) {
+                // Clear canvas
+                ctx.clearRect(0, 0, WIDTH, HEIGHT);
+                
+                // Calculate how many steps to take this frame based on acceleration
+                // At 30 FPS, normal speed would be ~3.33 steps per frame (100 steps/sec ÷ 30 fps)
+                // With acceleration, we multiply this by TIME_ACCELERATION
+                const stepsPerFrame = Math.round((SPEED / 30) * TIME_ACCELERATION);
+                
+                // Update dots multiple times per frame when accelerated
+                if (running) {
+                    for (let i = 0; i < stepsPerFrame; i++) {
+                        dots.forEach(dot => dot.move());
+                        steps++;
+                        
+                        // Only update stats every 20 steps to avoid overhead
+                        if (steps % 20 === 0) {
+                            updateStats();
+                        }
+                        
+                        // Stop if we've reached the time limit
+                        if (steps >= timeLimit * SPEED) {
+                            running = false;
+                            break;
+                        }
+                    }
+                    
+                    // Always update stats after the last step
+                    updateStats();
+                }
+                
+                // Draw current positions
+                dots.forEach(dot => dot.draw());
+                
+                lastStepTime = currentTime;
+            }
+            
+            animationId = requestAnimationFrame(animate);
+        }
+        
+        // Initialize and start
+        init();
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
