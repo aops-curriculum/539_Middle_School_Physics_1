@@ -7,34 +7,39 @@
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 8px;
             display: flex;
             flex-direction: column;
             align-items: center;
             font-family: Arial, sans-serif;
             background-color: #f0f0f0;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         
         h2 {
             color: #333;
-            margin-bottom: 15px;
+            margin: 0 0 8px 0;
+            font-size: 18px;
         }
         
         #canvas {
             border: 2px solid #333;
             background-color: white;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         
         button {
-            padding: 10px 20px;
-            font-size: 16px;
+            padding: 5px 10px;
+            font-size: 11px;
             background-color: #4CAF50;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
             transition: background-color 0.3s;
+            min-width: 52px;
         }
         
         button:hover {
@@ -49,18 +54,9 @@
             background-color: #da190b;
         }
         
-        .button-row {
-            display: flex;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        
-        .button-row button {
-            flex: 1;
-        }
-        
         #trailButton {
             background-color: #2196F3;
+            min-width: 80px;
         }
         
         #trailButton:hover {
@@ -76,107 +72,101 @@
         }
         
         .controls {
-            margin-top: 15px;
-            background: white;
-            padding: 15px;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
-            min-width: 300px;
+            margin-top: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 480px;
         }
         
         .slider-container {
-            margin: 10px 0;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            background: white;
+            padding: 6px 8px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
         }
         
         .slider-label {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 5px;
-            font-size: 14px;
+            font-size: 11px;
             color: #666;
+            white-space: nowrap;
         }
         
         .slider-value {
             font-weight: bold;
             color: #333;
+            font-size: 11px;
+            min-width: 65px;
+            text-align: right;
         }
         
         input[type="range"] {
-            width: 100%;
-            height: 6px;
+            width: 60px;
+            height: 4px;
             background: #ddd;
             outline: none;
-            border-radius: 3px;
+            border-radius: 2px;
             -webkit-appearance: none;
         }
         
         input[type="range"]::-webkit-slider-thumb {
             -webkit-appearance: none;
             appearance: none;
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
             background: #4CAF50;
             cursor: pointer;
             border-radius: 50%;
         }
         
         input[type="range"]::-moz-range-thumb {
-            width: 16px;
-            height: 16px;
+            width: 12px;
+            height: 12px;
             background: #4CAF50;
             cursor: pointer;
             border-radius: 50%;
         }
         
         .stats {
-            margin-top: 15px;
-            padding: 10px;
+            margin-top: 6px;
+            padding: 6px 10px;
             background: #f9f9f9;
-            border-radius: 5px;
-            font-size: 14px;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+            font-size: 11px;
             color: #555;
+            display: flex;
+            justify-content: space-around;
+            width: 480px;
+            box-sizing: border-box;
         }
         
         .stat-line {
-            margin: 5px 0;
-        }
-        
-        .info {
-            margin-top: 10px;
-            color: #666;
-            font-size: 14px;
-            text-align: center;
+            margin: 0;
         }
     </style>
 </head>
 <body>
     <h2>Random Walk Simulation</h2>
-    <canvas id="canvas" width="500" height="300"></canvas>
-    
-    <div class="button-row">
-        <button id="controlBtn">Go</button>
-        <button id="trailButton">Trails: ON</button>
-    </div>
+    <canvas id="canvas" width="480" height="280"></canvas>
     
     <div class="controls">
+        <button id="controlBtn">Go</button>
+        <button id="trailButton">Trails: ON</button>
         <div class="slider-container">
-            <div class="slider-label">
-                <span>Time Limit:</span>
-                <span class="slider-value" id="timeValue">30 seconds</span>
-            </div>
+            <span class="slider-label">Time Limit:</span>
             <input type="range" id="timeSlider" min="10" max="120" step="10" value="30">
-        </div>
-        <div class="stats">
-            <div class="stat-line">Avg distance from start: <strong id="avgDistance">0.00 μm</strong></div>
-            <div class="stat-line">Simulation time remaining: <strong id="timeRemaining">30s</strong></div>
-            <div class="stat-line">Real time elapsed: <strong id="realTime">0.0s</strong></div>
-            <div class="stat-line">Total steps: <strong id="totalSteps">0</strong></div>
-            <div class="stat-line">Number of particles: <strong>50</strong></div>
-            <div class="stat-line">Visible range: <strong>±50×30 μm</strong></div>
+            <span class="slider-value" id="timeValue">30 seconds</span>
         </div>
     </div>
     
-    <div class="info">50 particles • Time-limited diffusion experiment (0.1 μm steps at 100 steps/sec) • 10× time acceleration</div>
+    <div class="stats">
+        <div class="stat-line">Avg distance: <strong id="avgDistance">0.00 μm</strong></div>
+        <div class="stat-line">Time remaining: <strong id="timeRemaining">30s</strong></div>
+    </div>
     
     <script>
         // Get canvas and context
@@ -188,8 +178,6 @@
         const timeValue = document.getElementById('timeValue');
         const avgDistanceDisplay = document.getElementById('avgDistance');
         const timeRemainingDisplay = document.getElementById('timeRemaining');
-        const realTimeDisplay = document.getElementById('realTime');
-        const totalStepsDisplay = document.getElementById('totalSteps');
         
         // ============================================
         // TIME ACCELERATION CONTROL
@@ -319,8 +307,6 @@
             // Reset statistics display
             avgDistanceDisplay.textContent = "0.00 μm";
             timeRemainingDisplay.textContent = timeLimit + "s";
-            realTimeDisplay.textContent = "0.0s";
-            totalStepsDisplay.textContent = "0";
         }
         
         // Update statistics
@@ -339,13 +325,6 @@
             simulationTime = steps / SPEED;
             const remaining = Math.max(0, timeLimit - simulationTime);
             timeRemainingDisplay.textContent = remaining.toFixed(1) + "s";
-            
-            // Update real time elapsed
-            const realElapsed = (Date.now() - experimentStartTime) / 1000;
-            realTimeDisplay.textContent = realElapsed.toFixed(1) + "s";
-            
-            // Update total steps
-            totalStepsDisplay.textContent = steps;
             
             // Stop if time limit reached in simulation time
             if (remaining <= 0 && running) {
@@ -416,8 +395,6 @@
                 controlBtn.className = "";
                 avgDistanceDisplay.textContent = "0.00 μm";
                 timeRemainingDisplay.textContent = timeLimit + "s";
-                realTimeDisplay.textContent = "0.0s";
-                totalStepsDisplay.textContent = "0";
             } else if (e.key.toLowerCase() === 't') {
                 trailButton.click();
             }
