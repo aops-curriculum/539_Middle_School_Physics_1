@@ -7,33 +7,37 @@
     <style>
         body {
             margin: 0;
-            padding: 20px;
+            padding: 8px;
             display: flex;
             flex-direction: column;
             align-items: center;
             font-family: Arial, sans-serif;
             background-color: #f0f0f0;
+            height: 100vh;
+            box-sizing: border-box;
+            overflow: hidden;
         }
         
         h2 {
             color: #333;
-            margin-bottom: 15px;
+            margin: 0 0 8px 0;
+            font-size: 18px;
         }
         
         #canvas {
             border: 2px solid #333;
             background-color: white;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
         }
         
         button {
-            margin-top: 15px;
-            padding: 10px 20px;
-            font-size: 16px;
+            margin-top: 8px;
+            padding: 6px 12px;
+            font-size: 13px;
             background-color: #4CAF50;
             color: white;
             border: none;
-            border-radius: 5px;
+            border-radius: 4px;
             cursor: pointer;
             transition: background-color 0.3s;
         }
@@ -49,20 +53,12 @@
         button.running:hover {
             background-color: #da190b;
         }
-        
-        .info {
-            margin-top: 10px;
-            color: #666;
-            font-size: 14px;
-            text-align: center;
-        }
     </style>
 </head>
 <body>
     <h2>Random Walk Simulation</h2>
-    <canvas id="canvas" width="500" height="300"></canvas>
+    <canvas id="canvas" width="480" height="280"></canvas>
     <button id="controlBtn">Start Random Motion</button>
-    <div class="info">50 particles performing random walks</div>
     
     <script>
         // Get canvas and context
@@ -76,7 +72,7 @@
         const HEIGHT = canvas.height;
         const STEP_SIZE = 3; // pixels
         const DOT_RADIUS = 4; // pixels
-        const SPEED = 10; // FPS
+        const SPEED = 1; // FPS
         
         // State variables
         let running = false;
