@@ -98,10 +98,10 @@
             </div>
             
             <div class="control-item">
-                <input type="checkbox" id="sumToggle" checked>
+                <input type="checkbox" id="sumToggle">
                 <label for="sumToggle">
                     <span class="color-indicator" style="background-color: #006600;"></span>
-                    Sum (Beat)
+                    Result
                 </label>
             </div>
         </div>
@@ -136,7 +136,7 @@
         // Toggle states
         let showWave1 = true;
         let showWave2 = true;
-        let showSum = true;
+        let showSum = false;
         
         // Convert graph coordinates to canvas coordinates
         function graphToCanvas(x, y) {
