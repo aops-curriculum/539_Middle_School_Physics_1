@@ -53,7 +53,7 @@
             display: flex;
             gap: 15px;
             justify-content: center;
-            margin-bottom: 8px;
+            margin-bottom: 4px;
         }
         .checkbox-row label {
             display: flex;
@@ -62,13 +62,6 @@
         }
         .checkbox-row input {
             margin-right: 4px;
-        }
-        .beat-info {
-            background: #e3f2fd;
-            padding: 8px;
-            border-radius: 4px;
-            text-align: center;
-            font-size: 13px;
         }
         .wave1-label { color: #2563eb; font-weight: 500; }
         .wave2-label { color: #dc2626; font-weight: 500; }
@@ -100,10 +93,6 @@
                 <label><input type="checkbox" id="wave1-check" checked> <span class="wave1-label">Wave 1</span></label>
                 <label><input type="checkbox" id="wave2-check" checked> <span class="wave2-label">Wave 2</span></label>
                 <label><input type="checkbox" id="sum-check" checked> <span class="sum-label">Result</span></label>
-            </div>
-            
-            <div class="beat-info">
-                <strong>Beat frequency:</strong> f<sub>beat</sub> = |f₂ - f₁| = <span id="beat-freq">1.0</span> Hz
             </div>
         </div>
     </div>
@@ -139,7 +128,6 @@
         const wave1Check = document.getElementById('wave1-check');
         const wave2Check = document.getElementById('wave2-check');
         const sumCheck = document.getElementById('sum-check');
-        const beatFreqSpan = document.getElementById('beat-freq');
         
         // Scale functions
         function xScale(x) {
@@ -314,6 +302,77 @@
                 sumPath.setAttribute('stroke', '#15803d');
                 sumPath.setAttribute('stroke-width', '2.5');
                 g.appendChild(sumPath);
+                
+                // Add beat period indicator
+                // Find peaks of the sum wave
+                const peaks = [];
+                for (let i = 1; i < waveData.length - 1; i++) {
+                    if (waveData[i].sum > waveData[i-1].sum && waveData[i].sum > waveData[i+1].sum) {
+                        peaks.push({index: i, value: waveData[i].sum, t: waveData[i].t});
+                    }
+                }
+                
+                // Sort peaks by amplitude and find the major peaks
+                peaks.sort((a, b) => b.value - a.value);
+                
+                // Find the first two major peaks that are approximately one beat period apart
+                const beatPeriod = 1 / Math.abs(f2 - f1);
+                let firstPeak = null;
+                let secondPeak = null;
+                
+                for (let i = 0; i < peaks.length && !secondPeak; i++) {
+                    if (!firstPeak) {
+                        firstPeak = peaks[i];
+                    } else {
+                        const timeDiff = Math.abs(peaks[i].t - firstPeak.t);
+                        // Check if this peak is approximately one beat period away
+                        if (Math.abs(timeDiff - beatPeriod) < 0.1) {
+                            secondPeak = peaks[i];
+                        }
+                    }
+                }
+                
+                // Draw the beat period indicator if we found two peaks
+                if (firstPeak && secondPeak) {
+                    const y = yScale(-2.2); // Position below the wave
+                    const x1 = xScale(Math.min(firstPeak.t, secondPeak.t));
+                    const x2 = xScale(Math.max(firstPeak.t, secondPeak.t));
+                    
+                    // Draw the horizontal line
+                    const periodLine = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                    periodLine.setAttribute('x1', x1);
+                    periodLine.setAttribute('y1', y);
+                    periodLine.setAttribute('x2', x2);
+                    periodLine.setAttribute('y2', y);
+                    periodLine.setAttribute('stroke', '#333');
+                    periodLine.setAttribute('stroke-width', '2');
+                    g.appendChild(periodLine);
+                    
+                    // Add arrows at the ends
+                    const arrowSize = 8;
+                    
+                    // Left arrow
+                    const leftArrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    leftArrow.setAttribute('d', `M ${x1} ${y} L ${x1 + arrowSize} ${y - arrowSize/2} L ${x1 + arrowSize} ${y + arrowSize/2} Z`);
+                    leftArrow.setAttribute('fill', '#333');
+                    g.appendChild(leftArrow);
+                    
+                    // Right arrow
+                    const rightArrow = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                    rightArrow.setAttribute('d', `M ${x2} ${y} L ${x2 - arrowSize} ${y - arrowSize/2} L ${x2 - arrowSize} ${y + arrowSize/2} Z`);
+                    rightArrow.setAttribute('fill', '#333');
+                    g.appendChild(rightArrow);
+                    
+                    // Add label
+                    const periodLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                    periodLabel.setAttribute('x', (x1 + x2) / 2);
+                    periodLabel.setAttribute('y', y + 15); // Position label below the line
+                    periodLabel.setAttribute('text-anchor', 'middle');
+                    periodLabel.setAttribute('font-size', '11');
+                    periodLabel.setAttribute('font-weight', 'bold');
+                    periodLabel.textContent = `T = ${beatPeriod.toFixed(2)} s`;
+                    g.appendChild(periodLabel);
+                }
             }
             
             // Add compact legend in top right
@@ -375,8 +434,6 @@
         
         // Update function
         function update() {
-            const beatFreq = Math.abs(f2 - f1);
-            beatFreqSpan.textContent = beatFreq.toFixed(1);
             drawGraph();
         }
         
