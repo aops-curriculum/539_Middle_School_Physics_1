@@ -1,0 +1,415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wave Beating Simulation</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: white;
+        }
+        .container {
+            max-width: 580px;
+            margin: 0 auto;
+        }
+        .graph-container {
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        svg {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+        }
+        .controls {
+            background: #f8f8f8;
+            padding: 10px;
+            border-radius: 6px;
+            font-size: 13px;
+        }
+        .control-row {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 10px;
+        }
+        .control-group {
+            flex: 1;
+        }
+        .control-group label {
+            display: block;
+            margin-bottom: 3px;
+            font-weight: 500;
+            color: #555;
+            font-size: 12px;
+        }
+        input[type="range"] {
+            width: 100%;
+            height: 20px;
+            margin: 0;
+        }
+        .checkbox-row {
+            display: flex;
+            gap: 15px;
+            justify-content: center;
+            margin-bottom: 8px;
+        }
+        .checkbox-row label {
+            display: flex;
+            align-items: center;
+            font-size: 12px;
+        }
+        .checkbox-row input {
+            margin-right: 4px;
+        }
+        .beat-info {
+            background: #e3f2fd;
+            padding: 8px;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 13px;
+        }
+        .wave1-label { color: #2563eb; font-weight: 500; }
+        .wave2-label { color: #dc2626; font-weight: 500; }
+        .sum-label { color: #15803d; font-weight: 600; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="graph-container">
+            <svg id="graph" width="560" height="350">
+                <!-- Graph content will be drawn here -->
+            </svg>
+        </div>
+        
+        <div class="controls">
+            <div class="control-row">
+                <div class="control-group">
+                    <label for="f1-slider">Frequency 1: <span id="f1-value">10</span> Hz</label>
+                    <input type="range" id="f1-slider" min="1" max="20" step="0.1" value="10">
+                </div>
+                
+                <div class="control-group">
+                    <label for="f2-slider">Frequency 2: <span id="f2-value">11</span> Hz</label>
+                    <input type="range" id="f2-slider" min="1" max="20" step="0.1" value="11">
+                </div>
+            </div>
+            
+            <div class="checkbox-row">
+                <label><input type="checkbox" id="wave1-check" checked> <span class="wave1-label">Wave 1</span></label>
+                <label><input type="checkbox" id="wave2-check" checked> <span class="wave2-label">Wave 2</span></label>
+                <label><input type="checkbox" id="sum-check" checked> <span class="sum-label">Result</span></label>
+            </div>
+            
+            <div class="beat-info">
+                <strong>Beat frequency:</strong> f<sub>beat</sub> = |f₂ - f₁| = <span id="beat-freq">1.0</span> Hz
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Configuration
+        const config = {
+            xMin: 0,
+            xMax: 3,
+            yMin: -2.5,
+            yMax: 2.5,
+            width: 560,
+            height: 350,
+            margin: { top: 20, right: 10, bottom: 40, left: 50 }
+        };
+        
+        const plotWidth = config.width - config.margin.left - config.margin.right;
+        const plotHeight = config.height - config.margin.top - config.margin.bottom;
+        
+        // State
+        let f1 = 10;
+        let f2 = 11;
+        let showWave1 = true;
+        let showWave2 = true;
+        let showSum = true;
+        
+        // Get elements
+        const svg = document.getElementById('graph');
+        const f1Slider = document.getElementById('f1-slider');
+        const f2Slider = document.getElementById('f2-slider');
+        const f1Value = document.getElementById('f1-value');
+        const f2Value = document.getElementById('f2-value');
+        const wave1Check = document.getElementById('wave1-check');
+        const wave2Check = document.getElementById('wave2-check');
+        const sumCheck = document.getElementById('sum-check');
+        const beatFreqSpan = document.getElementById('beat-freq');
+        
+        // Scale functions
+        function xScale(x) {
+            return ((x - config.xMin) / (config.xMax - config.xMin)) * plotWidth;
+        }
+        
+        function yScale(y) {
+            return ((config.yMax - y) / (config.yMax - config.yMin)) * plotHeight;
+        }
+        
+        // Generate wave data
+        function generateWaveData() {
+            const numPoints = 800;
+            const data = [];
+            
+            for (let i = 0; i <= numPoints; i++) {
+                const t = config.xMin + (i / numPoints) * (config.xMax - config.xMin);
+                const wave1Val = Math.sin(2 * Math.PI * f1 * t);
+                const wave2Val = Math.sin(2 * Math.PI * f2 * t);
+                const sumVal = wave1Val + wave2Val;
+                
+                data.push({
+                    t: t,
+                    wave1: wave1Val,
+                    wave2: wave2Val,
+                    sum: sumVal
+                });
+            }
+            
+            return data;
+        }
+        
+        // Create SVG path string
+        function createPath(data, accessor) {
+            let path = '';
+            data.forEach((d, i) => {
+                const x = xScale(d.t);
+                const y = yScale(accessor(d));
+                path += (i === 0 ? 'M' : 'L') + x + ' ' + y + ' ';
+            });
+            return path;
+        }
+        
+        // Draw the graph
+        function drawGraph() {
+            // Clear SVG
+            svg.innerHTML = '';
+            
+            // Create main group
+            const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+            g.setAttribute('transform', `translate(${config.margin.left},${config.margin.top})`);
+            svg.appendChild(g);
+            
+            // Draw grid
+            const xTicks = [];
+            for (let x = config.xMin; x <= config.xMax; x += 0.5) {
+                xTicks.push(x);
+            }
+            
+            const yTicks = [];
+            for (let y = config.yMin; y <= config.yMax; y += 1) {
+                yTicks.push(y);
+            }
+            
+            // X grid lines
+            xTicks.forEach(tick => {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', xScale(tick));
+                line.setAttribute('y1', 0);
+                line.setAttribute('x2', xScale(tick));
+                line.setAttribute('y2', plotHeight);
+                line.setAttribute('stroke', '#e0e0e0');
+                g.appendChild(line);
+            });
+            
+            // Y grid lines
+            yTicks.forEach(tick => {
+                const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+                line.setAttribute('x1', 0);
+                line.setAttribute('y1', yScale(tick));
+                line.setAttribute('x2', plotWidth);
+                line.setAttribute('y2', yScale(tick));
+                line.setAttribute('stroke', '#e0e0e0');
+                g.appendChild(line);
+            });
+            
+            // Draw axes
+            const xAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            xAxis.setAttribute('x1', 0);
+            xAxis.setAttribute('y1', yScale(0));
+            xAxis.setAttribute('x2', plotWidth);
+            xAxis.setAttribute('y2', yScale(0));
+            xAxis.setAttribute('stroke', 'black');
+            xAxis.setAttribute('stroke-width', '2');
+            g.appendChild(xAxis);
+            
+            const yAxis = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            yAxis.setAttribute('x1', 0);
+            yAxis.setAttribute('y1', 0);
+            yAxis.setAttribute('x2', 0);
+            yAxis.setAttribute('y2', plotHeight);
+            yAxis.setAttribute('stroke', 'black');
+            yAxis.setAttribute('stroke-width', '2');
+            g.appendChild(yAxis);
+            
+            // Add tick labels
+            xTicks.forEach(tick => {
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', xScale(tick));
+                text.setAttribute('y', yScale(0) + 15);
+                text.setAttribute('text-anchor', 'middle');
+                text.setAttribute('font-size', '11');
+                text.textContent = tick;
+                g.appendChild(text);
+            });
+            
+            yTicks.forEach(tick => {
+                const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+                text.setAttribute('x', -8);
+                text.setAttribute('y', yScale(tick) + 4);
+                text.setAttribute('text-anchor', 'end');
+                text.setAttribute('font-size', '11');
+                text.textContent = tick;
+                g.appendChild(text);
+            });
+            
+            // Add axis labels
+            const xLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            xLabel.setAttribute('x', plotWidth / 2);
+            xLabel.setAttribute('y', plotHeight + 30);
+            xLabel.setAttribute('text-anchor', 'middle');
+            xLabel.setAttribute('font-size', '12');
+            xLabel.setAttribute('font-weight', 'bold');
+            xLabel.textContent = 'Time (s)';
+            g.appendChild(xLabel);
+            
+            const yLabel = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            yLabel.setAttribute('x', -25);
+            yLabel.setAttribute('y', plotHeight / 2);
+            yLabel.setAttribute('text-anchor', 'middle');
+            yLabel.setAttribute('font-size', '12');
+            yLabel.setAttribute('font-weight', 'bold');
+            yLabel.setAttribute('transform', `rotate(-90, -25, ${plotHeight / 2})`);
+            yLabel.textContent = 'Amplitude';
+            g.appendChild(yLabel);
+            
+            // Generate and draw waves
+            const waveData = generateWaveData();
+            
+            if (showWave1) {
+                const wave1Path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                wave1Path.setAttribute('d', createPath(waveData, d => d.wave1));
+                wave1Path.setAttribute('fill', 'none');
+                wave1Path.setAttribute('stroke', '#2563eb');
+                wave1Path.setAttribute('stroke-width', '1.5');
+                g.appendChild(wave1Path);
+            }
+            
+            if (showWave2) {
+                const wave2Path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                wave2Path.setAttribute('d', createPath(waveData, d => d.wave2));
+                wave2Path.setAttribute('fill', 'none');
+                wave2Path.setAttribute('stroke', '#dc2626');
+                wave2Path.setAttribute('stroke-width', '1.5');
+                g.appendChild(wave2Path);
+            }
+            
+            if (showSum) {
+                const sumPath = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+                sumPath.setAttribute('d', createPath(waveData, d => d.sum));
+                sumPath.setAttribute('fill', 'none');
+                sumPath.setAttribute('stroke', '#15803d');
+                sumPath.setAttribute('stroke-width', '2.5');
+                g.appendChild(sumPath);
+            }
+            
+            // Add compact legend in top right
+            const legendX = plotWidth - 80;
+            const legendY = 10;
+            const spacing = 15;
+            
+            // Wave 1 legend
+            const line1 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line1.setAttribute('x1', legendX);
+            line1.setAttribute('y1', legendY);
+            line1.setAttribute('x2', legendX + 15);
+            line1.setAttribute('y2', legendY);
+            line1.setAttribute('stroke', '#2563eb');
+            line1.setAttribute('stroke-width', '2');
+            g.appendChild(line1);
+            
+            const text1 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text1.setAttribute('x', legendX + 20);
+            text1.setAttribute('y', legendY + 3);
+            text1.setAttribute('font-size', '11');
+            text1.textContent = 'f₁';
+            g.appendChild(text1);
+            
+            // Wave 2 legend
+            const line2 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line2.setAttribute('x1', legendX);
+            line2.setAttribute('y1', legendY + spacing);
+            line2.setAttribute('x2', legendX + 15);
+            line2.setAttribute('y2', legendY + spacing);
+            line2.setAttribute('stroke', '#dc2626');
+            line2.setAttribute('stroke-width', '2');
+            g.appendChild(line2);
+            
+            const text2 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text2.setAttribute('x', legendX + 20);
+            text2.setAttribute('y', legendY + spacing + 3);
+            text2.setAttribute('font-size', '11');
+            text2.textContent = 'f₂';
+            g.appendChild(text2);
+            
+            // Sum legend
+            const line3 = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+            line3.setAttribute('x1', legendX);
+            line3.setAttribute('y1', legendY + 2*spacing);
+            line3.setAttribute('x2', legendX + 15);
+            line3.setAttribute('y2', legendY + 2*spacing);
+            line3.setAttribute('stroke', '#15803d');
+            line3.setAttribute('stroke-width', '3');
+            g.appendChild(line3);
+            
+            const text3 = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+            text3.setAttribute('x', legendX + 20);
+            text3.setAttribute('y', legendY + 2*spacing + 3);
+            text3.setAttribute('font-size', '11');
+            text3.textContent = 'Result';
+            g.appendChild(text3);
+        }
+        
+        // Update function
+        function update() {
+            const beatFreq = Math.abs(f2 - f1);
+            beatFreqSpan.textContent = beatFreq.toFixed(1);
+            drawGraph();
+        }
+        
+        // Event listeners
+        f1Slider.addEventListener('input', function() {
+            f1 = parseFloat(this.value);
+            f1Value.textContent = f1;
+            update();
+        });
+        
+        f2Slider.addEventListener('input', function() {
+            f2 = parseFloat(this.value);
+            f2Value.textContent = f2;
+            update();
+        });
+        
+        wave1Check.addEventListener('change', function() {
+            showWave1 = this.checked;
+            update();
+        });
+        
+        wave2Check.addEventListener('change', function() {
+            showWave2 = this.checked;
+            update();
+        });
+        
+        sumCheck.addEventListener('change', function() {
+            showSum = this.checked;
+            update();
+        });
+        
+        // Initial draw
+        update();
+    </script>
+</body>
+</html>

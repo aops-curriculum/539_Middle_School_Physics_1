@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wave Beating Simulation</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 10px;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+        }
+        
+        #canvas-container {
+            background: white;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 10px;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            background: white;
+            padding: 10px 15px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 520px;
+        }
+        
+        .controls-row {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+        }
+        
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .control-item input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+        }
+        
+        .control-item label {
+            cursor: pointer;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .color-indicator {
+            width: 18px;
+            height: 3px;
+            display: inline-block;
+        }
+        
+        .info {
+            text-align: center;
+            font-size: 13px;
+            color: #666;
+            margin: 0;
+        }
+    </style>
+</head>
+<body>
+    <div id="canvas-container">
+        <canvas id="waveCanvas" width="520" height="380"></canvas>
+    </div>
+    
+    <div class="controls">
+        <div class="controls-row">
+            <div class="control-item">
+                <input type="checkbox" id="wave1Toggle" checked>
+                <label for="wave1Toggle">
+                    <span class="color-indicator" style="background-color: #0066cc;"></span>
+                    Wave 1 (7 Hz)
+                </label>
+            </div>
+            
+            <div class="control-item">
+                <input type="checkbox" id="wave2Toggle" checked>
+                <label for="wave2Toggle">
+                    <span class="color-indicator" style="background-color: #cc0000;"></span>
+                    Wave 2 (8 Hz)
+                </label>
+            </div>
+            
+            <div class="control-item">
+                <input type="checkbox" id="sumToggle" checked>
+                <label for="sumToggle">
+                    <span class="color-indicator" style="background-color: #006600;"></span>
+                    Sum (Beat)
+                </label>
+            </div>
+        </div>
+        
+        <p class="info">
+            Beat frequency: f<sub>beat</sub> = |f₂ - f₁| = 1 Hz
+        </p>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Graph parameters
+        const xMin = 0;
+        const xMax = 2; // 2 seconds
+        const yMin = -2.5;
+        const yMax = 2.5;
+        const padding = 45;
+        const graphWidth = canvas.width - 2 * padding;
+        const graphHeight = canvas.height - 2 * padding;
+        
+        // Wave parameters
+        const f1 = 7; // Hz
+        const f2 = 8; // Hz
+        
+        // Colors
+        const wave1Color = '#0066cc';
+        const wave2Color = '#cc0000';
+        const sumColor = '#006600';
+        
+        // Toggle states
+        let showWave1 = true;
+        let showWave2 = true;
+        let showSum = true;
+        
+        // Convert graph coordinates to canvas coordinates
+        function graphToCanvas(x, y) {
+            const canvasX = padding + (x - xMin) / (xMax - xMin) * graphWidth;
+            const canvasY = padding + (yMax - y) / (yMax - yMin) * graphHeight;
+            return { x: canvasX, y: canvasY };
+        }
+        
+        // Draw axes and grid
+        function drawAxesAndGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            
+            // Vertical grid lines (major)
+            for (let x = 0; x <= 2; x += 0.5) {
+                const { x: canvasX } = graphToCanvas(x, 0);
+                ctx.beginPath();
+                ctx.moveTo(canvasX, padding);
+                ctx.lineTo(canvasX, canvas.height - padding);
+                ctx.stroke();
+            }
+            
+            // Horizontal grid lines (major)
+            for (let y = -2; y <= 2; y += 1) {
+                const { y: canvasY } = graphToCanvas(0, y);
+                ctx.beginPath();
+                ctx.moveTo(padding, canvasY);
+                ctx.lineTo(canvas.width - padding, canvasY);
+                ctx.stroke();
+            }
+            
+            // Draw axes
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            
+            // X-axis
+            const { y: xAxisY } = graphToCanvas(0, 0);
+            ctx.beginPath();
+            ctx.moveTo(padding, xAxisY);
+            ctx.lineTo(canvas.width - padding, xAxisY);
+            ctx.stroke();
+            
+            // Y-axis
+            const { x: yAxisX } = graphToCanvas(0, 0);
+            ctx.beginPath();
+            ctx.moveTo(yAxisX, padding);
+            ctx.lineTo(yAxisX, canvas.height - padding);
+            ctx.stroke();
+            
+            // Draw tick marks and labels
+            ctx.fillStyle = '#000';
+            ctx.font = '11px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            
+            // X-axis labels
+            for (let x = 0; x <= 2; x += 0.5) {
+                const { x: canvasX, y: canvasY } = graphToCanvas(x, 0);
+                ctx.fillText(x.toFixed(1), canvasX, canvasY + 5);
+            }
+            
+            // Y-axis labels
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            for (let y = -2; y <= 2; y += 1) {
+                const { x: canvasX, y: canvasY } = graphToCanvas(0, y);
+                ctx.fillText(y.toFixed(0), canvasX - 5, canvasY);
+            }
+            
+            // Axis labels
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Time (s)', canvas.width / 2, canvas.height - 15);
+            
+            ctx.save();
+            ctx.translate(15, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('Amplitude', 0, 0);
+            ctx.restore();
+        }
+        
+        // Draw a wave function
+        function drawWave(waveFunc, color, lineWidth) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.beginPath();
+            
+            let firstPoint = true;
+            const numPoints = 1000;
+            
+            for (let i = 0; i <= numPoints; i++) {
+                const t = xMin + (i / numPoints) * (xMax - xMin);
+                const y = waveFunc(t);
+                const { x: canvasX, y: canvasY } = graphToCanvas(t, y);
+                
+                if (firstPoint) {
+                    ctx.moveTo(canvasX, canvasY);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(canvasX, canvasY);
+                }
+            }
+            
+            ctx.stroke();
+        }
+        
+        // Wave functions
+        function wave1(t) {
+            return Math.sin(2 * Math.PI * f1 * t);
+        }
+        
+        function wave2(t) {
+            return Math.sin(2 * Math.PI * f2 * t);
+        }
+        
+        function waveSum(t) {
+            return wave1(t) + wave2(t);
+        }
+        
+        // Main drawing function
+        function draw() {
+            drawAxesAndGrid();
+            
+            // Draw waves based on toggle states
+            if (showWave1) {
+                drawWave(wave1, wave1Color, 1.5);
+            }
+            
+            if (showWave2) {
+                drawWave(wave2, wave2Color, 1.5);
+            }
+            
+            if (showSum) {
+                drawWave(waveSum, sumColor, 2.5);
+            }
+        }
+        
+        // Event listeners for toggles
+        document.getElementById('wave1Toggle').addEventListener('change', (e) => {
+            showWave1 = e.target.checked;
+            draw();
+        });
+        
+        document.getElementById('wave2Toggle').addEventListener('change', (e) => {
+            showWave2 = e.target.checked;
+            draw();
+        });
+        
+        document.getElementById('sumToggle').addEventListener('change', (e) => {
+            showSum = e.target.checked;
+            draw();
+        });
+        
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>
