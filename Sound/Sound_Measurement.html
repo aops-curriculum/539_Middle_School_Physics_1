@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Visualizer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            background: white;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+            width: 100vw;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+        }
+        
+        .container {
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            max-width: 600px;
+            max-height: 600px;
+            margin: 0 auto;
+        }
+        
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 2px solid #e0e0e0;
+            padding-bottom: 10px;
+        }
+        
+        .tab {
+            padding: 8px 16px;
+            background: #f5f5f5;
+            border: none;
+            cursor: pointer;
+            font-size: 14px;
+            border-radius: 4px 4px 0 0;
+            transition: background 0.2s;
+        }
+        
+        .tab:hover {
+            background: #e0e0e0;
+        }
+        
+        .tab.active {
+            background: #333;
+            color: white;
+        }
+        
+        .visualization {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 0;
+        }
+        
+        canvas {
+            border: 1px solid #e0e0e0;
+            max-width: 100%;
+            max-height: 100%;
+        }
+        
+        .meter-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+            width: 100%;
+        }
+        
+        .db-value {
+            font-size: 48px;
+            font-weight: 300;
+            color: #333;
+        }
+        
+        .db-label {
+            font-size: 14px;
+            color: #666;
+            margin-top: -15px;
+        }
+        
+        .meter-bar-container {
+            width: 80%;
+            height: 40px;
+            background: #f0f0f0;
+            border-radius: 20px;
+            overflow: hidden;
+            position: relative;
+        }
+        
+        .meter-bar {
+            height: 100%;
+            background: linear-gradient(to right, #4CAF50, #FFC107, #FF5722);
+            width: 0%;
+            transition: width 0.1s ease-out;
+        }
+        
+        .start-button {
+            padding: 12px 24px;
+            background: #333;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .start-button:hover {
+            background: #555;
+        }
+        
+        .error-message {
+            color: #d32f2f;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        #resetMax:hover {
+            background: #e0e0e0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="tabs">
+            <button class="tab active" data-mode="meter">Meter</button>
+            <button class="tab" data-mode="waveform">Waveform</button>
+            <button class="tab" data-mode="spectrum">Spectrum</button>
+        </div>
+        
+        <div class="visualization" id="visualization">
+            <button class="start-button" id="startButton">Start Microphone</button>
+        </div>
+    </div>
+    
+    <script>
+        let audioContext;
+        let analyser;
+        let microphone;
+        let dataArray;
+        let animationId;
+        let currentMode = 'meter';
+        let isRunning = false;
+        
+        const startButton = document.getElementById('startButton');
+        const visualization = document.getElementById('visualization');
+        const tabs = document.querySelectorAll('.tab');
+        
+        // Tab switching
+        tabs.forEach(tab => {
+            tab.addEventListener('click', () => {
+                tabs.forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                currentMode = tab.dataset.mode;
+                if (isRunning) {
+                    setupVisualization();
+                }
+            });
+        });
+        
+        startButton.addEventListener('click', async () => {
+            try {
+                await startAudio();
+                setupVisualization();
+                isRunning = true;
+            } catch (error) {
+                visualization.innerHTML = `<div class="error-message">Error: ${error.message}<br>Please ensure microphone permissions are granted.</div>`;
+            }
+        });
+        
+        async function startAudio() {
+            audioContext = new (window.AudioContext || window.webkitAudioContext)();
+            analyser = audioContext.createAnalyser();
+            analyser.fftSize = 2048;
+            analyser.smoothingTimeConstant = 0.8;
+            
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            microphone = audioContext.createMediaStreamSource(stream);
+            microphone.connect(analyser);
+            
+            const bufferLength = analyser.frequencyBinCount;
+            dataArray = new Uint8Array(bufferLength);
+        }
+        
+        function setupVisualization() {
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+            }
+            
+            visualization.innerHTML = '';
+            
+            switch(currentMode) {
+                case 'meter':
+                    setupMeter();
+                    break;
+                case 'waveform':
+                    setupWaveform();
+                    break;
+                case 'spectrum':
+                    setupSpectrum();
+                    break;
+            }
+        }
+        
+        function setupMeter() {
+            visualization.innerHTML = `
+                <div class="meter-display">
+                    <div>
+                        <div class="db-value" id="dbValue">-∞</div>
+                        <div class="db-label">dB (relative)</div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px; font-size: 20px; color: #666;">
+                        <span>Max: <span id="maxValue" style="font-weight: 500; color: #333;">-∞</span></span>
+                        <button id="resetMax" style="padding: 4px 8px; font-size: 12px; background: #f0f0f0; border: 1px solid #ddd; border-radius: 3px; cursor: pointer;">Reset</button>
+                    </div>
+                    <div class="meter-bar-container">
+                        <div class="meter-bar" id="meterBar"></div>
+                    </div>
+                </div>
+            `;
+            
+            const dbValue = document.getElementById('dbValue');
+            const maxValue = document.getElementById('maxValue');
+            const meterBar = document.getElementById('meterBar');
+            const resetButton = document.getElementById('resetMax');
+            
+            // Reset FFT size for meter
+            analyser.fftSize = 2048;
+            const bufferLength = analyser.fftSize;
+            const meterData = new Uint8Array(bufferLength);
+            
+            let maxDb = -Infinity;
+            let smoothedDb = -60;
+            const smoothingFactor = 0.85; // Higher = slower updates
+            
+            resetButton.addEventListener('click', () => {
+                maxDb = -Infinity;
+                maxValue.textContent = '-∞';
+            });
+            
+            function drawMeter() {
+                analyser.getByteTimeDomainData(meterData);
+                
+                // Calculate RMS
+                let sum = 0;
+                for (let i = 0; i < meterData.length; i++) {
+                    const normalized = (meterData[i] - 128) / 128;
+                    sum += normalized * normalized;
+                }
+                const rms = Math.sqrt(sum / meterData.length);
+                
+                // Convert to dB (relative scale, calibrated so typical room noise = 0)
+                const instantDb = 20 * Math.log10(Math.max(rms, 0.00001)) + 45;
+                
+                // Apply smoothing for easier reading
+                smoothedDb = smoothedDb * smoothingFactor + instantDb * (1 - smoothingFactor);
+                const clampedDb = Math.max(-15, Math.min(45, smoothedDb));
+                
+                // Update display
+                dbValue.textContent = clampedDb.toFixed(1);
+                
+                // Track maximum
+                if (clampedDb > maxDb) {
+                    maxDb = clampedDb;
+                    maxValue.textContent = maxDb.toFixed(1);
+                }
+                
+                // Update meter bar (map -15 to +45 dB to 0% to 100%)
+                const percentage = ((clampedDb + 15) / 60) * 100;
+                meterBar.style.width = percentage + '%';
+                
+                animationId = requestAnimationFrame(drawMeter);
+            }
+            
+            drawMeter();
+        }
+        
+        function setupWaveform() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 500;
+            canvas.height = 300;
+            visualization.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Reset FFT size for waveform
+            analyser.fftSize = 2048;
+            const bufferLength = analyser.fftSize;
+            const waveformData = new Uint8Array(bufferLength);
+            
+            function drawWaveform() {
+                analyser.getByteTimeDomainData(waveformData);
+                
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                ctx.lineWidth = 2;
+                ctx.strokeStyle = '#333';
+                ctx.beginPath();
+                
+                const sliceWidth = canvas.width / waveformData.length;
+                let x = 0;
+                
+                for (let i = 0; i < waveformData.length; i++) {
+                    const v = waveformData[i] / 128.0;
+                    const y = v * canvas.height / 2;
+                    
+                    if (i === 0) {
+                        ctx.moveTo(x, y);
+                    } else {
+                        ctx.lineTo(x, y);
+                    }
+                    
+                    x += sliceWidth;
+                }
+                
+                ctx.stroke();
+                
+                // Draw center line
+                ctx.strokeStyle = '#e0e0e0';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(0, canvas.height / 2);
+                ctx.lineTo(canvas.width, canvas.height / 2);
+                ctx.stroke();
+                
+                animationId = requestAnimationFrame(drawWaveform);
+            }
+            
+            drawWaveform();
+        }
+        
+        function setupSpectrum() {
+            const canvas = document.createElement('canvas');
+            canvas.width = 500;
+            canvas.height = 300;
+            visualization.appendChild(canvas);
+            
+            const ctx = canvas.getContext('2d');
+            
+            // Set FFT size for spectrum
+            analyser.fftSize = 256;
+            const bufferLength = analyser.frequencyBinCount;
+            const spectrumData = new Uint8Array(bufferLength);
+            
+            function drawSpectrum() {
+                analyser.getByteFrequencyData(spectrumData);
+                
+                ctx.fillStyle = 'white';
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+                
+                const barWidth = (canvas.width / bufferLength) * 2.5;
+                let barHeight;
+                let x = 0;
+                
+                for (let i = 0; i < bufferLength; i++) {
+                    barHeight = (spectrumData[i] / 255) * canvas.height * 0.8;
+                    
+                    // Gradient from green to red based on amplitude
+                    const intensity = spectrumData[i] / 255;
+                    const hue = (1 - intensity) * 120; // Green (120) to Red (0)
+                    ctx.fillStyle = `hsl(${hue}, 70%, 50%)`;
+                    
+                    ctx.fillRect(x, canvas.height - barHeight, barWidth - 1, barHeight);
+                    
+                    x += barWidth;
+                }
+                
+                animationId = requestAnimationFrame(drawSpectrum);
+            }
+            
+            drawSpectrum();
+        }
+    </script>
+</body>
+</html>
