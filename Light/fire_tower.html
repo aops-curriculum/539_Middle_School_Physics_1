@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: #e8f4f8;
+    }
+    #root {
+      width: 600px;
+      height: 400px;
+    }
+    svg {
+      width: 600px;
+      height: 400px;
+      cursor: crosshair;
+    }
+    .dot { cursor: pointer; transition: r 0.2s; }
+    .dot:hover { r: 8; }
+    .ui-box {
+      font-size: 12px;
+      fill: black;
+      text-shadow: 1px 1px 2px white;
+      font-family: Arial, sans-serif;
+    }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useRef } = React;
+
+const FireTowerSimulation = () => {
+  const [towerHeight, setTowerHeight] = useState(50);
+  const [sightLines, setSightLines] = useState([]);
+  const [dragStart, setDragStart] = useState(null);
+  const [dragPos, setDragPos] = useState(null);
+
+  const svgRef = useRef(null);
+  const width = 600;
+  const height = 400;
+  const groundLevel = height - 30;
+  const towerX = 80;
+
+  const generateLandscape = () => {
+    const points = [];
+    const numPoints = 20;
+    for (let i = 0; i <= numPoints; i++) {
+      const x = (width / numPoints) * i;
+      // Further reduce middle hill around x ~ 300 (third tree region)
+      let hillModifier = 1.0;
+      if (x > 250 && x < 370) hillModifier = 0.6; // flatter middle hill
+      const baseHeight = groundLevel - hillModifier * (25 * Math.sin(i * 0.8) + 15 * Math.sin(i * 1.3 + 1));
+      points.push({ x, y: baseHeight });
+    }
+    return points;
+  };
+
+  const landscape = generateLandscape();
+
+  const landscapeY = x => {
+    const i = Math.floor((x / width) * (landscape.length - 1));
+    if (i < 0 || i >= landscape.length - 1) return groundLevel;
+    const p1 = landscape[i], p2 = landscape[i + 1];
+    const t = (x - p1.x) / (p2.x - p1.x);
+    return p1.y + t * (p2.y - p1.y);
+  };
+
+  const trees = [150, 230, 300, 360, 430, 500].map((x, i) => {
+    const baseY = landscapeY(x);
+    const h = 35 + 10 * Math.sin(i);
+    return { id: "tree-" + i, x, baseY, height: h, topY: baseY - h };
+  });
+
+  const lookoutEyeY = landscapeY(towerX) - towerHeight;
+  const dots = [
+    { id: "lookout", x: towerX, y: lookoutEyeY, label: "Lookout" },
+    ...trees.map(t => ({ id: t.id, x: t.x, y: t.topY, label: t.id }))
+  ];
+
+  const getDotCoords = id => dots.find(d => d.id === id);
+
+  const clearLines = () => setSightLines([]);
+
+  const handleMouseDown = e => {
+    const id = e.target.dataset.id;
+    if (id) {
+      setDragStart(id);
+      setDragPos(null);
+    }
+  };
+
+  const handleMouseMove = e => {
+    if (dragStart && svgRef.current) {
+      const rect = svgRef.current.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      setDragPos({ x, y });
+    }
+  };
+
+  const handleMouseUp = e => {
+    const id = e.target.dataset.id;
+    if (dragStart && id && id !== dragStart) {
+      setSightLines(prev => [...prev, { from: dragStart, to: id }]);
+    }
+    setDragStart(null);
+    setDragPos(null);
+  };
+
+  return (
+    <svg ref={svgRef} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp}>
+      <defs>
+        <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stopColor="#87CEEB" />
+          <stop offset="100%" stopColor="#E0F6FF" />
+        </linearGradient>
+      </defs>
+      <rect width={width} height={height} fill="url(#sky)" />
+
+      <path
+        d={`M0 ${height} L${landscape.map(p => `${p.x},${p.y}`).join(" ")} L${width},${height} Z`}
+        fill="#7CB342"
+        stroke="#5D4037"
+        strokeWidth="1"
+      />
+
+      {trees.map(t => (
+        <g key={t.id}>
+          <rect x={t.x - 3} y={t.baseY - t.height * 0.4} width="6" height={t.height * 0.4} fill="#6B4423" />
+          <ellipse cx={t.x} cy={t.topY + t.height * 0.25} rx="10" ry={t.height * 0.4} fill="#2E7D32" />
+        </g>
+      ))}
+
+      <g>
+        <line x1={towerX - 10} y1={landscapeY(towerX)} x2={towerX - 4} y2={lookoutEyeY + 10} stroke="#8B4513" strokeWidth="3" />
+        <line x1={towerX + 10} y1={landscapeY(towerX)} x2={towerX + 4} y2={lookoutEyeY + 10} stroke="#8B4513" strokeWidth="3" />
+        <rect x={towerX - 10} y={lookoutEyeY - 5} width="20" height="5" fill="#654321" />
+        <rect x={towerX - 8} y={lookoutEyeY - 20} width="16" height="15" fill="#A0522D" stroke="#654321" />
+        <path d={`M${towerX - 10} ${lookoutEyeY - 20} L${towerX} ${lookoutEyeY - 30} L${towerX + 10} ${lookoutEyeY - 20} Z`} fill="#8B0000" />
+        <circle cx={towerX} cy={lookoutEyeY} r="4" fill="#FFD700" />
+      </g>
+
+      {sightLines.map((line, i) => {
+        const from = getDotCoords(line.from);
+        const to = getDotCoords(line.to);
+        return (
+          <line
+            key={i}
+            x1={from.x}
+            y1={from.y}
+            x2={to.x}
+            y2={to.y}
+            stroke="red"
+            strokeWidth="2"
+            strokeDasharray="4,4"
+          />
+        );
+      })}
+
+      {dragStart && dragPos && (() => {
+        const startDot = getDotCoords(dragStart);
+        return (
+          <line
+            x1={startDot.x}
+            y1={startDot.y}
+            x2={dragPos.x}
+            y2={dragPos.y}
+            stroke="red"
+            strokeWidth="2"
+            opacity="0.5"
+          />
+        );
+      })()}
+
+      {dots.map(d => (
+        <circle
+          key={d.id}
+          className="dot"
+          cx={d.x}
+          cy={d.y}
+          r="6"
+          fill="red"
+          stroke="white"
+          strokeWidth="2"
+          data-id={d.id}
+          onMouseDown={handleMouseDown}
+        />
+      ))}
+
+      {/* Slider repositioned toward center */}
+      <rect x="180" y="10" width="200" height="85" rx="5" ry="5" fill="rgba(255,255,255,0.7)" />
+      <foreignObject x="190" y="15" width="180" height="75">
+        <div style={{ fontSize: '12px', fontFamily: 'Arial, sans-serif' }}>
+          <b>Tower Height:</b><br/>
+          <input
+            type="range"
+            min="20"
+            max="400"
+            value={towerHeight}
+            onChange={e => setTowerHeight(parseInt(e.target.value))}
+            style={{ width: '100%' }}
+          />
+          <div style={{textAlign: 'center', fontWeight: 'bold'}}>{towerHeight} ft</div>
+        </div>
+      </foreignObject>
+
+      {/* Moved clear button to right side of sky */}
+      <foreignObject x="450" y="20" width="100" height="40">
+        <button style={{width: '100%', background: '#dc3545', color: 'white', border: 'none', borderRadius: '5px', padding: '5px'}} onClick={clearLines}>Clear Lines</button>
+      </foreignObject>
+
+      {/* Instructions moved below slider */}
+      <text x="200" y="120" className="ui-box">
+        Click and drag from one red dot to another to draw a sight line.
+      </text>
+    </svg>
+  );
+};
+
+ReactDOM.render(<FireTowerSimulation />, document.getElementById('root'));
+</script>
+</body>
+</html>
