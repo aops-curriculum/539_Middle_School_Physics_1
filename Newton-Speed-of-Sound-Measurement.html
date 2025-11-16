@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            width: 600px;
+            height: 600px;
+            font-family: Arial, sans-serif;
+            background: #ffffff;
+            display: flex;
+            overflow: hidden;
+        }
+        
+        .container {
+            display: flex;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            gap: 20px;
+        }
+        
+        .panel {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: flex-start;
+            background: #ffffff;
+            border: 2px solid #d0d0d0;
+            border-radius: 20px;
+            padding: 20px;
+            padding-top: 40px;
+        }
+        
+        .pendulum-container {
+            position: relative;
+            width: 200px;
+            height: 300px;
+            margin-top: 20px;
+        }
+        
+        .pendulum-string {
+            position: absolute;
+            top: 0;
+            left: 50%;
+            width: 2px;
+            background: #333;
+            transform-origin: top center;
+            transform: translateX(-50%);
+        }
+        
+        .pendulum-bob {
+            position: absolute;
+            width: 30px;
+            height: 30px;
+            background: radial-gradient(circle at 30% 30%, #444, #111);
+            border-radius: 50%;
+            bottom: -15px;
+            left: -15px;
+        }
+        
+        .indicator-light {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: #333;
+            margin: 20px;
+            transition: background-color 0.1s;
+            box-shadow: inset 0 2px 5px rgba(0,0,0,0.3);
+        }
+        
+        .indicator-light.active {
+            background: #ffeb3b;
+            box-shadow: 0 0 30px #ffeb3b, inset 0 0 10px rgba(255,255,255,0.5);
+        }
+        
+        .slider-container {
+            width: 100%;
+            margin-top: 20px;
+        }
+        
+        .slider {
+            width: 100%;
+            height: 6px;
+            -webkit-appearance: none;
+            appearance: none;
+            background: #d0d0d0;
+            outline: none;
+            border-radius: 3px;
+        }
+        
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            background: #666;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            background: #666;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+        
+        .length-display {
+            text-align: center;
+            color: #333;
+            margin-top: 10px;
+            font-size: 18px;
+            font-weight: bold;
+        }
+        
+        .clap-button {
+            width: 120px;
+            height: 120px;
+            border-radius: 50%;
+            background: linear-gradient(145deg, #f0f0f0, #cacaca);
+            border: none;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 5px 5px 15px rgba(0,0,0,0.3);
+            transition: transform 0.1s;
+            margin-top: 20px;
+        }
+        
+        .clap-button:hover {
+            transform: scale(1.05);
+        }
+        
+        .clap-button:active {
+            transform: scale(0.95);
+        }
+        
+        .clap-icon {
+            font-size: 40px;
+            margin-bottom: 5px;
+        }
+        
+        .clap-text {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .pause-button {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: #f0f0f0;
+            border: 2px solid #d0d0d0;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: background-color 0.2s;
+            margin-top: 20px;
+        }
+        
+        .pause-button:hover {
+            background: #e0e0e0;
+        }
+        
+        .pause-button:active {
+            background: #d0d0d0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="panel">
+            <div class="indicator-light" id="pendulum-light"></div>
+            <div class="pendulum-container">
+                <svg id="pendulum-svg" width="200" height="300" style="position: absolute; top: 0; left: 0;">
+                    <line id="pendulum-line" x1="100" y1="10" x2="100" y2="100" stroke="#333" stroke-width="2"/>
+                    <circle id="pendulum-bob" cx="100" cy="100" r="15" fill="url(#bobGradient)"/>
+                    <defs>
+                        <radialGradient id="bobGradient">
+                            <stop offset="30%" stop-color="#666"/>
+                            <stop offset="100%" stop-color="#111"/>
+                        </radialGradient>
+                    </defs>
+                </svg>
+            </div>
+            <div class="slider-container">
+                <input type="range" class="slider" id="length-slider" min="0" max="10" value="9" step="0.1">
+                <div class="length-display" id="length-display">9.0 cm</div>
+            </div>
+        </div>
+        
+        <div class="panel">
+            <div class="indicator-light" id="clap-light"></div>
+            <button class="clap-button" id="clap-button">
+                <span class="clap-icon">👏</span>
+                <span class="clap-text">clap</span>
+            </button>
+            <button class="pause-button" id="pause-button">⏸</button>
+        </div>
+    </div>
+    
+    <script>
+        const pendulumLight = document.getElementById('pendulum-light');
+        const clapLight = document.getElementById('clap-light');
+        const lengthSlider = document.getElementById('length-slider');
+        const lengthDisplay = document.getElementById('length-display');
+        const clapButton = document.getElementById('clap-button');
+        const pauseButton = document.getElementById('pause-button');
+        const pendulumLine = document.getElementById('pendulum-line');
+        const pendulumBob = document.getElementById('pendulum-bob');
+        
+        let pendulumLength = 9; // cm - starting at 9.0
+        let pendulumAngle = 0;
+        let pendulumVelocity = 0;
+        let previousVelocity = 0;
+        let pendulumRunning = true;
+        let isPaused = false;
+        
+        const g = 174; // gravity in cm/s^2 - adjusted for slower motion
+        const maxAngle = Math.PI / 6; // 30 degrees max swing
+        
+        lengthSlider.addEventListener('input', (e) => {
+            pendulumLength = parseFloat(e.target.value);
+            lengthDisplay.textContent = pendulumLength.toFixed(1) + ' cm';
+            // Reset pendulum when length changes
+            pendulumAngle = maxAngle;
+            pendulumVelocity = 0;
+            previousVelocity = 0;
+        });
+        
+        clapButton.addEventListener('click', () => {
+            flashLight(clapLight);
+            setTimeout(() => {
+                flashLight(clapLight);
+            }, 1000); // 1 second = 1000ms
+        });
+        
+        pauseButton.addEventListener('click', () => {
+            isPaused = !isPaused;
+            pauseButton.textContent = isPaused ? '▶' : '⏸';
+        });
+        
+        function flashLight(light) {
+            light.classList.add('active');
+            setTimeout(() => {
+                light.classList.remove('active');
+            }, 150);
+        }
+        
+        function updatePendulum(deltaTime) {
+            if (!pendulumRunning || pendulumLength === 0 || isPaused) return;
+            
+            const dt = deltaTime / 1000; // convert to seconds
+            
+            // Store previous velocity to detect direction changes
+            previousVelocity = pendulumVelocity;
+            
+            // Pendulum physics
+            const acceleration = -(g / pendulumLength) * Math.sin(pendulumAngle);
+            pendulumVelocity += acceleration * dt;
+            pendulumVelocity *= 0.9995; // tiny damping to maintain swing
+            pendulumAngle += pendulumVelocity * dt;
+            
+            // Check if we've reached the rightmost point (velocity changes from positive to negative)
+            if (previousVelocity > 0 && pendulumVelocity <= 0 && pendulumAngle > 0) {
+                flashLight(pendulumLight);
+            }
+            
+            // Keep pendulum swinging if it stops
+            if (Math.abs(pendulumVelocity) < 0.01 && Math.abs(pendulumAngle) < 0.01) {
+                pendulumAngle = maxAngle;
+                pendulumVelocity = 0;
+            }
+            
+            // Update visual
+            const visualLength = 10 + pendulumLength * 20; // scale for display
+            const x = 100 + visualLength * Math.sin(pendulumAngle);
+            const y = 10 + visualLength * Math.cos(pendulumAngle);
+            
+            pendulumLine.setAttribute('x2', x);
+            pendulumLine.setAttribute('y2', y);
+            pendulumBob.setAttribute('cx', x);
+            pendulumBob.setAttribute('cy', y);
+        }
+        
+        // Initialize pendulum
+        pendulumAngle = maxAngle;
+        
+        let lastTime = performance.now();
+        function animate(currentTime) {
+            const deltaTime = currentTime - lastTime;
+            lastTime = currentTime;
+            
+            updatePendulum(deltaTime);
+            requestAnimationFrame(animate);
+        }
+        
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
