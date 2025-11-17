@@ -273,18 +273,12 @@
             // Pendulum physics
             const acceleration = -(g / pendulumLength) * Math.sin(pendulumAngle);
             pendulumVelocity += acceleration * dt;
-            pendulumVelocity *= 1; // tiny damping to maintain swing
+            pendulumVelocity *= 1; 
             pendulumAngle += pendulumVelocity * dt;
             
             // Check if we've reached the rightmost point (velocity changes from positive to negative)
             if (previousVelocity > 0 && pendulumVelocity <= 0 && pendulumAngle > 0) {
                 flashLight(pendulumLight);
-            }
-            
-            // Keep pendulum swinging if it stops
-            if (Math.abs(pendulumVelocity) < 0.01 && Math.abs(pendulumAngle) < 0.01) {
-                pendulumAngle = maxAngle;
-                pendulumVelocity = 0;
             }
             
             // Update visual
