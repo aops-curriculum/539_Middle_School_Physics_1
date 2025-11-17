@@ -233,6 +233,18 @@
         
         const g = 174; // gravity in cm/s^2 - adjusted for slower motion
         const maxAngle = Math.PI / 6; // 30 degrees max swing
+
+        document.addEventListener('visibilitychange', () => {
+    
+        if (document.hidden) {
+        // Tab is hidden - pause the simulation
+        isPaused = true;
+        pauseButton.textContent = '▶';
+    } else {
+        // Tab is visible again - reset lastTime to prevent deltaTime jump
+        lastTime = performance.now();
+    }
+});
         
         lengthSlider.addEventListener('input', (e) => {
             pendulumLength = parseFloat(e.target.value);
