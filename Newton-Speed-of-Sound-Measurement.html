@@ -303,8 +303,12 @@
         
         let lastTime = performance.now();
         function animate(currentTime) {
-            const deltaTime = currentTime - lastTime;
-            lastTime = currentTime;
+        const deltaTime = Math.min(currentTime - lastTime, 100); // Cap at 100ms
+        lastTime = currentTime;
+    
+        updatePendulum(deltaTime);
+        requestAnimationFrame(animate);
+}
             
             updatePendulum(deltaTime);
             requestAnimationFrame(animate);
