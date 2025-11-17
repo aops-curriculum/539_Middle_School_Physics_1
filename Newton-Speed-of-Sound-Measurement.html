@@ -273,7 +273,7 @@
             // Pendulum physics
             const acceleration = -(g / pendulumLength) * Math.sin(pendulumAngle);
             pendulumVelocity += acceleration * dt;
-            pendulumVelocity *= 0.9995; // tiny damping to maintain swing
+            pendulumVelocity *= 1; // tiny damping to maintain swing
             pendulumAngle += pendulumVelocity * dt;
             
             // Check if we've reached the rightmost point (velocity changes from positive to negative)
