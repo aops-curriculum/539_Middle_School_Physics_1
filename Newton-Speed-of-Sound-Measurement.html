@@ -236,14 +236,6 @@
 
         document.addEventListener('visibilitychange', () => {
     
-        if (document.hidden) {
-        // Tab is hidden - pause the simulation
-        isPaused = true;
-        pauseButton.textContent = '▶';
-    } else {
-        // Tab is visible again - reset lastTime to prevent deltaTime jump
-        lastTime = performance.now();
-    }
 });
         
         lengthSlider.addEventListener('input', (e) => {
