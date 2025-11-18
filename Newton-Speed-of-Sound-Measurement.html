@@ -293,12 +293,6 @@
                 flashLight(pendulumLight);
             }
             
-            // Keep pendulum swinging if it stops
-            if (Math.abs(pendulumVelocity) < 0.01 && Math.abs(pendulumAngle) < 0.01) {
-                pendulumAngle = maxAngle;
-                pendulumVelocity = 0;
-            }
-            
             // Update visual
             const visualLength = 10 + pendulumLength * 20; // scale for display
             const x = 100 + visualLength * Math.sin(pendulumAngle);
