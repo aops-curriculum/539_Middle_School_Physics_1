@@ -231,12 +231,19 @@
         let pendulumRunning = true;
         let isPaused = false;
         
+        // Flag for synchronized clap: when true, the next pendulum flash triggers the clap sequence
+        let clapPending = false;
+        
         const g = 174; // gravity in cm/s^2 - adjusted for slower motion
         const maxAngle = Math.PI / 6; // 30 degrees max swing
 
+        // Handle tab visibility changes to prevent jumpy behavior
         document.addEventListener('visibilitychange', () => {
-    
-});
+            if (document.visibilityState === 'visible') {
+                // Reset the timing reference when returning to the tab
+                lastTime = performance.now();
+            }
+        });
         
         lengthSlider.addEventListener('input', (e) => {
             pendulumLength = parseFloat(e.target.value);
@@ -247,16 +254,19 @@
             previousVelocity = 0;
         });
         
+        // When clap button is clicked, set the pending flag
+        // The actual flash will happen on the next pendulum flash
         clapButton.addEventListener('click', () => {
-            flashLight(clapLight);
-            setTimeout(() => {
-                flashLight(clapLight);
-            }, 1000); // 1 second = 1000ms
+            clapPending = true;
         });
         
         pauseButton.addEventListener('click', () => {
             isPaused = !isPaused;
             pauseButton.textContent = isPaused ? '▶' : '⏸';
+            // Reset timing when unpausing to prevent jumps
+            if (!isPaused) {
+                lastTime = performance.now();
+            }
         });
         
         function flashLight(light) {
@@ -283,6 +293,15 @@
             // Check if we've reached the rightmost point (velocity changes from positive to negative)
             if (previousVelocity > 0 && pendulumVelocity <= 0 && pendulumAngle > 0) {
                 flashLight(pendulumLight);
+                
+                // If a clap is pending, trigger the synchronized clap sequence
+                if (clapPending) {
+                    flashLight(clapLight);  // First clap: synchronized with pendulum
+                    setTimeout(() => {
+                        flashLight(clapLight);  // Second clap: 1 second later (the "echo")
+                    }, 1000);
+                    clapPending = false;
+                }
             }
             
             // Update visual
@@ -296,17 +315,14 @@
             pendulumBob.setAttribute('cy', y);
         }
         
-        // Initialize pendulum
+        // Initialize pendulum at starting angle
         pendulumAngle = maxAngle;
         
         let lastTime = performance.now();
+        
         function animate(currentTime) {
-        const deltaTime = Math.min(currentTime - lastTime, 100); // Cap at 100ms
-        lastTime = currentTime;
-    
-        updatePendulum(deltaTime);
-        requestAnimationFrame(animate);
-}
+            const deltaTime = Math.min(currentTime - lastTime, 100); // Cap at 100ms
+            lastTime = currentTime;
             
             updatePendulum(deltaTime);
             requestAnimationFrame(animate);
