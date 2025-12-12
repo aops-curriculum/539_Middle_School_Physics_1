@@ -457,9 +457,9 @@
                 const phase = parseFloat(controls.phase.value);
                 
                 // Check with tolerance
-                const freqMatch = Math.abs(freq - targetWave.freq) < 0.15;
-                const ampMatch = Math.abs(amp - targetWave.amp) < 5;
-                const phaseMatch = Math.abs(phase - targetWave.phase) < 15 || Math.abs(phase - targetWave.phase - 360) < 15 || Math.abs(phase - targetWave.phase + 360) < 15;
+                const freqMatch = Math.abs(freq - targetWave.freq) <= 0.05;
+                const ampMatch = Math.abs(amp - targetWave.amp) <= 1;
+                const phaseMatch = Math.abs(phase - targetWave.phase) <= 3 || Math.abs(phase - targetWave.phase - 360) <= 3 || Math.abs(phase - targetWave.phase + 360) <= 3;
                 
                 // Visual feedback for near matches
                 const closeMatches = (freqMatch ? 1 : 0) + (ampMatch ? 1 : 0) + (phaseMatch ? 1 : 0);
@@ -485,7 +485,7 @@
             
             // Generate new random target wave
             function generateNewTarget() {
-                targetWave.freq = Math.round((Math.random() * 9 + 1) * 2) / 2; // 1.0 to 10.0 in steps of 0.5
+                targetWave.freq = (Math.floor(Math.random() * 6) + 1) * 0.5; // 0.5 to 3.0 in steps of 0.5
                 targetWave.amp = Math.round((Math.random() * 16 + 4)) * 5; // 20 to 100 in steps of 5
                 targetWave.phase = Math.round(Math.random() * 36) * 10; // 0 to 360 in steps of 10
             }
