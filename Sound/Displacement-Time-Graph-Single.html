@@ -224,7 +224,7 @@
             ctx.rotate(-Math.PI / 2);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText('Displacement', 0, 0);
+            ctx.fillText('Position', 0, 0);
             ctx.restore();
             
             // Draw target wave if match game is active
@@ -348,8 +348,8 @@
             centerLine.lineTo(0, app.screen.height/2);
             container.addChild(centerLine);
             
-            // Add "Displacement" label
-            const label = new PIXI.Text('Displacement', {
+            // Add label
+            const label = new PIXI.Text('Position', {
                 fontFamily: 'Arial',
                 fontSize: 14,
                 fill: 0x666666,
