@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Single Wave Displacement</title>
+    <title>Vibration - Position Versus Time</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/pixi.js/7.3.2/pixi.min.js"></script>
     <style>
         body {
@@ -252,16 +252,6 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
                 
-                // Draw target values in corner with background
-                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-                ctx.fillRect(width - 140, 5, 135, 35);
-                
-                ctx.fillStyle = '#ffdd00';
-                ctx.font = 'bold 12px Arial';
-                ctx.textAlign = 'right';
-                ctx.fillText(`Match this wave!`, width - 25, 20);
-                ctx.font = '11px monospace';
-                ctx.fillText(`${targetWave.freq}Hz, ${targetWave.amp}px, ${targetWave.phase}°`, width - 25, 35);
             }
             
             if (!enabled) return;
