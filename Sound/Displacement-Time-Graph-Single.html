@@ -125,6 +125,49 @@
         #pause-button:active {
             transform: scale(0.95);
         }
+        #joke-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.8);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            }
+        #joke-message {
+            background-color: #2a2a2a;
+            border: 3px solid #4fc3f7;
+            border-radius: 12px;
+            padding: 30px 40px;
+            max-width: 500px;
+            position: relative;
+            box-shadow: 0 0 30px rgba(79, 195, 247, 0.5);
+        }
+        #joke-text {
+            font-size: 18px;
+            line-height: 1.6;
+            color: #ffffff;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        #joke-close {
+            background-color: #4fc3f7;
+            color: #000;
+            border: none;
+            padding: 10px 30px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: bold;
+            display: block;
+            margin: 0 auto;
+        }
+        #joke-close:hover {
+            background-color: #6fd4ff;
+        }
     </style>
 </head>
 <body>
@@ -301,6 +344,7 @@
         let matchCelebration = null;
         let celebrationTime = 0;
         let hasMatched = false;
+        let matchCount = 0; // Track successful matches
         
         try {
             // Create and configure PIXI Application
@@ -470,16 +514,25 @@
                 }
                 
                 if (freqMatch && ampMatch && phaseMatch) {
-                    hasMatched = true;
-                    createCelebration();
-                    
-                    // Generate new target after delay
+    hasMatched = true;
+    matchCount++; // Increment match counter
+    createCelebration();
+    
+                // Check if reached 5 matches
+                if (matchCount === 5) {
                     setTimeout(() => {
-                        generateNewTarget();
-                        hasMatched = false;
-                        dot.tint = 0xFFFFFF; // Reset tint
-                        drawWaveform();
-                    }, 2500);
+                        showJokeMessage();
+                        matchCount = 0; // Reset counter
+                    }, 1000); // Show joke after celebration starts
+                }
+                
+                // Generate new target after delay
+                setTimeout(() => {
+                    generateNewTarget();
+                    hasMatched = false;
+                    dot.tint = 0xFFFFFF; // Reset tint
+                    drawWaveform();
+                }, 2500);
                 }
             }
             
@@ -548,7 +601,22 @@
                     matchCelebration.addChild(particle);
                 }
             }
-            
+            function showJokeMessage() {
+                const overlay = document.getElementById('joke-overlay');
+                overlay.style.display = 'flex';
+                
+                const closeButton = document.getElementById('joke-close');
+                closeButton.onclick = () => {
+                    overlay.style.display = 'none';
+                };
+                
+                // Also close when clicking the dark background
+                overlay.onclick = (e) => {
+                    if (e.target === overlay) {
+                        overlay.style.display = 'none';
+                    }
+                };
+            }
             // Initial setup
             updateGuides();
             drawWaveform();
@@ -683,6 +751,14 @@
             showError(error.message);
             console.error('PIXI initialization error:', error);
         }
+        
     </script>
+    <div id="joke-overlay">
+    <div id="joke-message">
+        <div id="joke-text">Once I failed an exam because I thought they changed the units of frequency. I was wrong, still Hertz.</div>
+        <button id="joke-close">Close</button>
+    </div>
+</div>
+    
 </body>
 </html>
