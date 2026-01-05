@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loaded String Simulation</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/p5.js/1.9.0/p5.min.js"></script>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    body {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background: #fff;
+      overflow: hidden;
+    }
+    main {
+      width: 600px;
+      height: 600px;
+    }
+  </style>
+</head>
+<body>
+  <main id="canvas-container"></main>
+  <script>
+    // ===========================================
+    // LOADED STRING SIMULATION
+    // Normal Mode Decomposition Approach
+    // ===========================================
+    
+    // --- Physical Parameters ---
+    const NUM_LOADS = 28;           // Number of point masses (Falstad default)
+    const STRING_TENSION = 1.0;     // Normalized tension
+    const DAMPING = 0.998;          // Per-frame amplitude decay (higher modes decay faster)
+    
+    // --- Display Parameters ---
+    const CANVAS_SIZE = 600;
+    const STRING_Y = CANVAS_SIZE / 2;        // Vertical center of string at rest
+    const STRING_LEFT = 50;                   // Left fixed point x-coordinate
+    const STRING_RIGHT = CANVAS_SIZE - 50;   // Right fixed point x-coordinate
+    const STRING_LENGTH = STRING_RIGHT - STRING_LEFT;
+    const MAX_AMPLITUDE = 120;               // Maximum visual displacement in pixels
+    
+    // --- State Variables ---
+    let massPositions = [];         // Current y-displacement of each mass (in pixels)
+    let modeAmplitudes = [];        // Amplitude of each normal mode
+    let modePhases = [];            // Phase of each normal mode (all start at 0 for pluck)
+    let modeFrequencies = [];       // Angular frequency of each mode
+    
+    let isPlucking = false;         // Is mouse currently dragging?
+    let pluckIndex = -1;            // Which mass is being plucked (nearest to mouse)
+    let isVibrating = false;        // Is string currently vibrating?
+    let time = 0;                   // Simulation time
+    
+    // --- Precomputed Mode Shapes ---
+    // modeShapes[k][j] = sin(k*pi*j/(n+1)) for mode k at mass j
+    let modeShapes = [];
+    
+    function setup() {
+      let canvas = createCanvas(CANVAS_SIZE, CANVAS_SIZE);
+      canvas.parent('canvas-container');
+      
+      // Initialize arrays
+      for (let j = 0; j < NUM_LOADS; j++) {
+        massPositions[j] = 0;
+      }
+      
+      // Precompute mode shapes and frequencies
+      // Mode indices go from 1 to NUM_LOADS (physics convention)
+      // Array indices go from 0 to NUM_LOADS-1
+      for (let k = 1; k <= NUM_LOADS; k++) {
+        modeShapes[k] = [];
+        for (let j = 1; j <= NUM_LOADS; j++) {
+          // Mode shape: sin(k * pi * j / (n+1))
+          modeShapes[k][j] = sin((k * PI * j) / (NUM_LOADS + 1));
+        }
+        
+        // Mode frequency for loaded string (exhibits dispersion)
+        // omega_k = 2 * omega_0 * sin(k * pi / (2*(n+1)))
+        // We normalize omega_0 = 1 for simplicity
+        modeFrequencies[k] = 2 * sin((k * PI) / (2 * (NUM_LOADS + 1)));
+        
+        // Initialize amplitudes and phases
+        modeAmplitudes[k] = 0;
+        modePhases[k] = 0;
+      }
+      
+      // Frame rate for smooth animation
+      frameRate(60);
+    }
+    
+    function draw() {
+      background(255);
+      
+      // Update physics
+      if (isVibrating && !isPlucking) {
+        updateVibration();
+      }
+      
+      // Draw the string
+      drawString();
+    }
+    
+    // --- Physics Update ---
+    function updateVibration() {
+      // Time step (scaled for visual speed - adjust to taste)
+      const dt = 0.22;
+      time += dt;
+      
+      // Reconstruct string position from modes
+      for (let j = 1; j <= NUM_LOADS; j++) {
+        let y = 0;
+        for (let k = 1; k <= NUM_LOADS; k++) {
+          // y_j(t) = sum over k of: A_k * cos(omega_k * t) * sin(k*pi*j/(n+1))
+          y += modeAmplitudes[k] * cos(modeFrequencies[k] * time) * modeShapes[k][j];
+        }
+        massPositions[j - 1] = y;
+      }
+      
+      // Apply damping to mode amplitudes
+      // Higher modes decay faster (realistic for strings)
+      for (let k = 1; k <= NUM_LOADS; k++) {
+        // Damping increases with mode number
+        let dampingFactor = pow(DAMPING, 1 + k * 0.1);
+        modeAmplitudes[k] *= dampingFactor;
+      }
+      
+      // Check if vibration has effectively stopped
+      let totalEnergy = 0;
+      for (let k = 1; k <= NUM_LOADS; k++) {
+        totalEnergy += modeAmplitudes[k] * modeAmplitudes[k];
+      }
+      if (totalEnergy < 0.0001) {
+        isVibrating = false;
+        time = 0;
+      }
+    }
+    
+    // --- Decompose Initial Shape into Normal Modes ---
+    function computeModeAmplitudes() {
+      // Discrete Sine Transform
+      // A_k = (2/(n+1)) * sum over j of: y_j * sin(k*pi*j/(n+1))
+      for (let k = 1; k <= NUM_LOADS; k++) {
+        let amplitude = 0;
+        for (let j = 1; j <= NUM_LOADS; j++) {
+          amplitude += massPositions[j - 1] * modeShapes[k][j];
+        }
+        amplitude *= 2 / (NUM_LOADS + 1);
+        modeAmplitudes[k] = amplitude;
+        modePhases[k] = 0;  // Starting from rest means all phases are 0
+      }
+    }
+    
+    // --- Drawing Functions ---
+    function drawString() {
+      // Draw dashed midpoint line
+      stroke(180);
+      strokeWeight(1);
+      drawingContext.setLineDash([6, 4]);
+      let midX = (STRING_LEFT + STRING_RIGHT) / 2;
+      line(midX, STRING_Y - MAX_AMPLITUDE - 20, midX, STRING_Y + MAX_AMPLITUDE + 20);
+      drawingContext.setLineDash([]);  // Reset to solid
+      
+      // Draw the string
+      stroke(0);
+      strokeWeight(2);
+      
+      // Get x-positions of each mass
+      let massX = [];
+      for (let j = 0; j < NUM_LOADS; j++) {
+        // Masses are evenly spaced
+        massX[j] = STRING_LEFT + ((j + 1) * STRING_LENGTH) / (NUM_LOADS + 1);
+      }
+      
+      // Draw string segments
+      // From left fixed point to first mass
+      line(STRING_LEFT, STRING_Y, massX[0], STRING_Y - massPositions[0]);
+      
+      // Between masses
+      for (let j = 0; j < NUM_LOADS - 1; j++) {
+        line(
+          massX[j], STRING_Y - massPositions[j],
+          massX[j + 1], STRING_Y - massPositions[j + 1]
+        );
+      }
+      
+      // From last mass to right fixed point
+      line(massX[NUM_LOADS - 1], STRING_Y - massPositions[NUM_LOADS - 1], STRING_RIGHT, STRING_Y);
+      
+      // Draw fixed endpoints
+      fill(80);
+      noStroke();
+      circle(STRING_LEFT, STRING_Y, 12);
+      circle(STRING_RIGHT, STRING_Y, 12);
+    }
+    
+    // --- Mouse Interaction ---
+    function mousePressed() {
+      // Check if mouse is near the string (within interaction zone)
+      if (mouseX > STRING_LEFT && mouseX < STRING_RIGHT) {
+        if (abs(mouseY - STRING_Y) < MAX_AMPLITUDE + 50) {
+          isPlucking = true;
+          isVibrating = false;
+          time = 0;
+          
+          // Find which mass is closest to mouse x-position
+          pluckIndex = getClosestMassIndex(mouseX);
+          
+          // Update pluck shape
+          updatePluckShape(mouseX, mouseY);
+        }
+      }
+    }
+    
+    function mouseDragged() {
+      if (isPlucking) {
+        updatePluckShape(mouseX, mouseY);
+      }
+    }
+    
+    function mouseReleased() {
+      if (isPlucking) {
+        isPlucking = false;
+        
+        // Compute mode amplitudes from current shape
+        computeModeAmplitudes();
+        
+        // Start vibrating
+        isVibrating = true;
+        time = 0;
+      }
+    }
+    
+    // --- Helper Functions ---
+    function getClosestMassIndex(mx) {
+      let closestDist = Infinity;
+      let closestIndex = 0;
+      
+      for (let j = 0; j < NUM_LOADS; j++) {
+        let massX = STRING_LEFT + ((j + 1) * STRING_LENGTH) / (NUM_LOADS + 1);
+        let dist = abs(mx - massX);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestIndex = j;
+        }
+      }
+      return closestIndex;
+    }
+    
+    function updatePluckShape(mx, my) {
+      // Clamp mouse x to string bounds
+      mx = constrain(mx, STRING_LEFT, STRING_RIGHT);
+      
+      // Calculate displacement (positive = up in screen coords, so we negate)
+      let displacement = STRING_Y - my;
+      displacement = constrain(displacement, -MAX_AMPLITUDE, MAX_AMPLITUDE);
+      
+      // Find the fractional position along the string (0 to 1)
+      let pluckFraction = (mx - STRING_LEFT) / STRING_LENGTH;
+      
+      // Create triangular pluck shape
+      // String forms two straight lines: left endpoint to pluck point to right endpoint
+      for (let j = 0; j < NUM_LOADS; j++) {
+        let massFraction = (j + 1) / (NUM_LOADS + 1);
+        
+        if (massFraction <= pluckFraction) {
+          // Left side of pluck: linear interpolation from 0 to displacement
+          massPositions[j] = displacement * (massFraction / pluckFraction);
+        } else {
+          // Right side of pluck: linear interpolation from displacement to 0
+          massPositions[j] = displacement * ((1 - massFraction) / (1 - pluckFraction));
+        }
+      }
+    }
+  </script>
+</body>
+</html>
