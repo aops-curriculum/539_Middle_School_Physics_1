@@ -471,7 +471,7 @@
                 let firstPoint = true;
                 for (let y = height; y >= 0; y -= 2) {
                     // Calculate time offset based on y position
-                    const timeOffset = -(y - centerY) / pixelsPerSecond;
+                    const timeOffset = (y - centerY) / pixelsPerSecond;
                     const xOffset = amp * Math.sin(2 * Math.PI * freq * (time + timeOffset) + phase);
                     const xPos = centerX + xOffset;
                     
