@@ -1,0 +1,770 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vibration - Position Versus Time</title>
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+        body {
+            margin: 0;
+            padding: 15px;
+            font-family: Arial, sans-serif;
+            background-color: #ffffff;
+            color: #333333;
+            width: 600px;
+            height: 600px;
+            overflow: hidden;
+        }
+        .top-section {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            align-items: start;
+            justify-content: center;
+        }
+        #animation-canvas {
+            background-color: #f8f8f8;
+            border-radius: 6px;
+        }
+        #wave-graph {
+            background-color: #f8f8f8;
+            border-radius: 6px;
+        }
+        .controls {
+            background-color: #f0f0f0;
+            padding: 15px;
+            border-radius: 8px;
+        }
+        .control-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+            gap: 10px;
+        }
+        .control-row:last-child {
+            margin-bottom: 0;
+        }
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        label {
+            font-size: 14px;
+            color: #333;
+        }
+        .slider-label {
+            width: 75px;
+            font-size: 14px;
+        }
+        input[type="range"] {
+            flex: 1;
+            height: 6px;
+            background: #ccc;
+            outline: none;
+            border-radius: 3px;
+            cursor: pointer;
+        }
+        input[type="range"]::-webkit-slider-thumb {
+            appearance: none;
+            width: 16px;
+            height: 16px;
+            background: #4fc3f7;
+            cursor: pointer;
+            border-radius: 50%;
+        }
+        input[type="range"]::-moz-range-thumb {
+            width: 16px;
+            height: 16px;
+            background: #4fc3f7;
+            cursor: pointer;
+            border-radius: 50%;
+            border: none;
+        }
+        input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+            cursor: pointer;
+            accent-color: #4fc3f7;
+        }
+        .value-display {
+            width: 55px;
+            text-align: right;
+            font-family: monospace;
+            color: #0288d1;
+            font-size: 13px;
+        }
+        #error-display {
+            color: #d32f2f;
+            padding: 10px;
+            display: none;
+            text-align: center;
+        }
+        #pause-button {
+            background-color: #4fc3f7;
+            color: #000;
+            border: none;
+            padding: 6px 14px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-family: Arial, sans-serif;
+            font-size: 13px;
+            font-weight: bold;
+            transition: background-color 0.2s;
+            min-width: 70px;
+        }
+        #pause-button:hover {
+            background-color: #81d4fa;
+        }
+        #pause-button:active {
+            transform: scale(0.95);
+        }
+        #joke-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.6);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+        #joke-message {
+            background-color: #ffffff;
+            border: 3px solid #4fc3f7;
+            border-radius: 12px;
+            padding: 25px 30px;
+            max-width: 400px;
+            position: relative;
+            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        }
+        #joke-text {
+            font-size: 16px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 20px;
+            text-align: center;
+        }
+        #joke-close {
+            background-color: #4fc3f7;
+            color: #000;
+            border: none;
+            padding: 8px 24px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: bold;
+            display: block;
+            margin: 0 auto;
+        }
+        #joke-close:hover {
+            background-color: #81d4fa;
+        }
+    </style>
+</head>
+<body>
+    <div class="top-section">
+        <canvas id="animation-canvas" width="220" height="280"></canvas>
+        <canvas id="wave-graph" width="335" height="280"></canvas>
+    </div>
+    
+    <div id="error-display"></div>
+    
+    <div class="controls">
+        <div class="control-row">
+            <div class="checkbox-group">
+                <button id="pause-button">Pause</button>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="showWave" checked>
+                    <label for="showWave">Make Graph</label>
+                </div>
+                <div class="checkbox-item">
+                    <input type="checkbox" id="matchGame">
+                    <label for="matchGame">Match Game</label>
+                </div>
+            </div>
+        </div>
+        <div class="control-row">
+            <label class="slider-label" for="freq">Frequency:</label>
+            <input type="range" id="freq" min="0.1" max="10" step="0.1" value="0.5">
+            <span class="value-display" id="freq-value">0.5 Hz</span>
+        </div>
+        <div class="control-row">
+            <label class="slider-label" for="amp">Amplitude:</label>
+            <input type="range" id="amp" min="0" max="100" step="5" value="50">
+            <span class="value-display" id="amp-value">50 px</span>
+        </div>
+        <div class="control-row">
+            <label class="slider-label" for="phase">Phase:</label>
+            <input type="range" id="phase" min="0" max="360" step="1" value="0">
+            <span class="value-display" id="phase-value">0°</span>
+        </div>
+    </div>
+
+    <div id="joke-overlay">
+        <div id="joke-message">
+            <div id="joke-text">Once I failed an exam because I thought they changed the units of frequency. I was wrong, still Hertz.</div>
+            <button id="joke-close">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // ============================================
+        // CONFIGURATION & STATE
+        // ============================================
+        
+        const animCanvas = document.getElementById('animation-canvas');
+        const animCtx = animCanvas.getContext('2d');
+        const graphCanvas = document.getElementById('wave-graph');
+        const graphCtx = graphCanvas.getContext('2d');
+        
+        // Animation state
+        let time = 0;
+        let gridOffset = 0;
+        let isPaused = false;
+        let lastTimestamp = 0;
+        
+        // Match game state
+        let targetWave = { freq: 2.0, amp: 75, phase: 0 };
+        let hasMatched = false;
+        let matchCount = 0;
+        
+        // Celebration particles
+        let particles = [];
+        let celebrationText = null;
+        
+        // Controls references
+        const controls = {
+            freq: document.getElementById('freq'),
+            amp: document.getElementById('amp'),
+            phase: document.getElementById('phase'),
+            showWave: document.getElementById('showWave'),
+            matchGame: document.getElementById('matchGame'),
+            pauseButton: document.getElementById('pause-button')
+        };
+        
+        // ============================================
+        // SPEAKER CONE DRAWING
+        // ============================================
+        
+        /**
+         * Draws a simplified side-view speaker cone.
+         * Just a few lines for the cone profile and a curve for the dust cap.
+         */
+        function drawSpeakerCone(ctx, x, y, scale = 1) {
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.scale(scale, scale);
+            
+            const lineColor = '#444';
+            
+            ctx.strokeStyle = lineColor;
+            ctx.lineWidth = 2;
+            ctx.lineCap = 'round';
+            
+            // Top edge of cone (angled line)
+            ctx.beginPath();
+            ctx.moveTo(-10, -5);
+            ctx.lineTo(12, -18);
+            ctx.stroke();
+            
+            // Bottom edge of cone (angled line)
+            ctx.beginPath();
+            ctx.moveTo(-10, 5);
+            ctx.lineTo(12, 18);
+            ctx.stroke();
+            
+            // Back of cone (short vertical line)
+            ctx.beginPath();
+            ctx.moveTo(-10, -5);
+            ctx.lineTo(-10, 5);
+            ctx.stroke();
+            
+            // Dust cap (curved arc in the middle)
+            ctx.beginPath();
+            ctx.arc(-2, 0, 8, -Math.PI * 0.4, Math.PI * 0.4);
+            ctx.stroke();
+            
+            ctx.restore();
+        }
+        
+        // ============================================
+        // GRAPH DRAWING (Position vs Time)
+        // ============================================
+        
+        function drawWaveform() {
+            const width = graphCanvas.width;
+            const height = graphCanvas.height;
+            
+            const frequency = parseFloat(controls.freq.value);
+            const amplitude = parseFloat(controls.amp.value);
+            const phase = parseFloat(controls.phase.value) * Math.PI / 180;
+            
+            // Clear canvas
+            graphCtx.clearRect(0, 0, width, height);
+            
+            // Fill background
+            graphCtx.fillStyle = '#f8f8f8';
+            graphCtx.fillRect(0, 0, width, height);
+            
+            // Draw grid lines
+            graphCtx.strokeStyle = '#e0e0e0';
+            graphCtx.lineWidth = 1;
+            
+            // Vertical grid lines
+            for (let x = 40; x < width - 15; x += 35) {
+                graphCtx.beginPath();
+                graphCtx.moveTo(x, 35);
+                graphCtx.lineTo(x, height - 25);
+                graphCtx.stroke();
+            }
+            
+            // Horizontal center line (more prominent)
+            graphCtx.strokeStyle = '#bbb';
+            graphCtx.beginPath();
+            graphCtx.moveTo(40, height / 2);
+            graphCtx.lineTo(width - 15, height / 2);
+            graphCtx.stroke();
+            
+            // Axis labels
+            graphCtx.fillStyle = '#888';
+            graphCtx.font = '11px Arial';
+            graphCtx.textAlign = 'center';
+            graphCtx.textBaseline = 'top';
+            graphCtx.fillText('Time', width / 2, height - 15);
+            
+            graphCtx.save();
+            graphCtx.translate(12, height / 2);
+            graphCtx.rotate(-Math.PI / 2);
+            graphCtx.textAlign = 'center';
+            graphCtx.textBaseline = 'middle';
+            graphCtx.fillText('Position', 0, 0);
+            graphCtx.restore();
+            
+            const timeSpan = 3;
+            const centerY = height / 2;
+            const scale = (height * 0.35) / 100;
+            
+            // Draw target wave if match game is active
+            if (controls.matchGame.checked) {
+                graphCtx.strokeStyle = '#ffc107';
+                graphCtx.lineWidth = 2;
+                graphCtx.setLineDash([5, 5]);
+                graphCtx.beginPath();
+                
+                for (let x = 40; x < width - 15; x++) {
+                    const t = ((x - 40) / (width - 55)) * timeSpan;
+                    const yPos = centerY - targetWave.amp * scale * 
+                        Math.sin(2 * Math.PI * targetWave.freq * t + targetWave.phase * Math.PI / 180);
+                    
+                    if (x === 40) {
+                        graphCtx.moveTo(x, yPos);
+                    } else {
+                        graphCtx.lineTo(x, yPos);
+                    }
+                }
+                graphCtx.stroke();
+                graphCtx.setLineDash([]);
+            }
+            
+            // Draw user waveform
+            graphCtx.strokeStyle = '#0288d1';
+            graphCtx.lineWidth = 2;
+            graphCtx.beginPath();
+            
+            for (let x = 40; x < width - 15; x++) {
+                const t = ((x - 40) / (width - 55)) * timeSpan;
+                const yPos = centerY - amplitude * scale * 
+                    Math.sin(2 * Math.PI * frequency * t + phase);
+                
+                if (x === 40) {
+                    graphCtx.moveTo(x, yPos);
+                } else {
+                    graphCtx.lineTo(x, yPos);
+                }
+            }
+            graphCtx.stroke();
+        }
+        
+        // ============================================
+        // ANIMATION CANVAS DRAWING
+        // ============================================
+        
+        function drawAnimationFrame() {
+            const width = animCanvas.width;
+            const height = animCanvas.height;
+            const centerX = width / 2;
+            const centerY = height / 2;
+            
+            const freq = parseFloat(controls.freq.value);
+            const amp = parseFloat(controls.amp.value);
+            const phase = parseFloat(controls.phase.value) * Math.PI / 180;
+            
+            // Clear canvas
+            animCtx.clearRect(0, 0, width, height);
+            
+            // Fill background
+            animCtx.fillStyle = '#f8f8f8';
+            animCtx.fillRect(0, 0, width, height);
+            
+            // Draw grid if showWave is checked
+            if (controls.showWave.checked) {
+                animCtx.strokeStyle = '#ddd';
+                animCtx.lineWidth = 1;
+                
+                // Vertical lines (static)
+                for (let x = centerX - 100; x <= centerX + 100; x += 25) {
+                    animCtx.beginPath();
+                    animCtx.moveTo(x, 0);
+                    animCtx.lineTo(x, height);
+                    animCtx.stroke();
+                }
+                
+                // Horizontal lines (scrolling)
+                for (let y = -25; y <= height + 25; y += 25) {
+                    const adjustedY = y + gridOffset;
+                    animCtx.beginPath();
+                    animCtx.moveTo(centerX - 100, adjustedY);
+                    animCtx.lineTo(centerX + 100, adjustedY);
+                    animCtx.stroke();
+                }
+            }
+            
+            // Draw center line (equilibrium position)
+            animCtx.strokeStyle = '#bbb';
+            animCtx.lineWidth = 2;
+            animCtx.beginPath();
+            animCtx.moveTo(centerX, 0);
+            animCtx.lineTo(centerX, height);
+            animCtx.stroke();
+            
+            // Draw amplitude guides
+            animCtx.strokeStyle = 'rgba(2, 136, 209, 0.3)';
+            animCtx.lineWidth = 1;
+            animCtx.beginPath();
+            animCtx.moveTo(centerX - amp - 8, centerY);
+            animCtx.lineTo(centerX - amp + 8, centerY);
+            animCtx.moveTo(centerX + amp - 8, centerY);
+            animCtx.lineTo(centerX + amp + 8, centerY);
+            animCtx.stroke();
+            
+            // Draw wave trail if showWave is checked
+            if (controls.showWave.checked) {
+                animCtx.strokeStyle = '#0288d1';
+                animCtx.lineWidth = 2;
+                animCtx.beginPath();
+                
+                const scrollSpeed = 2;
+                const pixelsPerSecond = scrollSpeed * 60;
+                
+                let firstPoint = true;
+                for (let y = height; y >= 0; y -= 2) {
+                    // Calculate time offset based on y position
+                    const timeOffset = -(y - centerY) / pixelsPerSecond;
+                    const xOffset = amp * Math.sin(2 * Math.PI * freq * (time + timeOffset) + phase);
+                    const xPos = centerX + xOffset;
+                    
+                    if (firstPoint) {
+                        animCtx.moveTo(xPos, y);
+                        firstPoint = false;
+                    } else {
+                        animCtx.lineTo(xPos, y);
+                    }
+                }
+                animCtx.stroke();
+            }
+            
+            // Calculate current speaker position
+            const speakerX = centerX + amp * Math.sin(2 * Math.PI * freq * time + phase);
+            
+            // Draw speaker cone
+            drawSpeakerCone(animCtx, speakerX, centerY, 1.2);
+            
+            // Draw "Position" label
+            animCtx.fillStyle = '#888';
+            animCtx.font = '11px Arial';
+            animCtx.textAlign = 'center';
+            animCtx.fillText('Position', centerX, height - 10);
+            
+            // Draw celebration effects
+            drawCelebration();
+        }
+        
+        // ============================================
+        // CELEBRATION ANIMATION
+        // ============================================
+        
+        function createCelebration() {
+            particles = [];
+            
+            // Create particles
+            for (let i = 0; i < 20; i++) {
+                particles.push({
+                    x: Math.random() * animCanvas.width,
+                    y: Math.random() * animCanvas.height,
+                    vx: (Math.random() - 0.5) * 5,
+                    vy: Math.random() * -4 - 2,
+                    size: Math.random() * 3 + 2,
+                    isStar: i < 10,
+                    rotation: 0,
+                    alpha: 1,
+                    color: Math.random() > 0.5 ? '#ffc107' : '#0288d1'
+                });
+            }
+            
+            // Create celebration text
+            celebrationText = {
+                alpha: 1,
+                scale: 1
+            };
+        }
+        
+        function drawCelebration() {
+            if (particles.length === 0 && !celebrationText) return;
+            
+            const centerX = animCanvas.width / 2;
+            const centerY = animCanvas.height / 2;
+            
+            // Draw particles
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                
+                animCtx.save();
+                animCtx.globalAlpha = p.alpha;
+                animCtx.translate(p.x, p.y);
+                animCtx.rotate(p.rotation);
+                
+                if (p.isStar) {
+                    // Draw star
+                    animCtx.fillStyle = '#ffc107';
+                    animCtx.beginPath();
+                    for (let j = 0; j < 5; j++) {
+                        const angle = (j * 2 * Math.PI) / 5 - Math.PI / 2;
+                        const innerAngle = ((j + 0.5) * 2 * Math.PI) / 5 - Math.PI / 2;
+                        const outerX = Math.cos(angle) * p.size;
+                        const outerY = Math.sin(angle) * p.size;
+                        const innerX = Math.cos(innerAngle) * p.size * 0.5;
+                        const innerY = Math.sin(innerAngle) * p.size * 0.5;
+                        
+                        if (j === 0) {
+                            animCtx.moveTo(outerX, outerY);
+                        } else {
+                            animCtx.lineTo(outerX, outerY);
+                        }
+                        animCtx.lineTo(innerX, innerY);
+                    }
+                    animCtx.closePath();
+                    animCtx.fill();
+                } else {
+                    // Draw circle
+                    animCtx.fillStyle = p.color;
+                    animCtx.beginPath();
+                    animCtx.arc(0, 0, p.size, 0, Math.PI * 2);
+                    animCtx.fill();
+                }
+                
+                animCtx.restore();
+                
+                // Remove faded particles
+                if (p.alpha <= 0 || p.y > animCanvas.height) {
+                    particles.splice(i, 1);
+                }
+            }
+            
+            // Draw celebration text
+            if (celebrationText && celebrationText.alpha > 0) {
+                animCtx.save();
+                animCtx.globalAlpha = celebrationText.alpha;
+                animCtx.font = `bold ${24 * celebrationText.scale}px Arial`;
+                animCtx.textAlign = 'center';
+                animCtx.textBaseline = 'middle';
+                
+                // Text shadow
+                animCtx.fillStyle = '#333';
+                animCtx.fillText('Perfect Match!', centerX + 2, centerY + 2);
+                
+                // Main text
+                animCtx.fillStyle = '#ffc107';
+                animCtx.fillText('Perfect Match!', centerX, centerY);
+                
+                animCtx.restore();
+            }
+        }
+        
+        function updateCelebration(deltaTime) {
+            // Update particles
+            for (const p of particles) {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.vy += 0.25;  // Gravity
+                if (p.isStar) {
+                    p.rotation += 0.1;
+                }
+                p.alpha -= deltaTime * 0.5;
+            }
+            
+            // Update text
+            if (celebrationText) {
+                celebrationText.alpha -= deltaTime * 0.4;
+                celebrationText.scale += deltaTime * 0.08;
+                
+                if (celebrationText.alpha <= 0) {
+                    celebrationText = null;
+                }
+            }
+        }
+        
+        // ============================================
+        // MATCH GAME LOGIC
+        // ============================================
+        
+        function checkForMatch() {
+            if (!controls.matchGame.checked || hasMatched) return;
+            
+            const freq = parseFloat(controls.freq.value);
+            const amp = parseFloat(controls.amp.value);
+            const phaseVal = parseFloat(controls.phase.value);
+            
+            const freqMatch = Math.abs(freq - targetWave.freq) <= 0.05;
+            const ampMatch = Math.abs(amp - targetWave.amp) <= 1;
+            const phaseMatch = Math.abs(phaseVal - targetWave.phase) <= 3 || 
+                               Math.abs(phaseVal - targetWave.phase - 360) <= 3 || 
+                               Math.abs(phaseVal - targetWave.phase + 360) <= 3;
+            
+            if (freqMatch && ampMatch && phaseMatch) {
+                hasMatched = true;
+                matchCount++;
+                createCelebration();
+                
+                if (matchCount === 5) {
+                    setTimeout(showJokeMessage, 1000);
+                    matchCount = 0;
+                }
+                
+                // Generate new target after delay
+                setTimeout(() => {
+                    generateNewTarget();
+                    hasMatched = false;
+                    drawWaveform();
+                }, 2500);
+            }
+        }
+        
+        function generateNewTarget() {
+            targetWave.freq = (Math.floor(Math.random() * 6) + 1) * 0.5;  // 0.5 to 3.0
+            targetWave.amp = Math.round((Math.random() * 16 + 4)) * 5;    // 20 to 100
+            targetWave.phase = Math.round(Math.random() * 36) * 10;       // 0 to 360
+        }
+        
+        function showJokeMessage() {
+            const overlay = document.getElementById('joke-overlay');
+            overlay.style.display = 'flex';
+        }
+        
+        // ============================================
+        // MAIN ANIMATION LOOP
+        // ============================================
+        
+        function animate(timestamp) {
+            // Calculate delta time in seconds
+            const deltaTime = lastTimestamp ? (timestamp - lastTimestamp) / 1000 : 0;
+            lastTimestamp = timestamp;
+            
+            // Update time and grid offset if not paused
+            if (!isPaused) {
+                time += deltaTime;
+                
+                if (controls.showWave.checked) {
+                    const scrollSpeed = 2;
+                    gridOffset -= scrollSpeed;
+                    if (gridOffset <= -25) {
+                        gridOffset += 25;
+                    }
+                }
+            }
+            
+            // Update celebration (continues even when paused)
+            updateCelebration(deltaTime);
+            
+            // Draw frames
+            drawAnimationFrame();
+            
+            // Continue animation loop
+            requestAnimationFrame(animate);
+        }
+        
+        // ============================================
+        // EVENT LISTENERS
+        // ============================================
+        
+        // Slider controls
+        controls.freq.addEventListener('input', (e) => {
+            document.getElementById('freq-value').textContent = `${e.target.value} Hz`;
+            drawWaveform();
+            checkForMatch();
+        });
+        
+        controls.amp.addEventListener('input', (e) => {
+            document.getElementById('amp-value').textContent = `${e.target.value} px`;
+            drawWaveform();
+            checkForMatch();
+        });
+        
+        controls.phase.addEventListener('input', (e) => {
+            document.getElementById('phase-value').textContent = `${e.target.value}°`;
+            drawWaveform();
+            checkForMatch();
+        });
+        
+        // Checkbox controls
+        controls.showWave.addEventListener('change', () => {
+            // Redraw will happen in animation loop
+        });
+        
+        controls.matchGame.addEventListener('change', () => {
+            if (controls.matchGame.checked) {
+                hasMatched = false;
+            }
+            drawWaveform();
+        });
+        
+        // Pause button
+        controls.pauseButton.addEventListener('click', () => {
+            isPaused = !isPaused;
+            controls.pauseButton.textContent = isPaused ? 'Play' : 'Pause';
+        });
+        
+        // Joke overlay close handlers
+        document.getElementById('joke-close').addEventListener('click', () => {
+            document.getElementById('joke-overlay').style.display = 'none';
+        });
+        
+        document.getElementById('joke-overlay').addEventListener('click', (e) => {
+            if (e.target === document.getElementById('joke-overlay')) {
+                document.getElementById('joke-overlay').style.display = 'none';
+            }
+        });
+        
+        // ============================================
+        // INITIALIZATION
+        // ============================================
+        
+        // Draw initial static graph
+        drawWaveform();
+        
+        // Start animation loop
+        requestAnimationFrame(animate);
+    </script>
+</body>
+</html>
