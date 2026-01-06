@@ -449,16 +449,6 @@
             animCtx.lineTo(centerX, height);
             animCtx.stroke();
             
-            // Draw amplitude guides
-            animCtx.strokeStyle = 'rgba(2, 136, 209, 0.3)';
-            animCtx.lineWidth = 1;
-            animCtx.beginPath();
-            animCtx.moveTo(centerX - amp - 8, centerY);
-            animCtx.lineTo(centerX - amp + 8, centerY);
-            animCtx.moveTo(centerX + amp - 8, centerY);
-            animCtx.lineTo(centerX + amp + 8, centerY);
-            animCtx.stroke();
-            
             // Draw wave trail if showWave is checked
             if (controls.showWave.checked) {
                 animCtx.strokeStyle = '#0288d1';
