@@ -292,10 +292,12 @@
             ctx.stroke();
             
             // Dust cap (curved arc in the middle)
+            ctx.fillStyle = 'black';
             ctx.beginPath();
             ctx.arc(-6, 0, 8, -Math.PI * 0.4, Math.PI * 0.4);
             ctx.closePath();
             ctx.fill();
+            ctx.stroke();
             
             ctx.restore();
         }
