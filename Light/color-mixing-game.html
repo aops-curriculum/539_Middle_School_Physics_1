@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Color Mixing Game</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body {
+      margin: 0;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      background-color: #f3f4f6;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <script>
+    const { useState, useEffect, useRef, useCallback } = React;
+
+    function Slider({ value, setValue, color, disabled }) {
+      const trackRef = useRef(null);
+      const [isDragging, setIsDragging] = useState(false);
+
+      const updateValue = useCallback((clientX) => {
+        if (disabled) return;
+        const track = trackRef.current;
+        if (!track) return;
+        const rect = track.getBoundingClientRect();
+        const x = clientX - rect.left;
+        const pct = Math.max(0, Math.min(1, x / rect.width));
+        setValue(Math.round(pct * 10) * 10);
+      }, [setValue, disabled]);
+
+      useEffect(() => {
+        if (!isDragging) return;
+
+        const handlePointerMove = (e) => {
+          e.preventDefault();
+          updateValue(e.clientX);
+        };
+
+        const handlePointerUp = () => {
+          setIsDragging(false);
+        };
+
+        window.addEventListener('pointermove', handlePointerMove);
+        window.addEventListener('pointerup', handlePointerUp);
+
+        return () => {
+          window.removeEventListener('pointermove', handlePointerMove);
+          window.removeEventListener('pointerup', handlePointerUp);
+        };
+      }, [isDragging, updateValue]);
+
+      const handlePointerDown = (e) => {
+        if (disabled) return;
+        e.preventDefault();
+        setIsDragging(true);
+        updateValue(e.clientX);
+      };
+
+      return React.createElement('div', { className: 'flex items-center gap-2' },
+        React.createElement('button', {
+          onClick: () => !disabled && setValue(Math.max(0, value - 10)),
+          disabled: disabled,
+          className: 'w-6 h-6 rounded bg-gray-300 hover:bg-gray-400 disabled:opacity-40 font-bold text-sm select-none'
+        }, '−'),
+        React.createElement('div', {
+          ref: trackRef,
+          onPointerDown: handlePointerDown,
+          className: `relative w-32 h-4 bg-gray-300 rounded select-none ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`,
+          style: { touchAction: 'none' }
+        },
+          React.createElement('div', {
+            className: 'absolute top-0 left-0 h-full rounded pointer-events-none',
+            style: { width: `${value}%`, backgroundColor: color }
+          }),
+          React.createElement('div', {
+            className: 'absolute top-1/2 -translate-y-1/2 w-4 h-4 bg-white rounded-full border-2 border-gray-600 shadow pointer-events-none',
+            style: { left: `calc(${value}% - 8px)` }
+          })
+        ),
+        React.createElement('button', {
+          onClick: () => !disabled && setValue(Math.min(100, value + 10)),
+          disabled: disabled,
+          className: 'w-6 h-6 rounded bg-gray-300 hover:bg-gray-400 disabled:opacity-40 font-bold text-sm select-none'
+        }, '+'),
+        React.createElement('span', { className: 'w-10 text-xs font-mono text-right' }, `${value}%`)
+      );
+    }
+
+    function ColorMixingGame() {
+      const targetColors = [
+        { r: 100, g: 0, b: 0 },
+        { r: 100, g: 100, b: 100 },
+        { r: 100, g: 100, b: 0 },
+        { r: 100, g: 50, b: 0 },
+        { r: 0, g: 0, b: 0 },
+        { r: 50, g: 50, b: 50 },
+        { r: 40, g: 20, b: 10 },
+        { r: 100, g: 70, b: 70 },
+      ];
+
+      const [red, setRed] = useState(50);
+      const [green, setGreen] = useState(50);
+      const [blue, setBlue] = useState(50);
+      const [round, setRound] = useState(0);
+      const [submitted, setSubmitted] = useState(false);
+      const [submittedAnswer, setSubmittedAnswer] = useState(null);
+      const [copied, setCopied] = useState(false);
+
+      const targetColor = targetColors[round];
+
+      const toRgb = (p) => Math.round(p * 2.55);
+      const userColor = `rgb(${toRgb(red)}, ${toRgb(green)}, ${toRgb(blue)})`;
+      const targetRgb = `rgb(${toRgb(targetColor.r)}, ${toRgb(targetColor.g)}, ${toRgb(targetColor.b)})`;
+
+      const handleSubmit = () => {
+        setSubmittedAnswer({ r: red, g: green, b: blue });
+        setSubmitted(true);
+      };
+
+      const handleNext = () => {
+        if (round < targetColors.length - 1) {
+          setRound(round + 1);
+          setRed(50);
+          setGreen(50);
+          setBlue(50);
+          setSubmitted(false);
+          setSubmittedAnswer(null);
+          setCopied(false);
+        }
+      };
+
+      const handleCopy = () => {
+        const text = `$(\\color{red}{${submittedAnswer.r}\\%},\\color{green}{${submittedAnswer.g}\\%},\\color{blue}{${submittedAnswer.b}\\%})$`;
+        navigator.clipboard.writeText(text);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 150);
+      };
+
+      const isLastRound = round >= targetColors.length - 1;
+
+      const answerText = submittedAnswer 
+        ? `$(\\color{red}{${submittedAnswer.r}\\%},\\color{green}{${submittedAnswer.g}\\%},\\color{blue}{${submittedAnswer.b}\\%})$`
+        : '';
+
+      return React.createElement('div', { 
+        className: 'w-[600px] h-[400px] bg-gray-100 flex flex-col items-center justify-center p-4 rounded-lg shadow-lg'
+      },
+        React.createElement('div', { className: 'flex items-center gap-8' },
+          // Round counter
+          React.createElement('div', { className: 'text-lg font-bold text-gray-600' },
+            `${round + 1}/${targetColors.length}`
+          ),
+          // Circle SVG
+          React.createElement('svg', { width: 180, height: 180, viewBox: '0 0 180 180' },
+            React.createElement('path', { d: 'M 90 10 A 80 80 0 0 0 90 170 L 90 90 Z', fill: targetRgb, stroke: '#374151', strokeWidth: 2 }),
+            React.createElement('path', { d: 'M 90 10 A 80 80 0 0 1 90 170 L 90 90 Z', fill: userColor, stroke: '#374151', strokeWidth: 2 }),
+            React.createElement('line', { x1: 90, y1: 10, x2: 90, y2: 170, stroke: '#374151', strokeWidth: 2 }),
+            React.createElement('rect', { x: 18, y: 82, width: 45, height: 18, rx: 3, fill: 'white', fillOpacity: 0.85 }),
+            React.createElement('rect', { x: 118, y: 82, width: 40, height: 18, rx: 3, fill: 'white', fillOpacity: 0.85 }),
+            React.createElement('text', { x: 40, y: 94, textAnchor: 'middle', fontSize: 12, fill: '#374151', fontWeight: 600 }, 'Target'),
+            React.createElement('text', { x: 138, y: 94, textAnchor: 'middle', fontSize: 12, fill: '#374151', fontWeight: 600 }, 'Yours')
+          ),
+          // Sliders
+          React.createElement('div', { className: 'flex flex-col gap-3' },
+            React.createElement('div', { className: 'flex items-center gap-2' },
+              React.createElement('span', { className: 'w-4 font-bold text-sm', style: { color: '#ef4444' } }, 'R'),
+              React.createElement(Slider, { value: red, setValue: setRed, color: '#ef4444', disabled: submitted })
+            ),
+            React.createElement('div', { className: 'flex items-center gap-2' },
+              React.createElement('span', { className: 'w-4 font-bold text-sm', style: { color: '#22c55e' } }, 'G'),
+              React.createElement(Slider, { value: green, setValue: setGreen, color: '#22c55e', disabled: submitted })
+            ),
+            React.createElement('div', { className: 'flex items-center gap-2' },
+              React.createElement('span', { className: 'w-4 font-bold text-sm', style: { color: '#3b82f6' } }, 'B'),
+              React.createElement(Slider, { value: blue, setValue: setBlue, color: '#3b82f6', disabled: submitted })
+            )
+          )
+        ),
+        // Bottom area
+        React.createElement('div', { className: 'flex items-center gap-4 mt-6' },
+          !submitted
+            ? React.createElement('button', {
+                onClick: handleSubmit,
+                className: 'px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-sm'
+              }, 'Submit')
+            : React.createElement(React.Fragment, null,
+                React.createElement('button', {
+                  onClick: handleNext,
+                  disabled: isLastRound,
+                  className: 'px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold rounded text-sm'
+                }, 'Next color'),
+                React.createElement('div', { className: 'flex items-center gap-2' },
+                  React.createElement('div', { className: 'text-sm text-center' },
+                    React.createElement('div', { className: 'text-gray-600' }, 'Your answer'),
+                    React.createElement('div', { className: 'text-gray-500 text-xs' }, '(AoPS Classroom format)'),
+                    React.createElement('span', { className: 'font-mono text-xs' }, answerText)
+                  ),
+                  React.createElement('button', {
+                    onClick: handleCopy,
+                    className: `px-2 py-1 rounded text-xs font-semibold transition-colors ${copied ? 'bg-gray-500 text-white' : 'bg-gray-300 hover:bg-gray-400'}`
+                  }, 'Copy')
+                )
+              )
+        )
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(React.createElement(ColorMixingGame));
+  </script>
+</body>
+</html>
