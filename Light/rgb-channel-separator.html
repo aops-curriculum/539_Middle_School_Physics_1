@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>RGB Channel Separator - Color Addition Experiment Tool</title>
+  <meta name="description" content="Separate images into RGB channels with distance-compensating scaling for color addition experiments using CD jewel case reflections.">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- React -->
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  
+  <!-- Babel for JSX transformation -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  
+  <style>
+    /* Custom range slider styling */
+    input[type="range"] {
+      -webkit-appearance: none;
+      appearance: none;
+      background: transparent;
+      cursor: pointer;
+    }
+    
+    input[type="range"]::-webkit-slider-runnable-track {
+      background: #374151;
+      height: 0.5rem;
+      border-radius: 0.25rem;
+    }
+    
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      background: #3b82f6;
+      height: 1.25rem;
+      width: 1.25rem;
+      border-radius: 50%;
+      margin-top: -0.375rem;
+    }
+    
+    input[type="range"]::-moz-range-track {
+      background: #374151;
+      height: 0.5rem;
+      border-radius: 0.25rem;
+    }
+    
+    input[type="range"]::-moz-range-thumb {
+      background: #3b82f6;
+      height: 1.25rem;
+      width: 1.25rem;
+      border-radius: 50%;
+      border: none;
+    }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  
+  <script type="text/babel">
+    const { useState, useRef, useEffect, useCallback } = React;
+
+    function RGBChannelSeparator() {
+      const [image, setImage] = useState(null);
+      const [imageData, setImageData] = useState(null);
+      const [totalWidthInches, setTotalWidthInches] = useState(10);
+      const [viewingDistanceInches, setViewingDistanceInches] = useState(12);
+      const [gapInches, setGapInches] = useState(0.25);
+      const [viewFromSide, setViewFromSide] = useState('red');
+      const [isDragging, setIsDragging] = useState(false);
+      const canvasRef = useRef(null);
+      const hiddenCanvasRef = useRef(null);
+      const dropZoneRef = useRef(null);
+
+      // Solve cubic equation to find the angular size parameter θ
+      const solveCubic = (d, g, T) => {
+        const f = (theta) => {
+          return d * Math.pow(theta, 3) + (3*d + g) * Math.pow(theta, 2) + 3*(d + g) * theta + (2*g - T);
+        };
+        
+        const fPrime = (theta) => {
+          return 3*d * Math.pow(theta, 2) + 2*(3*d + g) * theta + 3*(d + g);
+        };
+        
+        // Newton-Raphson method
+        let theta = 0.3;
+        for (let i = 0; i < 100; i++) {
+          const fVal = f(theta);
+          const fPrimeVal = fPrime(theta);
+          if (Math.abs(fPrimeVal) < 1e-12) break;
+          const newTheta = theta - fVal / fPrimeVal;
+          if (Math.abs(newTheta - theta) < 1e-12) break;
+          theta = newTheta;
+        }
+        
+        return theta > 0 ? theta : 0.001;
+      };
+
+      // Calculate channel widths in inches based on geometry
+      const calculateChannelWidths = useCallback(() => {
+        const d = viewingDistanceInches;
+        const g = gapInches;
+        const T = totalWidthInches;
+        
+        const theta = solveCubic(d, g, T);
+        
+        const W_closest = theta * d;
+        const W_middle = theta * d * (1 + theta) + theta * g;
+        const W_farthest = theta * d * Math.pow(1 + theta, 2) + theta * g * (theta + 2);
+        
+        if (viewFromSide === 'red') {
+          return { red: W_closest, green: W_middle, blue: W_farthest };
+        } else {
+          return { red: W_farthest, green: W_middle, blue: W_closest };
+        }
+      }, [viewingDistanceInches, gapInches, totalWidthInches, viewFromSide]);
+
+      const loadImageFromFile = (file) => {
+        if (file && file.type.startsWith('image/')) {
+          const reader = new FileReader();
+          reader.onload = (event) => {
+            const img = new Image();
+            img.onload = () => {
+              setImage(img);
+              extractImageData(img);
+            };
+            img.src = event.target.result;
+          };
+          reader.readAsDataURL(file);
+        }
+      };
+
+      const handleImageUpload = (e) => {
+        const file = e.target.files[0];
+        loadImageFromFile(file);
+      };
+
+      const handleDragOver = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(true);
+      };
+
+      const handleDragLeave = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+      };
+
+      const handleDrop = (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsDragging(false);
+        
+        const file = e.dataTransfer.files[0];
+        loadImageFromFile(file);
+      };
+
+      useEffect(() => {
+        const handlePaste = (e) => {
+          const items = e.clipboardData?.items;
+          if (!items) return;
+          
+          for (let i = 0; i < items.length; i++) {
+            if (items[i].type.startsWith('image/')) {
+              const file = items[i].getAsFile();
+              loadImageFromFile(file);
+              break;
+            }
+          }
+        };
+
+        window.addEventListener('paste', handlePaste);
+        return () => window.removeEventListener('paste', handlePaste);
+      }, []);
+
+      const extractImageData = (img) => {
+        const canvas = hiddenCanvasRef.current;
+        const ctx = canvas.getContext('2d');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        ctx.drawImage(img, 0, 0);
+        const data = ctx.getImageData(0, 0, img.width, img.height);
+        setImageData(data);
+      };
+
+      const renderChannels = useCallback(() => {
+        if (!imageData || !canvasRef.current) return;
+
+        const canvas = canvasRef.current;
+        const ctx = canvas.getContext('2d');
+        
+        const origWidth = imageData.width;
+        const origHeight = imageData.height;
+        
+        const widths = calculateChannelWidths();
+        
+        const basePixelWidth = origWidth;
+        const pixelsPerInch = basePixelWidth / widths.red;
+        
+        const redWidth = Math.round(widths.red * pixelsPerInch);
+        const greenWidth = Math.round(widths.green * pixelsPerInch);
+        const blueWidth = Math.round(widths.blue * pixelsPerInch);
+        const gapPixels = Math.round(gapInches * pixelsPerInch);
+        
+        const aspectRatio = origHeight / origWidth;
+        const redHeight = Math.round(redWidth * aspectRatio);
+        const greenHeight = Math.round(greenWidth * aspectRatio);
+        const blueHeight = Math.round(blueWidth * aspectRatio);
+        
+        const totalWidth = redWidth + greenWidth + blueWidth + gapPixels * 2;
+        const maxHeight = Math.max(redHeight, greenHeight, blueHeight);
+        
+        canvas.width = totalWidth;
+        canvas.height = maxHeight;
+        
+        ctx.fillStyle = 'white';
+        ctx.fillRect(0, 0, totalWidth, maxHeight);
+        
+        const createChannelCanvas = (channelIndex) => {
+          const tempCanvas = document.createElement('canvas');
+          const tempCtx = tempCanvas.getContext('2d');
+          tempCanvas.width = origWidth;
+          tempCanvas.height = origHeight;
+          
+          const newImageData = tempCtx.createImageData(origWidth, origHeight);
+          const srcData = imageData.data;
+          const dstData = newImageData.data;
+          
+          for (let i = 0; i < srcData.length; i += 4) {
+            if (channelIndex === 0) {
+              dstData[i] = srcData[i];
+              dstData[i + 1] = 0;
+              dstData[i + 2] = 0;
+            } else if (channelIndex === 1) {
+              dstData[i] = 0;
+              dstData[i + 1] = srcData[i + 1];
+              dstData[i + 2] = 0;
+            } else {
+              dstData[i] = 0;
+              dstData[i + 1] = 0;
+              dstData[i + 2] = srcData[i + 2];
+            }
+            dstData[i + 3] = 255;
+          }
+          
+          tempCtx.putImageData(newImageData, 0, 0);
+          return tempCanvas;
+        };
+        
+        const redCanvas = createChannelCanvas(0);
+        const greenCanvas = createChannelCanvas(1);
+        const blueCanvas = createChannelCanvas(2);
+        
+        const redY = (maxHeight - redHeight) / 2;
+        ctx.drawImage(redCanvas, 0, redY, redWidth, redHeight);
+        
+        const greenX = redWidth + gapPixels;
+        const greenY = (maxHeight - greenHeight) / 2;
+        ctx.drawImage(greenCanvas, greenX, greenY, greenWidth, greenHeight);
+        
+        const blueX = redWidth + greenWidth + gapPixels * 2;
+        const blueY = (maxHeight - blueHeight) / 2;
+        ctx.drawImage(blueCanvas, blueX, blueY, blueWidth, blueHeight);
+        
+      }, [imageData, calculateChannelWidths, gapInches]);
+
+      useEffect(() => {
+        renderChannels();
+      }, [renderChannels]);
+
+      const handleFullscreen = () => {
+        if (canvasRef.current) {
+          if (canvasRef.current.requestFullscreen) {
+            canvasRef.current.requestFullscreen();
+          } else if (canvasRef.current.webkitRequestFullscreen) {
+            canvasRef.current.webkitRequestFullscreen();
+          }
+        }
+      };
+
+      const handleDownload = () => {
+        if (canvasRef.current) {
+          const link = document.createElement('a');
+          link.download = 'rgb-channels.png';
+          link.href = canvasRef.current.toDataURL('image/png');
+          link.click();
+        }
+      };
+
+      const widths = calculateChannelWidths();
+
+      return (
+        <div className="min-h-screen bg-gray-900 text-white p-6">
+          <div className="max-w-6xl mx-auto">
+            <h1 className="text-2xl font-bold mb-2">RGB Channel Separator</h1>
+            <p className="text-gray-400 mb-6">For color addition experiments with CD jewel case reflections</p>
+            
+            <div 
+              ref={dropZoneRef}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onDrop={handleDrop}
+              className={`mb-6 p-8 rounded-lg border-2 border-dashed transition-colors cursor-pointer ${
+                isDragging 
+                  ? 'border-blue-500 bg-blue-500/20' 
+                  : 'border-gray-600 bg-gray-800 hover:border-gray-500'
+              }`}
+            >
+              <div className="text-center">
+                <div className="text-4xl mb-3">📷</div>
+                <p className="font-medium mb-2">Drop an image here, or paste from clipboard</p>
+                <p className="text-gray-400 text-sm mb-4">Ctrl+V / Cmd+V to paste</p>
+                <label className="inline-block px-4 py-2 bg-blue-600 hover:bg-blue-700 rounded cursor-pointer transition-colors">
+                  Or choose a file
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={handleImageUpload}
+                    className="hidden"
+                  />
+                </label>
+              </div>
+            </div>
+
+            <div className="mb-6 p-4 bg-gray-800 rounded-lg space-y-4">
+              <div>
+                <label className="block mb-2 font-medium">
+                  Total Printed Width: {totalWidthInches.toFixed(1)} inches
+                </label>
+                <input
+                  type="range"
+                  min="4"
+                  max="24"
+                  step="0.1"
+                  value={totalWidthInches}
+                  onChange={(e) => setTotalWidthInches(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block mb-2 font-medium">
+                  Viewing Distance (to closest channel): {viewingDistanceInches.toFixed(1)} inches
+                </label>
+                <input
+                  type="range"
+                  min="4"
+                  max="48"
+                  step="0.5"
+                  value={viewingDistanceInches}
+                  onChange={(e) => setViewingDistanceInches(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+              
+              <div>
+                <label className="block mb-2 font-medium">
+                  Gap Width: {gapInches.toFixed(2)} inches
+                </label>
+                <input
+                  type="range"
+                  min="0"
+                  max="1"
+                  step="0.01"
+                  value={gapInches}
+                  onChange={(e) => setGapInches(parseFloat(e.target.value))}
+                  className="w-full"
+                />
+              </div>
+
+              <div>
+                <label className="block mb-2 font-medium">Viewing Position</label>
+                <div className="flex flex-wrap gap-4">
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="viewSide"
+                      value="red"
+                      checked={viewFromSide === 'red'}
+                      onChange={(e) => setViewFromSide(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span>From red side (blue largest)</span>
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer">
+                    <input
+                      type="radio"
+                      name="viewSide"
+                      value="blue"
+                      checked={viewFromSide === 'blue'}
+                      onChange={(e) => setViewFromSide(e.target.value)}
+                      className="w-4 h-4"
+                    />
+                    <span>From blue side (red largest)</span>
+                  </label>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-gray-700">
+                <p className="text-sm text-gray-400 mb-1">Calculated channel widths:</p>
+                <div className="flex justify-between text-sm">
+                  <span className="text-red-400">Red: {widths.red.toFixed(2)}"</span>
+                  <span className="text-green-400">Green: {widths.green.toFixed(2)}"</span>
+                  <span className="text-blue-400">Blue: {widths.blue.toFixed(2)}"</span>
+                </div>
+              </div>
+            </div>
+
+            {imageData && (
+              <div className="mb-4 flex flex-wrap gap-4 items-center">
+                <button
+                  onClick={handleFullscreen}
+                  className="px-4 py-2 bg-green-600 hover:bg-green-700 rounded font-medium transition-colors"
+                >
+                  Go Fullscreen
+                </button>
+                <button
+                  onClick={handleDownload}
+                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 rounded font-medium transition-colors"
+                >
+                  Download PNG
+                </button>
+                <span className="text-gray-400 text-sm">
+                  Original: {imageData.width} × {imageData.height}px
+                </span>
+              </div>
+            )}
+
+            <div className="bg-white p-2 rounded-lg overflow-auto">
+              <canvas
+                ref={canvasRef}
+                className="max-w-full"
+                style={{ imageRendering: 'auto' }}
+              />
+            </div>
+            
+            <canvas ref={hiddenCanvasRef} className="hidden" />
+            
+            {!imageData && (
+              <div className="text-center py-20 text-gray-500">
+                Upload an image to see the RGB channel separation
+              </div>
+            )}
+
+            <div className="mt-6 p-4 bg-gray-800 rounded-lg text-sm text-gray-400">
+              <h3 className="font-medium text-white mb-2">How to use:</h3>
+              <ol className="list-decimal list-inside space-y-1">
+                <li>Upload your image (drag, paste, or click to select)</li>
+                <li>Set the total width you want when printed</li>
+                <li>Estimate your viewing distance from the closest channel</li>
+                <li>Choose which side you'll be viewing from</li>
+                <li>Download the PNG and print at the specified total width</li>
+                <li>Position three CD jewel cases at 45° angles next to each channel</li>
+                <li>Move to the side and view the reflections overlapping</li>
+                <li>Fine-tune the viewing distance slider until the images align</li>
+              </ol>
+              <p className="mt-3 text-xs">
+                The geometry: each channel is sized so that its angular size from your 
+                viewing position matches the others, compensating for the different distances.
+              </p>
+            </div>
+
+            <div className="mt-4 text-center text-xs text-gray-600">
+              All processing happens in your browser. No images are uploaded to any server.
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<RGBChannelSeparator />);
+  </script>
+</body>
+</html>
