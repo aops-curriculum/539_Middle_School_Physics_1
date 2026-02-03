@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Middle School Physics Simulations</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 40px 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            color: white;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.2);
+        }
+
+        .subtitle {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .category {
+            margin-bottom: 40px;
+        }
+
+        .category-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid rgba(255,255,255,0.3);
+        }
+
+        .category-icon {
+            font-size: 2rem;
+        }
+
+        .category-title {
+            color: white;
+            font-size: 1.5rem;
+            font-weight: 600;
+        }
+
+        .simulations-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+        }
+
+        .simulation-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            transition: transform 0.2s, box-shadow 0.2s;
+            text-decoration: none;
+            color: inherit;
+            display: block;
+        }
+
+        .simulation-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0,0,0,0.15);
+        }
+
+        .card-preview {
+            height: 120px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+        }
+
+        .card-preview.light { background: linear-gradient(135deg, #fff9c4 0%, #ffeb3b 100%); }
+        .card-preview.sound { background: linear-gradient(135deg, #b3e5fc 0%, #03a9f4 100%); }
+        .card-preview.random { background: linear-gradient(135deg, #c8e6c9 0%, #4caf50 100%); }
+        .card-preview.other { background: linear-gradient(135deg, #e1bee7 0%, #9c27b0 100%); }
+
+        .card-content {
+            padding: 15px;
+        }
+
+        .card-title {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 8px;
+        }
+
+        .card-description {
+            font-size: 0.85rem;
+            color: #666;
+            line-height: 1.4;
+        }
+
+        .card-path {
+            font-size: 0.75rem;
+            color: #999;
+            margin-top: 8px;
+            font-family: monospace;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            color: rgba(255,255,255,0.7);
+            font-size: 0.9rem;
+        }
+
+        @media (max-width: 600px) {
+            h1 { font-size: 1.8rem; }
+            .category-title { font-size: 1.2rem; }
+            body { padding: 20px 15px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🔬 Middle School Physics Simulations</h1>
+            <p class="subtitle">Interactive physics demonstrations for Course 539</p>
+        </header>
+
+        <!-- Light & Optics -->
+        <section class="category">
+            <div class="category-header">
+                <span class="category-icon">💡</span>
+                <h2 class="category-title">Light & Optics</h2>
+            </div>
+            <div class="simulations-grid">
+                <a href="Light/color-mixer.html" class="simulation-card">
+                    <div class="card-preview light">🎨</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Color Mixer</h3>
+                        <p class="card-description">Mix RGB light sources to explore additive color mixing.</p>
+                    </div>
+                </a>
+
+                <a href="Light/color-mixing-game.html" class="simulation-card">
+                    <div class="card-preview light">🎮</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Color Mixing Game</h3>
+                        <p class="card-description">Test your color mixing skills in this interactive game.</p>
+                    </div>
+                </a>
+
+                <a href="Light/rgb-channel-separator.html" class="simulation-card">
+                    <div class="card-preview light">📷</div>
+                    <div class="card-content">
+                        <h3 class="card-title">RGB Channel Separator</h3>
+                        <p class="card-description">Separate images into red, green, and blue channels to understand color addition.</p>
+                    </div>
+                </a>
+
+                <a href="Light/fire_tower.html" class="simulation-card">
+                    <div class="card-preview light">🗼</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Fire Tower</h3>
+                        <p class="card-description">Interactive fire tower simulation exploring light and visibility.</p>
+                    </div>
+                </a>
+
+                <a href="Light/shadow_puppet.html" class="simulation-card">
+                    <div class="card-preview light">🎭</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Shadow Puppet Show</h3>
+                        <p class="card-description">Create shadow puppets and explore how shadows form.</p>
+                    </div>
+                </a>
+
+                <a href="Light/table_shadow.html" class="simulation-card">
+                    <div class="card-preview light">🪑</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Shadow Demonstration</h3>
+                        <p class="card-description">Explore how shadows change with light position.</p>
+                    </div>
+                </a>
+
+                <a href="Light/table_shadow2.html" class="simulation-card">
+                    <div class="card-preview light">💡</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Shadow Demonstration - Point Light</h3>
+                        <p class="card-description">See how point light sources create different shadow effects.</p>
+                    </div>
+                </a>
+
+                <a href="Light/table/table_shadow.html" class="simulation-card">
+                    <div class="card-preview light">📐</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Table Shadow Analysis</h3>
+                        <p class="card-description">Analyze shadow geometry with adjustable lines and intersections.</p>
+                    </div>
+                </a>
+
+                <a href="Light/TracingPaper.html" class="simulation-card">
+                    <div class="card-preview light">✏️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Light Ray Simulation</h3>
+                        <p class="card-description">Trace light rays through different media and surfaces.</p>
+                    </div>
+                </a>
+
+                <a href="Light/sun_rays1.html" class="simulation-card">
+                    <div class="card-preview light">☀️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sun Rays and Block Tower 1</h3>
+                        <p class="card-description">Explore how sunlight creates shadows with block structures.</p>
+                    </div>
+                </a>
+
+                <a href="Light/sun_rays2.html" class="simulation-card">
+                    <div class="card-preview light">☀️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sun Rays and Block Tower 2</h3>
+                        <p class="card-description">Extended sun ray simulation with different configurations.</p>
+                    </div>
+                </a>
+
+                <a href="Light/sun_rays3.html" class="simulation-card">
+                    <div class="card-preview light">☀️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sun Rays and Block Tower 3</h3>
+                        <p class="card-description">Advanced sun ray and shadow exploration.</p>
+                    </div>
+                </a>
+
+                <a href="Light/sun_rays4.html" class="simulation-card">
+                    <div class="card-preview light">☀️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sun Rays and Block Tower 4</h3>
+                        <p class="card-description">Final variation of sun ray shadow demonstrations.</p>
+                    </div>
+                </a>
+
+                <a href="Light/SunBigger.html" class="simulation-card">
+                    <div class="card-preview light">🌞</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sun Getting Larger</h3>
+                        <p class="card-description">Visualize what happens as the Sun's apparent size changes.</p>
+                    </div>
+                </a>
+
+                <a href="Light/MoonFurther2.html" class="simulation-card">
+                    <div class="card-preview light">🌙</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Moon Getting Farther</h3>
+                        <p class="card-description">Explore how the Moon's distance affects its appearance.</p>
+                    </div>
+                </a>
+            </div>
+        </section>
+
+        <!-- Sound & Waves -->
+        <section class="category">
+            <div class="category-header">
+                <span class="category-icon">🔊</span>
+                <h2 class="category-title">Sound & Waves</h2>
+            </div>
+            <div class="simulations-grid">
+                <a href="Sound/pluck_string.html" class="simulation-card">
+                    <div class="card-preview sound">🎸</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Loaded String Simulation</h3>
+                        <p class="card-description">Pluck a virtual string and observe wave motion.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/pluck_string-graph-with-timer.html" class="simulation-card">
+                    <div class="card-preview sound">📊</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Loaded String with Graph</h3>
+                        <p class="card-description">String simulation with real-time position graph and timer.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/pluck_string-graph-with-timer-separated.html" class="simulation-card">
+                    <div class="card-preview sound">📈</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Loaded String - Separated View</h3>
+                        <p class="card-description">String simulation with separated graph display.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/Source-Medium-Receiver.html" class="simulation-card">
+                    <div class="card-preview sound">📡</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sound Wave Propagation</h3>
+                        <p class="card-description">Visualize how sound travels from source through medium to receiver.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/Sound_Measurement.html" class="simulation-card">
+                    <div class="card-preview sound">🎤</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sound Visualizer</h3>
+                        <p class="card-description">Capture and visualize sound waves from your microphone.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/Displacement-Time-Graph-Single.html" class="simulation-card">
+                    <div class="card-preview sound">〰️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Vibration Position vs Time</h3>
+                        <p class="card-description">Graph displacement over time for a single vibrating point.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/vibration-position-time-canvas.html" class="simulation-card">
+                    <div class="card-preview sound">〰️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Vibration Position-Time (Canvas)</h3>
+                        <p class="card-description">Canvas-based vibration visualization.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/Combine_Two_Waves.html" class="simulation-card">
+                    <div class="card-preview sound">🔀</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Combined Waves</h3>
+                        <p class="card-description">See what happens when two waves combine together.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/waves_meet.html" class="simulation-card">
+                    <div class="card-preview sound">🤝</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Wave Superposition</h3>
+                        <p class="card-description">Explore constructive and destructive interference when waves meet.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/wave-beating-adjustable.html" class="simulation-card">
+                    <div class="card-preview sound">💓</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Wave Beating (Adjustable)</h3>
+                        <p class="card-description">Adjust frequencies to explore the beating phenomenon.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/wave-beating-on-off.html" class="simulation-card">
+                    <div class="card-preview sound">🔛</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Wave Beating (On/Off)</h3>
+                        <p class="card-description">Toggle waves on and off to observe beating effects.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/test%20single-wave-sim.html" class="simulation-card">
+                    <div class="card-preview sound">📉</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Displacement vs Time Waveform</h3>
+                        <p class="card-description">Single wave displacement-time simulation.</p>
+                    </div>
+                </a>
+
+                <a href="Sound/test%20Wave_Simulation.html" class="simulation-card">
+                    <div class="card-preview sound">🌊</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Sound Wave Simulation</h3>
+                        <p class="card-description">General sound wave simulation and visualization.</p>
+                    </div>
+                </a>
+
+                <a href="two-microphones/index.html" class="simulation-card">
+                    <div class="card-preview sound">🎙️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Two Microphones</h3>
+                        <p class="card-description">Compare sound detection with two microphone positions.</p>
+                    </div>
+                </a>
+
+                <a href="Newton-Speed-of-Sound-Measurement.html" class="simulation-card">
+                    <div class="card-preview sound">⏱️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Speed of Sound Measurement</h3>
+                        <p class="card-description">Newton's method for measuring the speed of sound.</p>
+                    </div>
+                </a>
+            </div>
+        </section>
+
+        <!-- Random Walk -->
+        <section class="category">
+            <div class="category-header">
+                <span class="category-icon">🎲</span>
+                <h2 class="category-title">Random Walk & Probability</h2>
+            </div>
+            <div class="simulations-grid">
+                <a href="random-walk-mode1.html" class="simulation-card">
+                    <div class="card-preview random">🚶</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Random Walk - Basic</h3>
+                        <p class="card-description">Simple random walk simulation to explore probabilistic motion.</p>
+                    </div>
+                </a>
+
+                <a href="random-walk-mode2.html" class="simulation-card">
+                    <div class="card-preview random">🎛️</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Random Walk - Interactive</h3>
+                        <p class="card-description">Interactive random walk with adjustable parameters.</p>
+                    </div>
+                </a>
+
+                <a href="random-walk-mode3.html" class="simulation-card">
+                    <div class="card-preview random">⏳</div>
+                    <div class="card-content">
+                        <h3 class="card-title">Random Walk - Time-Limited</h3>
+                        <p class="card-description">Run time-limited random walk experiments and analyze results.</p>
+                    </div>
+                </a>
+            </div>
+        </section>
+
+        <footer>
+            <p>AoPS Curriculum &bull; Middle School Physics Course 539</p>
+        </footer>
+    </div>
+</body>
+</html>
