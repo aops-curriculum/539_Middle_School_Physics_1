@@ -21,21 +21,20 @@
 <body>
   <div id="root"></div>
   <script>
-    const { useState, useEffect, useRef, useCallback } = React;
+    const { useState, useEffect, useCallback } = React;
 
-    function Slider({ value, setValue, color, disabled }) {
-      const trackRef = useRef(null);
+    function Slider({ value, setValue, color }) {
+      const trackRef = React.useRef(null);
       const [isDragging, setIsDragging] = useState(false);
 
       const updateValue = useCallback((clientX) => {
-        if (disabled) return;
         const track = trackRef.current;
         if (!track) return;
         const rect = track.getBoundingClientRect();
         const x = clientX - rect.left;
         const pct = Math.max(0, Math.min(1, x / rect.width));
         setValue(Math.round(pct * 10) * 10);
-      }, [setValue, disabled]);
+      }, [setValue]);
 
       useEffect(() => {
         if (!isDragging) return;
@@ -59,7 +58,6 @@
       }, [isDragging, updateValue]);
 
       const handlePointerDown = (e) => {
-        if (disabled) return;
         e.preventDefault();
         setIsDragging(true);
         updateValue(e.clientX);
@@ -67,14 +65,13 @@
 
       return React.createElement('div', { className: 'flex items-center gap-2' },
         React.createElement('button', {
-          onClick: () => !disabled && setValue(Math.max(0, value - 10)),
-          disabled: disabled,
-          className: 'w-6 h-6 rounded bg-gray-300 hover:bg-gray-400 disabled:opacity-40 font-bold text-sm select-none'
+          onClick: () => setValue(Math.max(0, value - 10)),
+          className: 'w-6 h-6 rounded bg-gray-300 hover:bg-gray-400 font-bold text-sm select-none'
         }, '−'),
         React.createElement('div', {
           ref: trackRef,
           onPointerDown: handlePointerDown,
-          className: `relative w-32 h-4 bg-gray-300 rounded select-none ${disabled ? 'opacity-40 cursor-not-allowed' : 'cursor-pointer'}`,
+          className: 'relative w-32 h-4 bg-gray-300 rounded select-none cursor-pointer',
           style: { touchAction: 'none' }
         },
           React.createElement('div', {
@@ -87,9 +84,8 @@
           })
         ),
         React.createElement('button', {
-          onClick: () => !disabled && setValue(Math.min(100, value + 10)),
-          disabled: disabled,
-          className: 'w-6 h-6 rounded bg-gray-300 hover:bg-gray-400 disabled:opacity-40 font-bold text-sm select-none'
+          onClick: () => setValue(Math.min(100, value + 10)),
+          className: 'w-6 h-6 rounded bg-gray-300 hover:bg-gray-400 font-bold text-sm select-none'
         }, '+'),
         React.createElement('span', { className: 'w-10 text-xs font-mono text-right' }, `${value}%`)
       );
@@ -111,85 +107,12 @@
       const [green, setGreen] = useState(50);
       const [blue, setBlue] = useState(50);
       const [round, setRound] = useState(0);
-      const [submitted, setSubmitted] = useState(false);
-      const [submittedAnswer, setSubmittedAnswer] = useState(null);
-      const [copied, setCopied] = useState(false);
 
       const targetColor = targetColors[round];
 
       const toRgb = (p) => Math.round(p * 2.55);
       const userColor = `rgb(${toRgb(red)}, ${toRgb(green)}, ${toRgb(blue)})`;
       const targetRgb = `rgb(${toRgb(targetColor.r)}, ${toRgb(targetColor.g)}, ${toRgb(targetColor.b)})`;
-
-      const handleSubmit = () => {
-        setSubmittedAnswer({ r: red, g: green, b: blue });
-        setSubmitted(true);
-      };
-
-      const handleNext = () => {
-        if (round < targetColors.length - 1) {
-          setRound(round + 1);
-          setRed(50);
-          setGreen(50);
-          setBlue(50);
-          setSubmitted(false);
-          setSubmittedAnswer(null);
-          setCopied(false);
-          setCopyFailed(false);
-        }
-      };
-
-      const [copyFailed, setCopyFailed] = useState(false);
-      const inputRef = useRef(null);
-
-      const handleCopy = async () => {
-        const text = `$(\\color{red}{${submittedAnswer.r}\\%},\\color{green}{${submittedAnswer.g}\\%},\\color{blue}{${submittedAnswer.b}\\%})$`;
-
-        // Try modern clipboard API first
-        if (navigator.clipboard && navigator.clipboard.writeText) {
-          try {
-            await navigator.clipboard.writeText(text);
-            setCopied(true);
-            setTimeout(() => setCopied(false), 150);
-            return;
-          } catch (err) {
-            // Fall through to fallback
-          }
-        }
-
-        // Fallback: execCommand('copy')
-        try {
-          const textarea = document.createElement('textarea');
-          textarea.value = text;
-          textarea.style.position = 'fixed';
-          textarea.style.opacity = '0';
-          document.body.appendChild(textarea);
-          textarea.select();
-          const success = document.execCommand('copy');
-          document.body.removeChild(textarea);
-          if (success) {
-            setCopied(true);
-            setTimeout(() => setCopied(false), 150);
-            return;
-          }
-        } catch (err) {
-          // Fall through to manual selection
-        }
-
-        // Both methods failed - show input for manual copy
-        setCopyFailed(true);
-        setTimeout(() => {
-          if (inputRef.current) {
-            inputRef.current.select();
-          }
-        }, 10);
-      };
-
-      const isLastRound = round >= targetColors.length - 1;
-
-      const answerText = submittedAnswer 
-        ? `$(\\color{red}{${submittedAnswer.r}\\%},\\color{green}{${submittedAnswer.g}\\%},\\color{blue}{${submittedAnswer.b}\\%})$`
-        : '';
 
       return React.createElement('div', { 
         className: 'w-[600px] h-[400px] bg-gray-100 flex flex-col items-center justify-center p-4 rounded-lg shadow-lg'
@@ -206,10 +129,6 @@
                 setRed(50);
                 setGreen(50);
                 setBlue(50);
-                setSubmitted(false);
-                setSubmittedAnswer(null);
-                setCopied(false);
-                setCopyFailed(false);
               },
               className: 'px-2 py-1 text-lg font-bold text-gray-600 bg-white border border-gray-300 rounded cursor-pointer hover:border-gray-400'
             },
@@ -232,52 +151,17 @@
           React.createElement('div', { className: 'flex flex-col gap-3' },
             React.createElement('div', { className: 'flex items-center gap-2' },
               React.createElement('span', { className: 'w-4 font-bold text-sm', style: { color: '#ef4444' } }, 'R'),
-              React.createElement(Slider, { value: red, setValue: setRed, color: '#ef4444', disabled: submitted })
+              React.createElement(Slider, { value: red, setValue: setRed, color: '#ef4444' })
             ),
             React.createElement('div', { className: 'flex items-center gap-2' },
               React.createElement('span', { className: 'w-4 font-bold text-sm', style: { color: '#22c55e' } }, 'G'),
-              React.createElement(Slider, { value: green, setValue: setGreen, color: '#22c55e', disabled: submitted })
+              React.createElement(Slider, { value: green, setValue: setGreen, color: '#22c55e' })
             ),
             React.createElement('div', { className: 'flex items-center gap-2' },
               React.createElement('span', { className: 'w-4 font-bold text-sm', style: { color: '#3b82f6' } }, 'B'),
-              React.createElement(Slider, { value: blue, setValue: setBlue, color: '#3b82f6', disabled: submitted })
+              React.createElement(Slider, { value: blue, setValue: setBlue, color: '#3b82f6' })
             )
           )
-        ),
-        // Bottom area
-        React.createElement('div', { className: 'flex items-center gap-4 mt-6' },
-          !submitted
-            ? React.createElement('button', {
-                onClick: handleSubmit,
-                className: 'px-6 py-2 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded text-sm'
-              }, 'Submit')
-            : React.createElement(React.Fragment, null,
-                React.createElement('button', {
-                  onClick: handleNext,
-                  disabled: isLastRound,
-                  className: 'px-6 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-gray-400 text-white font-bold rounded text-sm'
-                }, 'Next color'),
-                React.createElement('div', { className: 'flex items-center gap-2' },
-                  React.createElement('div', { className: 'text-sm text-center' },
-                    React.createElement('div', { className: 'text-gray-600' }, 'Your answer'),
-                    React.createElement('div', { className: 'text-gray-500 text-xs' }, '(AoPS Classroom format)'),
-                    copyFailed
-                      ? React.createElement('input', {
-                          ref: inputRef,
-                          type: 'text',
-                          readOnly: true,
-                          value: answerText,
-                          className: 'font-mono text-xs w-48 px-1 py-0.5 border border-blue-400 rounded bg-blue-50 text-center',
-                          onClick: (e) => e.target.select()
-                        })
-                      : React.createElement('span', { className: 'font-mono text-xs' }, answerText)
-                  ),
-                  !copyFailed && React.createElement('button', {
-                    onClick: handleCopy,
-                    className: `px-2 py-1 rounded text-xs font-semibold transition-colors ${copied ? 'bg-gray-500 text-white' : 'bg-gray-300 hover:bg-gray-400'}`
-                  }, 'Copy')
-                )
-              )
         )
       );
     }
