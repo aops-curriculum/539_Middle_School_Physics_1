@@ -1,0 +1,12 @@
+{
+  "name": "539-middle-school-physics",
+  "version": "1.0.0",
+  "description": "Middle School Physics Simulations - Auto-generated index",
+  "scripts": {
+    "generate-index": "node scripts/generate-index.js",
+    "update-screenshots": "node scripts/generate-index.js --screenshots-only"
+  },
+  "devDependencies": {
+    "playwright": "^1.40.0"
+  }
+}

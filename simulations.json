@@ -1,0 +1,261 @@
+{
+  "categories": [
+    {
+      "id": "light",
+      "title": "Light & Optics",
+      "icon": "💡",
+      "cardStyle": "light"
+    },
+    {
+      "id": "sound",
+      "title": "Sound & Waves",
+      "icon": "🔊",
+      "cardStyle": "sound"
+    },
+    {
+      "id": "random",
+      "title": "Random Walk & Probability",
+      "icon": "🎲",
+      "cardStyle": "random"
+    },
+    {
+      "id": "other",
+      "title": "Other Simulations",
+      "icon": "🔬",
+      "cardStyle": "other"
+    }
+  ],
+  "simulations": [
+    {
+      "path": "Light/color-mixer.html",
+      "title": "Color Mixer",
+      "description": "Mix RGB light sources to explore additive color mixing.",
+      "emoji": "🎨",
+      "category": "light"
+    },
+    {
+      "path": "Light/color-mixing-game.html",
+      "title": "Color Mixing Game",
+      "description": "Test your color mixing skills in this interactive game.",
+      "emoji": "🎮",
+      "category": "light"
+    },
+    {
+      "path": "Light/rgb-channel-separator.html",
+      "title": "RGB Channel Separator",
+      "description": "Separate images into red, green, and blue channels to understand color addition.",
+      "emoji": "📷",
+      "category": "light"
+    },
+    {
+      "path": "Light/fire_tower.html",
+      "title": "Fire Tower",
+      "description": "Interactive fire tower simulation exploring light and visibility.",
+      "emoji": "🗼",
+      "category": "light"
+    },
+    {
+      "path": "Light/shadow_puppet.html",
+      "title": "Shadow Puppet Show",
+      "description": "Create shadow puppets and explore how shadows form.",
+      "emoji": "🎭",
+      "category": "light"
+    },
+    {
+      "path": "Light/table_shadow.html",
+      "title": "Shadow Demonstration",
+      "description": "Explore how shadows change with light position.",
+      "emoji": "🪑",
+      "category": "light"
+    },
+    {
+      "path": "Light/table_shadow2.html",
+      "title": "Shadow Demonstration - Point Light",
+      "description": "See how point light sources create different shadow effects.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/table/table_shadow.html",
+      "title": "Table Shadow Analysis",
+      "description": "Analyze shadow geometry with adjustable lines and intersections.",
+      "emoji": "📐",
+      "category": "light"
+    },
+    {
+      "path": "Light/TracingPaper.html",
+      "title": "Light Ray Simulation",
+      "description": "Trace light rays through different media and surfaces.",
+      "emoji": "✏️",
+      "category": "light"
+    },
+    {
+      "path": "Light/sun_rays1.html",
+      "title": "Sun Rays and Block Tower 1",
+      "description": "Explore how sunlight creates shadows with block structures.",
+      "emoji": "☀️",
+      "category": "light"
+    },
+    {
+      "path": "Light/sun_rays2.html",
+      "title": "Sun Rays and Block Tower 2",
+      "description": "Extended sun ray simulation with different configurations.",
+      "emoji": "☀️",
+      "category": "light"
+    },
+    {
+      "path": "Light/sun_rays3.html",
+      "title": "Sun Rays and Block Tower 3",
+      "description": "Advanced sun ray and shadow exploration.",
+      "emoji": "☀️",
+      "category": "light"
+    },
+    {
+      "path": "Light/sun_rays4.html",
+      "title": "Sun Rays and Block Tower 4",
+      "description": "Final variation of sun ray shadow demonstrations.",
+      "emoji": "☀️",
+      "category": "light"
+    },
+    {
+      "path": "Light/SunBigger.html",
+      "title": "Sun Getting Larger",
+      "description": "Visualize what happens as the Sun's apparent size changes.",
+      "emoji": "🌞",
+      "category": "light"
+    },
+    {
+      "path": "Light/MoonFurther2.html",
+      "title": "Moon Getting Farther",
+      "description": "Explore how the Moon's distance affects its appearance.",
+      "emoji": "🌙",
+      "category": "light"
+    },
+    {
+      "path": "Sound/pluck_string.html",
+      "title": "Loaded String Simulation",
+      "description": "Pluck a virtual string and observe wave motion.",
+      "emoji": "🎸",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/pluck_string-graph-with-timer.html",
+      "title": "Loaded String with Graph",
+      "description": "String simulation with real-time position graph and timer.",
+      "emoji": "📊",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/pluck_string-graph-with-timer-separated.html",
+      "title": "Loaded String - Separated View",
+      "description": "String simulation with separated graph display.",
+      "emoji": "📈",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/Source-Medium-Receiver.html",
+      "title": "Sound Wave Propagation",
+      "description": "Visualize how sound travels from source through medium to receiver.",
+      "emoji": "📡",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/Sound_Measurement.html",
+      "title": "Sound Visualizer",
+      "description": "Capture and visualize sound waves from your microphone.",
+      "emoji": "🎤",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/Displacement-Time-Graph-Single.html",
+      "title": "Vibration Position vs Time",
+      "description": "Graph displacement over time for a single vibrating point.",
+      "emoji": "〰️",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/vibration-position-time-canvas.html",
+      "title": "Vibration Position-Time (Canvas)",
+      "description": "Canvas-based vibration visualization.",
+      "emoji": "〰️",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/Combine_Two_Waves.html",
+      "title": "Combined Waves",
+      "description": "See what happens when two waves combine together.",
+      "emoji": "🔀",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/waves_meet.html",
+      "title": "Wave Superposition",
+      "description": "Explore constructive and destructive interference when waves meet.",
+      "emoji": "🤝",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/wave-beating-adjustable.html",
+      "title": "Wave Beating (Adjustable)",
+      "description": "Adjust frequencies to explore the beating phenomenon.",
+      "emoji": "💓",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/wave-beating-on-off.html",
+      "title": "Wave Beating (On/Off)",
+      "description": "Toggle waves on and off to observe beating effects.",
+      "emoji": "🔛",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/test single-wave-sim.html",
+      "title": "Displacement vs Time Waveform",
+      "description": "Single wave displacement-time simulation.",
+      "emoji": "📉",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/test Wave_Simulation.html",
+      "title": "Sound Wave Simulation",
+      "description": "General sound wave simulation and visualization.",
+      "emoji": "🌊",
+      "category": "sound"
+    },
+    {
+      "path": "Newton-Speed-of-Sound-Measurement.html",
+      "title": "Speed of Sound Measurement",
+      "description": "Newton's method for measuring the speed of sound.",
+      "emoji": "⏱️",
+      "category": "sound"
+    },
+    {
+      "path": "random-walk-mode1.html",
+      "title": "Random Walk - Basic",
+      "description": "Simple random walk simulation to explore probabilistic motion.",
+      "emoji": "🚶",
+      "category": "random"
+    },
+    {
+      "path": "random-walk-mode2.html",
+      "title": "Random Walk - Interactive",
+      "description": "Interactive random walk with adjustable parameters.",
+      "emoji": "🎛️",
+      "category": "random"
+    },
+    {
+      "path": "random-walk-mode3.html",
+      "title": "Random Walk - Time-Limited",
+      "description": "Run time-limited random walk experiments and analyze results.",
+      "emoji": "⏳",
+      "category": "random"
+    },
+    {
+      "path": "two-microphones/index.html",
+      "title": "Two Microphones",
+      "description": "Compare sound detection with two microphone positions.",
+      "emoji": "🎙️",
+      "category": "sound"
+    }
+  ]
+}
