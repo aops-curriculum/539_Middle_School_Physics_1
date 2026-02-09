@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=600">
+<title>Haibao Mirror Simulation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 600px;
+    font-family: Arial, sans-serif;
+    background: #fff;
+    overflow-x: hidden;
+  }
+  canvas {
+    display: block;
+    cursor: crosshair;
+    width: 600px;
+    height: 400px;
+  }
+  #controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    background: #f0f0f0;
+    border-bottom: 1px solid #ccc;
+    height: 36px;
+    width: 600px;
+  }
+  #instruction {
+    font-size: 14px;
+    color: #333;
+    flex: 1;
+  }
+  #resetBtn {
+    padding: 4px 16px;
+    font-size: 14px;
+    cursor: pointer;
+    border: 1px solid #999;
+    border-radius: 4px;
+    background: #fff;
+  }
+  #resetBtn:hover { background: #e0e0e0; }
+  #info {
+    padding: 6px 12px;
+    font-size: 15px;
+    font-family: monospace;
+    line-height: 1.6;
+    color: #333;
+    min-height: 10px;
+    background: #f9f9f9;
+    border-top: 1px solid #ccc;
+    white-space: pre;
+    width: 600px;
+  }
+  #warning {
+    padding: 8px 12px;
+    font-size: 13px;
+    color: #b00;
+    background: #fff3f3;
+    border-top: 1px solid #fcc;
+    display: none;
+    width: 600px;
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <span id="instruction">Click the point where your ray ends.</span>
+  <button id="resetBtn">Reset</button>
+</div>
+<canvas id="canvas" width="1200" height="800"></canvas>
+<div id="info"></div>
+<div id="warning"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const instructionEl = document.getElementById('instruction');
+const infoEl = document.getElementById('info');
+const warningEl = document.getElementById('warning');
+const resetBtn = document.getElementById('resetBtn');
+
+// HiDPI: canvas is 1200x800 but displayed at 600x400 via CSS
+// Scale all drawing by 2x for crisp rendering
+const DPR = 2;
+ctx.scale(DPR, DPR);
+
+// --- Style constants ---
+const BROWN = '#8B4513';
+const LABEL_FONT = 'bold 17px Arial';
+
+// --- Coordinate system ---
+// Scale: pixels per cm
+const SCALE = 6;
+
+// Physical measurements in cm
+const STUFFIE_HEIGHT = 56;
+const MIRROR_HEIGHT = 17;
+const MIRROR_BOTTOM = 28;
+const MIRROR_TOP = 45;
+const DISTANCE = 50;
+
+// Layout
+const GROUND_Y_PX = 380;
+const STUFFIE_TOP_Y = GROUND_Y_PX - STUFFIE_HEIGHT * SCALE;
+
+const IMG_ASPECT = 0.528;
+let imgAspect = IMG_ASPECT;
+
+const ARROW_LEFT_X = 22;
+const STUFFIE_CENTER_X = 138;
+
+const MIRROR_X = STUFFIE_CENTER_X + DISTANCE * SCALE;
+const ARROW_RIGHT_X = MIRROR_X + 25;
+
+// Convert cm height to canvas y
+function cmToY(cm) {
+  return GROUND_Y_PX - cm * SCALE;
+}
+
+// Convert canvas y to cm height
+function yToCm(y) {
+  return (GROUND_Y_PX - y) / SCALE;
+}
+
+// --- Image loading ---
+const stuffieImg = new Image();
+let imgLoaded = false;
+let transparentCanvas = null;
+
+stuffieImg.onload = () => {
+  imgLoaded = true;
+  imgAspect = stuffieImg.width / stuffieImg.height;
+  makeTransparent();
+  drawScene();
+};
+stuffieImg.onerror = () => {
+  // Try fallback: if jpg failed try png, if png failed try jpg
+  if (stuffieImg.src.endsWith('.jpg')) {
+    stuffieImg.src = 'haibao.png';
+  } else if (stuffieImg.src.endsWith('.png')) {
+    stuffieImg.src = 'haibao.jpg';
+  } else {
+    imgLoaded = false;
+    drawScene();
+  }
+};
+stuffieImg.src = 'haibao.jpg';
+
+function makeTransparent() {
+  const tc = document.createElement('canvas');
+  tc.width = stuffieImg.width;
+  tc.height = stuffieImg.height;
+  const tctx = tc.getContext('2d');
+  tctx.drawImage(stuffieImg, 0, 0);
+  const imageData = tctx.getImageData(0, 0, tc.width, tc.height);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] > 230 && d[i+1] > 230 && d[i+2] > 230) {
+      d[i+3] = 0;
+    }
+  }
+  tctx.putImageData(imageData, 0, 0);
+  transparentCanvas = tc;
+}
+
+// --- State ---
+let state = 'waiting_first';
+let firstClick = null;
+let secondClick = null;
+let mousePos = null;
+
+// --- Drawing ---
+function drawScene() {
+  ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
+
+  // Ground line - thick
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(10, GROUND_Y_PX);
+  ctx.lineTo(530, GROUND_Y_PX);
+  ctx.stroke();
+
+  drawStuffie();
+  drawMirror();
+  drawDimensionArrows();
+
+  // Dashed line through second click
+  if (state === 'done' && secondClick) {
+    drawDashedLine();
+    drawAngleArc();
+    drawHeightArrow();
+  }
+
+  // Ray arrow
+  if (state === 'waiting_second' && firstClick && mousePos) {
+    drawArrow(mousePos.x, mousePos.y, firstClick.x, firstClick.y, '#e00', 2.5);
+  } else if (state === 'done' && firstClick && secondClick) {
+    drawArrow(secondClick.x, secondClick.y, firstClick.x, firstClick.y, '#e00', 2.5);
+  }
+}
+
+function drawStuffie() {
+  const topY = STUFFIE_TOP_Y;
+  const heightPx = GROUND_Y_PX - topY;
+  if (transparentCanvas) {
+    const drawWidth = heightPx * imgAspect;
+    const drawX = STUFFIE_CENTER_X - drawWidth / 2;
+    ctx.drawImage(transparentCanvas, drawX, topY, drawWidth, heightPx);
+  } else {
+    ctx.strokeStyle = '#aaa';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    const w = heightPx * IMG_ASPECT;
+    ctx.strokeRect(STUFFIE_CENTER_X - w/2, topY, w, heightPx);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#999';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Haibao', STUFFIE_CENTER_X, topY + heightPx / 2);
+  }
+}
+
+function drawMirror() {
+  const mirrorTopY = cmToY(MIRROR_TOP);
+  const mirrorBottomY = cmToY(MIRROR_BOTTOM);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(MIRROR_X, mirrorTopY);
+  ctx.lineTo(MIRROR_X, mirrorBottomY);
+  ctx.stroke();
+}
+
+function drawDoubleArrow(x, y1, y2, label) {
+  const headLen = 7;
+  ctx.strokeStyle = BROWN;
+  ctx.fillStyle = BROWN;
+  ctx.lineWidth = 1.5;
+
+  // Vertical line
+  ctx.beginPath();
+  ctx.moveTo(x, y1 + headLen);
+  ctx.lineTo(x, y2 - headLen);
+  ctx.stroke();
+
+  // Top arrowhead
+  ctx.beginPath();
+  ctx.moveTo(x, y1);
+  ctx.lineTo(x - 4, y1 + headLen);
+  ctx.lineTo(x + 4, y1 + headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bottom arrowhead
+  ctx.beginPath();
+  ctx.moveTo(x, y2);
+  ctx.lineTo(x - 4, y2 - headLen);
+  ctx.lineTo(x + 4, y2 - headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  // Label (rotated)
+  ctx.save();
+  ctx.translate(x, (y1 + y2) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(label).width;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-tw/2 - 3, -10, tw + 6, 20);
+  ctx.fillStyle = BROWN;
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+}
+
+function drawDimensionArrows() {
+  // Left: stuffie height 56 cm
+  const stuffieTopY = cmToY(STUFFIE_HEIGHT);
+  drawDoubleArrow(ARROW_LEFT_X, stuffieTopY, GROUND_Y_PX, '56 cm');
+
+  // Tick marks
+  ctx.strokeStyle = BROWN;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ARROW_LEFT_X - 5, stuffieTopY);
+  ctx.lineTo(ARROW_LEFT_X + 5, stuffieTopY);
+  ctx.moveTo(ARROW_LEFT_X - 5, GROUND_Y_PX);
+  ctx.lineTo(ARROW_LEFT_X + 5, GROUND_Y_PX);
+  ctx.stroke();
+
+  // Right: mirror height 17 cm
+  const mirrorTopY = cmToY(MIRROR_TOP);
+  const mirrorBottomY = cmToY(MIRROR_BOTTOM);
+  drawDoubleArrow(ARROW_RIGHT_X, mirrorTopY, mirrorBottomY, '17 cm');
+
+  // Tick marks
+  ctx.beginPath();
+  ctx.moveTo(ARROW_RIGHT_X - 5, mirrorTopY);
+  ctx.lineTo(ARROW_RIGHT_X + 5, mirrorTopY);
+  ctx.moveTo(ARROW_RIGHT_X - 5, mirrorBottomY);
+  ctx.lineTo(ARROW_RIGHT_X + 5, mirrorBottomY);
+  ctx.stroke();
+}
+
+function drawArrow(fromX, fromY, toX, toY, color, width) {
+  const headLen = 12;
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = width;
+
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.stroke();
+
+  // Arrowhead at (toX, toY)
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - headLen * Math.cos(angle - 0.35), toY - headLen * Math.sin(angle - 0.35));
+  ctx.lineTo(toX - headLen * Math.cos(angle + 0.35), toY - headLen * Math.sin(angle + 0.35));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawDashedLine() {
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(STUFFIE_CENTER_X, secondClick.y);
+  ctx.lineTo(MIRROR_X, secondClick.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function getAngleInfo() {
+  const dx = firstClick.x - secondClick.x;
+  const dy = firstClick.y - secondClick.y;
+  const rayAngle = Math.atan2(dy, dx);
+  const angleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
+  return { rayAngle, angleDeg };
+}
+
+function drawAngleArc() {
+  const { angleDeg } = getAngleInfo();
+  const dx = firstClick.x - secondClick.x;
+  const dy = firstClick.y - secondClick.y;
+
+  const arcRadius = 22;
+
+  // The ray goes from secondClick toward firstClick.
+  const rayAngle = Math.atan2(dy, dx);
+
+  // The dashed line is horizontal. Its direction from secondClick depends on
+  // which side firstClick is on:
+  const horizAngle = dx < 0 ? Math.PI : 0;
+
+  // Canvas arc() with anticlockwise=false sweeps angles in the INCREASING
+  // direction (which looks clockwise on screen because y points down).
+  // With anticlockwise=true it sweeps in the DECREASING direction
+  // (which looks counterclockwise on screen).
+  //
+  // We want the SMALL arc. Compute the signed difference and choose direction.
+  let diff = rayAngle - horizAngle;
+  // Normalize diff to (-PI, PI]
+  while (diff > Math.PI) diff -= 2 * Math.PI;
+  while (diff <= -Math.PI) diff += 2 * Math.PI;
+
+  // If diff > 0, ray is at a larger angle than horiz (in canvas math terms).
+  //   arc from horizAngle to rayAngle with anticlockwise=false sweeps the small arc.
+  // If diff < 0, ray is at a smaller angle than horiz.
+  //   arc from horizAngle to rayAngle with anticlockwise=true sweeps the small arc.
+  const useAntiClockwise = diff < 0;
+
+  ctx.strokeStyle = '#e00';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(secondClick.x, secondClick.y, arcRadius, horizAngle, rayAngle, useAntiClockwise);
+  ctx.stroke();
+
+  // Label: place to the left of the arc, near the dashed line
+  const labelX = secondClick.x - arcRadius - 24;
+  const labelY = secondClick.y - 2;
+
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const text = angleDeg.toFixed(1) + '\u00B0';
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(labelX - tw/2 - 3, labelY - 9, tw + 6, 18);
+  ctx.fillStyle = '#e00';
+  ctx.fillText(text, labelX, labelY);
+}
+
+function drawHeightArrow() {
+  const heightCm = yToCm(secondClick.y);
+  const arrowX = MIRROR_X + 75;
+  const topY = secondClick.y;
+  const bottomY = GROUND_Y_PX;
+
+  if (bottomY - topY < 10) return;
+
+  const label = heightCm.toFixed(1) + ' cm';
+
+  const headLen = 7;
+  ctx.strokeStyle = BROWN;
+  ctx.fillStyle = BROWN;
+  ctx.lineWidth = 1.5;
+
+  // Vertical line
+  ctx.beginPath();
+  ctx.moveTo(arrowX, topY + headLen);
+  ctx.lineTo(arrowX, bottomY - headLen);
+  ctx.stroke();
+
+  // Top arrowhead
+  ctx.beginPath();
+  ctx.moveTo(arrowX, topY);
+  ctx.lineTo(arrowX - 4, topY + headLen);
+  ctx.lineTo(arrowX + 4, topY + headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  // Bottom arrowhead
+  ctx.beginPath();
+  ctx.moveTo(arrowX, bottomY);
+  ctx.lineTo(arrowX - 4, bottomY - headLen);
+  ctx.lineTo(arrowX + 4, bottomY - headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  // Tick marks
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(arrowX - 5, topY);
+  ctx.lineTo(arrowX + 5, topY);
+  ctx.moveTo(arrowX - 5, bottomY);
+  ctx.lineTo(arrowX + 5, bottomY);
+  ctx.stroke();
+
+  // Rotated label
+  ctx.save();
+  ctx.translate(arrowX, (topY + bottomY) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(label).width;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-tw/2 - 3, -10, tw + 6, 20);
+  ctx.fillStyle = BROWN;
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+}
+
+// --- Interaction ---
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  mousePos = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+  if (state === 'waiting_second') {
+    drawScene();
+  }
+});
+
+canvas.addEventListener('click', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  const clickX = e.clientX - rect.left;
+  const clickY = e.clientY - rect.top;
+
+  if (state === 'waiting_first') {
+    firstClick = { x: clickX, y: clickY };
+    state = 'waiting_second';
+    instructionEl.textContent = 'Click the point where your ray begins.';
+    drawScene();
+  } else if (state === 'waiting_second') {
+    secondClick = { x: clickX, y: clickY };
+    state = 'done';
+    instructionEl.textContent = '';
+
+    checkBackward();
+    showInfo();
+    drawScene();
+  }
+});
+
+function checkBackward() {
+  const tolerance = 10 * SCALE;
+  const firstNearMirror = Math.abs(firstClick.x - MIRROR_X) < tolerance;
+  const secondNearStuffie = Math.abs(secondClick.x - STUFFIE_CENTER_X) < tolerance;
+  if (firstNearMirror && secondNearStuffie) {
+    warningEl.style.display = 'block';
+    warningEl.textContent = "It looks like you found a ray from Haibao to the mirror. Make sure you draw a ray that enters Haibao\u2019s eye. Note that on this simulation, you choose the END of the ray first.";
+  }
+}
+
+function showInfo() {
+  const heightCm = yToCm(secondClick.y);
+
+  const dx = firstClick.x - secondClick.x;
+  const dy = firstClick.y - secondClick.y;
+  const angleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
+
+  const heightStr = heightCm.toFixed(1);
+  const angleStr = angleDeg.toFixed(1);
+
+  infoEl.textContent = `normal height      = ${heightStr} cm\nangle of reflection = ${angleStr}\u00B0`;
+}
+
+resetBtn.addEventListener('click', reset);
+
+function reset() {
+  state = 'waiting_first';
+  firstClick = null;
+  secondClick = null;
+  mousePos = null;
+  instructionEl.textContent = 'Click the point where your ray ends.';
+  infoEl.textContent = '';
+  warningEl.style.display = 'none';
+  drawScene();
+}
+
+drawScene();
+</script>
+</body>
+</html>
