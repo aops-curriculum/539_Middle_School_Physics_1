@@ -1,0 +1,444 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=600">
+<title>Haibao to Mirror Simulation</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 600px;
+    font-family: Arial, sans-serif;
+    background: #fff;
+    overflow-x: hidden;
+  }
+  canvas {
+    display: block;
+    cursor: crosshair;
+    width: 600px;
+    height: 400px;
+  }
+  #controls {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 6px 12px;
+    background: #f0f0f0;
+    border-bottom: 1px solid #ccc;
+    height: 36px;
+    width: 600px;
+  }
+  #instruction {
+    font-size: 14px;
+    color: #333;
+    flex: 1;
+  }
+  #info {
+    padding: 6px 12px;
+    font-size: 15px;
+    font-family: monospace;
+    line-height: 1.6;
+    color: #333;
+    min-height: 10px;
+    background: #f9f9f9;
+    border-top: 1px solid #ccc;
+    white-space: pre;
+    width: 600px;
+  }
+</style>
+</head>
+<body>
+<div id="controls">
+  <span id="instruction">Move your mouse up and down to adjust where the ray starts on Haibao.</span>
+</div>
+<canvas id="canvas" width="1200" height="800"></canvas>
+<div id="info"></div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const instructionEl = document.getElementById('instruction');
+const infoEl = document.getElementById('info');
+
+// HiDPI: canvas is 1200x800 but displayed at 600x400 via CSS
+const DPR = 2;
+ctx.scale(DPR, DPR);
+
+// --- Style constants ---
+const BROWN = '#8B4513';
+const LABEL_FONT = 'bold 17px Arial';
+const RED = '#e00';
+const BLUE = '#00c';
+
+// --- Coordinate system ---
+const SCALE = 6; // pixels per cm
+
+// Physical measurements in cm
+const STUFFIE_HEIGHT = 56;
+const MIRROR_HEIGHT = 17;
+const MIRROR_BOTTOM = 28;
+const MIRROR_TOP = 45;
+const DISTANCE = 50;
+const FIXED_ANGLE_DEG = 6;
+
+// Layout
+const GROUND_Y_PX = 380;
+const STUFFIE_TOP_Y = GROUND_Y_PX - STUFFIE_HEIGHT * SCALE;
+
+const IMG_ASPECT = 0.528;
+let imgAspect = IMG_ASPECT;
+
+const ARROW_LEFT_X = 22;
+const STUFFIE_CENTER_X = 138;
+
+const MIRROR_X = STUFFIE_CENTER_X + DISTANCE * SCALE;
+const ARROW_RIGHT_X = MIRROR_X + 25;
+
+// Fixed geometry: mirror top and eye position
+const MIRROR_TOP_Y = GROUND_Y_PX - MIRROR_TOP * SCALE; // 380 - 270 = 110
+const EYE_HEIGHT_CM = MIRROR_TOP - DISTANCE * Math.tan(FIXED_ANGLE_DEG * Math.PI / 180);
+const EYE_Y = GROUND_Y_PX - EYE_HEIGHT_CM * SCALE;
+
+function cmToY(cm) {
+  return GROUND_Y_PX - cm * SCALE;
+}
+
+function yToCm(y) {
+  return (GROUND_Y_PX - y) / SCALE;
+}
+
+// --- Image loading ---
+const stuffieImg = new Image();
+let imgLoaded = false;
+let transparentCanvas = null;
+
+stuffieImg.onload = () => {
+  imgLoaded = true;
+  imgAspect = stuffieImg.width / stuffieImg.height;
+  makeTransparent();
+  drawScene();
+};
+stuffieImg.onerror = () => {
+  if (stuffieImg.src.endsWith('.jpg')) {
+    stuffieImg.src = 'haibao.png';
+  } else if (stuffieImg.src.endsWith('.png')) {
+    stuffieImg.src = 'haibao.jpg';
+  } else {
+    imgLoaded = false;
+    drawScene();
+  }
+};
+stuffieImg.src = 'haibao.jpg';
+
+function makeTransparent() {
+  const tc = document.createElement('canvas');
+  tc.width = stuffieImg.width;
+  tc.height = stuffieImg.height;
+  const tctx = tc.getContext('2d');
+  tctx.drawImage(stuffieImg, 0, 0);
+  const imageData = tctx.getImageData(0, 0, tc.width, tc.height);
+  const d = imageData.data;
+  for (let i = 0; i < d.length; i += 4) {
+    if (d[i] > 230 && d[i+1] > 230 && d[i+2] > 230) {
+      d[i+3] = 0;
+    }
+  }
+  tctx.putImageData(imageData, 0, 0);
+  transparentCanvas = tc;
+}
+
+// --- State ---
+let mouseY = MIRROR_TOP_Y; // start at mirror top height
+
+// --- Drawing ---
+function drawScene() {
+  ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
+
+  // Ground line
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(10, GROUND_Y_PX);
+  ctx.lineTo(530, GROUND_Y_PX);
+  ctx.stroke();
+
+  drawStuffie();
+  drawMirror();
+  drawDimensionArrows();
+
+  // Dashed horizontal line at mirror top height
+  drawDashedLine();
+
+  // Fixed reflected ray: mirror top → Haibao's eye (below dashed line)
+  drawArrow(MIRROR_X, MIRROR_TOP_Y, STUFFIE_CENTER_X, EYE_Y, RED, 2.5);
+  drawFixedAngleArc();
+
+  // Interactive incident ray: Haibao start → mirror top (above dashed line)
+  const startY = clampY(mouseY);
+  drawArrow(STUFFIE_CENTER_X, startY, MIRROR_X, MIRROR_TOP_Y, BLUE, 2.5);
+  drawIncidentAngleArc(startY);
+  drawHeightArrow(startY);
+
+  showInfo(startY);
+}
+
+function clampY(y) {
+  // Constrain to between stuffie top and just above dashed line
+  const minY = STUFFIE_TOP_Y + 5;
+  const maxY = MIRROR_TOP_Y - 2;
+  return Math.max(minY, Math.min(maxY, y));
+}
+
+function drawStuffie() {
+  const topY = STUFFIE_TOP_Y;
+  const heightPx = GROUND_Y_PX - topY;
+  if (transparentCanvas) {
+    const drawWidth = heightPx * imgAspect;
+    const drawX = STUFFIE_CENTER_X - drawWidth / 2;
+    ctx.drawImage(transparentCanvas, drawX, topY, drawWidth, heightPx);
+  } else {
+    ctx.strokeStyle = '#aaa';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 4]);
+    const w = heightPx * IMG_ASPECT;
+    ctx.strokeRect(STUFFIE_CENTER_X - w/2, topY, w, heightPx);
+    ctx.setLineDash([]);
+    ctx.fillStyle = '#999';
+    ctx.font = '12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('Haibao', STUFFIE_CENTER_X, topY + heightPx / 2);
+  }
+}
+
+function drawMirror() {
+  const mirrorTopY = cmToY(MIRROR_TOP);
+  const mirrorBottomY = cmToY(MIRROR_BOTTOM);
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  ctx.moveTo(MIRROR_X, mirrorTopY);
+  ctx.lineTo(MIRROR_X, mirrorBottomY);
+  ctx.stroke();
+}
+
+function drawDoubleArrow(x, y1, y2, label) {
+  const headLen = 7;
+  ctx.strokeStyle = BROWN;
+  ctx.fillStyle = BROWN;
+  ctx.lineWidth = 1.5;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y1 + headLen);
+  ctx.lineTo(x, y2 - headLen);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(x, y1);
+  ctx.lineTo(x - 4, y1 + headLen);
+  ctx.lineTo(x + 4, y1 + headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(x, y2);
+  ctx.lineTo(x - 4, y2 - headLen);
+  ctx.lineTo(x + 4, y2 - headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.save();
+  ctx.translate(x, (y1 + y2) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(label).width;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-tw/2 - 3, -10, tw + 6, 20);
+  ctx.fillStyle = BROWN;
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+}
+
+function drawDimensionArrows() {
+  const stuffieTopY = cmToY(STUFFIE_HEIGHT);
+  drawDoubleArrow(ARROW_LEFT_X, stuffieTopY, GROUND_Y_PX, '56 cm');
+
+  ctx.strokeStyle = BROWN;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(ARROW_LEFT_X - 5, stuffieTopY);
+  ctx.lineTo(ARROW_LEFT_X + 5, stuffieTopY);
+  ctx.moveTo(ARROW_LEFT_X - 5, GROUND_Y_PX);
+  ctx.lineTo(ARROW_LEFT_X + 5, GROUND_Y_PX);
+  ctx.stroke();
+
+  const mirrorTopY = cmToY(MIRROR_TOP);
+  const mirrorBottomY = cmToY(MIRROR_BOTTOM);
+  drawDoubleArrow(ARROW_RIGHT_X, mirrorTopY, mirrorBottomY, '17 cm');
+
+  ctx.beginPath();
+  ctx.moveTo(ARROW_RIGHT_X - 5, mirrorTopY);
+  ctx.lineTo(ARROW_RIGHT_X + 5, mirrorTopY);
+  ctx.moveTo(ARROW_RIGHT_X - 5, mirrorBottomY);
+  ctx.lineTo(ARROW_RIGHT_X + 5, mirrorBottomY);
+  ctx.stroke();
+}
+
+function drawArrow(fromX, fromY, toX, toY, color, width) {
+  const headLen = 12;
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = width;
+
+  ctx.beginPath();
+  ctx.moveTo(fromX, fromY);
+  ctx.lineTo(toX, toY);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - headLen * Math.cos(angle - 0.35), toY - headLen * Math.sin(angle - 0.35));
+  ctx.lineTo(toX - headLen * Math.cos(angle + 0.35), toY - headLen * Math.sin(angle + 0.35));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawDashedLine() {
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+  ctx.moveTo(STUFFIE_CENTER_X, MIRROR_TOP_Y);
+  ctx.lineTo(MIRROR_X, MIRROR_TOP_Y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// Draw angle arc between a ray and the horizontal dashed line at the mirror top.
+// rayFromX, rayFromY: the other end of the ray (not the mirror top).
+// color: stroke/fill color for arc and label.
+// labelBelow: if true, place label below dashed line; if false, above.
+function drawAngleArcGeneric(rayFromX, rayFromY, color, labelBelow) {
+  const dx = rayFromX - MIRROR_X;
+  const dy = rayFromY - MIRROR_TOP_Y;
+  const rayAngle = Math.atan2(dy, dx);
+  const angleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
+
+  const arcRadius = 22;
+  const horizAngle = dx < 0 ? Math.PI : 0;
+
+  let diff = rayAngle - horizAngle;
+  while (diff > Math.PI) diff -= 2 * Math.PI;
+  while (diff <= -Math.PI) diff += 2 * Math.PI;
+  const useAntiClockwise = diff < 0;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(MIRROR_X, MIRROR_TOP_Y, arcRadius, horizAngle, rayAngle, useAntiClockwise);
+  ctx.stroke();
+
+  // Label placement
+  const labelX = MIRROR_X - arcRadius - 24;
+  const labelY = labelBelow ? MIRROR_TOP_Y + 16 : MIRROR_TOP_Y - 16;
+
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const text = angleDeg.toFixed(1) + '\u00B0';
+  const tw = ctx.measureText(text).width;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(labelX - tw/2 - 3, labelY - 9, tw + 6, 18);
+  ctx.fillStyle = color;
+  ctx.fillText(text, labelX, labelY);
+}
+
+function drawFixedAngleArc() {
+  drawAngleArcGeneric(STUFFIE_CENTER_X, EYE_Y, RED, true);
+}
+
+function drawIncidentAngleArc(startY) {
+  drawAngleArcGeneric(STUFFIE_CENTER_X, startY, BLUE, false);
+}
+
+function drawHeightArrow(startY) {
+  const heightCm = yToCm(startY);
+  const arrowX = MIRROR_X + 75;
+  const topY = startY;
+  const bottomY = GROUND_Y_PX;
+
+  if (bottomY - topY < 10) return;
+
+  const label = heightCm.toFixed(1) + ' cm';
+  const headLen = 7;
+  ctx.strokeStyle = BLUE;
+  ctx.fillStyle = BLUE;
+  ctx.lineWidth = 1.5;
+
+  ctx.beginPath();
+  ctx.moveTo(arrowX, topY + headLen);
+  ctx.lineTo(arrowX, bottomY - headLen);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(arrowX, topY);
+  ctx.lineTo(arrowX - 4, topY + headLen);
+  ctx.lineTo(arrowX + 4, topY + headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(arrowX, bottomY);
+  ctx.lineTo(arrowX - 4, bottomY - headLen);
+  ctx.lineTo(arrowX + 4, bottomY - headLen);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(arrowX - 5, topY);
+  ctx.lineTo(arrowX + 5, topY);
+  ctx.moveTo(arrowX - 5, bottomY);
+  ctx.lineTo(arrowX + 5, bottomY);
+  ctx.stroke();
+
+  ctx.save();
+  ctx.translate(arrowX, (topY + bottomY) / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const tw = ctx.measureText(label).width;
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-tw/2 - 3, -10, tw + 6, 20);
+  ctx.fillStyle = BLUE;
+  ctx.fillText(label, 0, 0);
+  ctx.restore();
+}
+
+function showInfo(startY) {
+  const heightCm = yToCm(startY);
+  const dx = STUFFIE_CENTER_X - MIRROR_X;
+  const dy = startY - MIRROR_TOP_Y;
+  const angleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
+
+  const heightStr = heightCm.toFixed(1);
+  const angleStr = angleDeg.toFixed(1);
+
+  infoEl.textContent = `incident height     = ${heightStr} cm\nangle of incidence  = ${angleStr}\u00B0`;
+}
+
+// --- Interaction ---
+canvas.addEventListener('mousemove', (e) => {
+  const rect = canvas.getBoundingClientRect();
+  mouseY = e.clientY - rect.top;
+  drawScene();
+});
+
+drawScene();
+</script>
+</body>
+</html>
