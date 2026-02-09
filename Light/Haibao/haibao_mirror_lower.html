@@ -196,15 +196,15 @@ function drawScene() {
     // Dashed horizontal line at the mirror contact point height
     drawDashedLine();
 
-    // 1) Mirror-to-Haibao ray (red, below dashed line)
+    // 1) Mirror-to-Haibao ray (red, goes UP to eye — label above dashed line)
     drawArrow(secondClick.x, secondClick.y, firstClick.x, firstClick.y, RED, 2.5);
-    drawAngleArc(firstClick.x, firstClick.y, secondClick.x, secondClick.y, RED, true);
+    drawAngleArc(firstClick.x, firstClick.y, secondClick.x, secondClick.y, RED, false);
 
-    // 2) Reflected ray: Haibao-to-mirror (blue, above dashed line)
+    // 2) Reflected ray: Haibao-to-mirror (blue, goes DOWN — label below dashed line)
     // Mirror the eye point across the dashed line (secondClick.y)
     const reflectedY = 2 * secondClick.y - firstClick.y;
-    drawArrow(STUFFIE_CENTER_X, reflectedY, secondClick.x, secondClick.y, BLUE, 2.5);
-    drawAngleArc(STUFFIE_CENTER_X, reflectedY, secondClick.x, secondClick.y, BLUE, false);
+    drawArrow(firstClick.x, reflectedY, secondClick.x, secondClick.y, BLUE, 2.5);
+    drawAngleArc(firstClick.x, reflectedY, secondClick.x, secondClick.y, BLUE, true);
 
     // Height arrow for where the incident ray starts on Haibao
     drawHeightArrow(reflectedY);
