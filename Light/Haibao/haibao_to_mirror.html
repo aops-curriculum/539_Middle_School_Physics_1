@@ -14,7 +14,6 @@
   }
   canvas {
     display: block;
-    cursor: crosshair;
     width: 600px;
     height: 400px;
   }
@@ -33,6 +32,14 @@
     color: #333;
     flex: 1;
   }
+  #angleInput {
+    width: 60px;
+    padding: 3px 6px;
+    font-size: 14px;
+    border: 1px solid #999;
+    border-radius: 4px;
+    text-align: right;
+  }
   #info {
     padding: 6px 12px;
     font-size: 15px;
@@ -49,7 +56,9 @@
 </head>
 <body>
 <div id="controls">
-  <span id="instruction">Move your mouse up and down to adjust where the ray starts on Haibao.</span>
+  <span id="instruction">Angle of incidence:</span>
+  <input type="number" id="angleInput" value="0" min="0" max="45" step="0.1">
+  <span id="instruction">&deg;</span>
 </div>
 <canvas id="canvas" width="1200" height="800"></canvas>
 <div id="info"></div>
@@ -57,8 +66,8 @@
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const instructionEl = document.getElementById('instruction');
 const infoEl = document.getElementById('info');
+const angleInput = document.getElementById('angleInput');
 
 // HiDPI: canvas is 1200x800 but displayed at 600x400 via CSS
 const DPR = 2;
@@ -148,7 +157,24 @@ function makeTransparent() {
 }
 
 // --- State ---
-let mouseY = MIRROR_TOP_Y; // start at mirror top height
+let incidentAngleDeg = 0;
+
+// Compute the startY on Haibao from the incident angle.
+// The ray goes from (STUFFIE_CENTER_X, startY) to (MIRROR_X, MIRROR_TOP_Y).
+// The angle above horizontal = incidentAngleDeg.
+// tan(angle) = (MIRROR_TOP_Y - startY) / (MIRROR_X - STUFFIE_CENTER_X)
+// Since startY is above MIRROR_TOP_Y (smaller y), and the ray goes up-left:
+// vertical rise = DISTANCE_PX * tan(angle)
+// startY = MIRROR_TOP_Y - DISTANCE_PX * tan(angle)
+function angleToStartY(angleDeg) {
+  const angleRad = angleDeg * Math.PI / 180;
+  const distancePx = MIRROR_X - STUFFIE_CENTER_X;
+  const startY = MIRROR_TOP_Y - distancePx * Math.tan(angleRad);
+  // Clamp to reasonable range
+  const minY = STUFFIE_TOP_Y + 5;
+  const maxY = MIRROR_TOP_Y - 2;
+  return Math.max(minY, Math.min(maxY, startY));
+}
 
 // --- Drawing ---
 function drawScene() {
@@ -174,19 +200,14 @@ function drawScene() {
   drawFixedAngleArc();
 
   // Interactive incident ray: Haibao start → mirror top (above dashed line)
-  const startY = clampY(mouseY);
-  drawArrow(STUFFIE_CENTER_X, startY, MIRROR_X, MIRROR_TOP_Y, BLUE, 2.5);
-  drawIncidentAngleArc(startY);
-  drawHeightArrow(startY);
+  const startY = angleToStartY(incidentAngleDeg);
+  if (incidentAngleDeg > 0) {
+    drawArrow(STUFFIE_CENTER_X, startY, MIRROR_X, MIRROR_TOP_Y, BLUE, 2.5);
+    drawIncidentAngleArc(startY);
+    drawHeightArrow(startY);
+  }
 
   showInfo(startY);
-}
-
-function clampY(y) {
-  // Constrain to between stuffie top and just above dashed line
-  const minY = STUFFIE_TOP_Y + 5;
-  const maxY = MIRROR_TOP_Y - 2;
-  return Math.max(minY, Math.min(maxY, y));
 }
 
 function drawStuffie() {
@@ -420,22 +441,24 @@ function drawHeightArrow(startY) {
 }
 
 function showInfo(startY) {
+  if (incidentAngleDeg <= 0) {
+    infoEl.textContent = `incident height     = \u2014\nangle of incidence  = \u2014`;
+    return;
+  }
   const heightCm = yToCm(startY);
-  const dx = STUFFIE_CENTER_X - MIRROR_X;
-  const dy = startY - MIRROR_TOP_Y;
-  const angleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
-
   const heightStr = heightCm.toFixed(1);
-  const angleStr = angleDeg.toFixed(1);
+  const angleStr = incidentAngleDeg.toFixed(1);
 
   infoEl.textContent = `incident height     = ${heightStr} cm\nangle of incidence  = ${angleStr}\u00B0`;
 }
 
 // --- Interaction ---
-canvas.addEventListener('mousemove', (e) => {
-  const rect = canvas.getBoundingClientRect();
-  mouseY = e.clientY - rect.top;
-  drawScene();
+angleInput.addEventListener('input', () => {
+  const val = parseFloat(angleInput.value);
+  if (!isNaN(val) && val >= 0 && val <= 45) {
+    incidentAngleDeg = val;
+    drawScene();
+  }
 });
 
 drawScene();
