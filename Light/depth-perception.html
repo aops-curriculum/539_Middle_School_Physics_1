@@ -69,7 +69,7 @@
         const W = canvas.width;
         const H = canvas.height;
         const eyeY = 80;
-        const eyeSep = 110;
+        const eyeSep = 165;
         const leftEyeX = W / 2 - eyeSep / 2;
         const rightEyeX = W / 2 + eyeSep / 2;
         const blueDotY = 250;
@@ -147,13 +147,6 @@
             // Draw eyes
             drawEye(leftEyeX, eyeY, 22);
             drawEye(rightEyeX, eyeY, 22);
-
-            // Labels
-            ctx.font = '13px sans-serif';
-            ctx.fillStyle = '#888';
-            ctx.textAlign = 'center';
-            ctx.fillText('Left eye', leftEyeX, eyeY + 40);
-            ctx.fillText('Right eye', rightEyeX, eyeY + 40);
 
             // Draw dots
             drawDot(dotX, blueDotY, '#4488ff', 10);

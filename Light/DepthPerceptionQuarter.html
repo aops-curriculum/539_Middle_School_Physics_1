@@ -34,7 +34,7 @@
     </style>
 </head>
 <body>
-    <p id="instructions">Click and drag the quarter to move it. Rays update automatically.</p>
+    <p id="instructions">Click and drag the quarter to move it.</p>
     <canvas id="canvas" width="580" height="520"></canvas>
 
     <script>
@@ -46,7 +46,7 @@
 
         // Layout
         const eyeY = 80;
-        const eyeSep = 110;
+        const eyeSep = 165;
         const leftEyeX = W / 2 - eyeSep / 2;
         const rightEyeX = W / 2 + eyeSep / 2;
         const mirrorY = 380;
@@ -138,12 +138,6 @@
             // Draw eyes
             drawEye(leftEyeX, eyeY, 22);
             drawEye(rightEyeX, eyeY, 22);
-
-            ctx.font = '13px sans-serif';
-            ctx.fillStyle = '#888';
-            ctx.textAlign = 'center';
-            ctx.fillText('Left eye', leftEyeX, eyeY + 40);
-            ctx.fillText('Right eye', rightEyeX, eyeY + 40);
 
             // --- Reflected rays (quarter -> mirror -> eye) ---
             const rLeft = reflectionPoint(coinX, coinY, leftEyeX, eyeY);
