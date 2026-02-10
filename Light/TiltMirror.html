@@ -86,13 +86,9 @@
         let showImage = true;
         let showProjections = true;
 
-        // Source points: left and right edges of the coin top surface
-        function getCoinSources() {
-            const y = tableY - coinThickness;
-            return [
-                { x: coinX - coinHalfW, y },
-                { x: coinX + coinHalfW, y }
-            ];
+        // Source point: center of the coin top surface
+        function getCoinSource() {
+            return { x: coinX, y: tableY - coinThickness };
         }
 
         function getMirrorTop() {
@@ -333,56 +329,48 @@
             drawTable();
             drawAngleIndicator();
 
-            const sources = getCoinSources();
+            const source = getCoinSource();
             const rayColor = '#cc6600';
-            const reflections = sources.map(s => computeReflection(s, eye, mBase, mTop));
+            const refl = computeReflection(source, eye, mBase, mTop);
 
-            // Projections: dashed lines from eye through reflection point to virtual image
-            if (showProjections) {
-                for (let i = 0; i < sources.length; i++) {
-                    const refl = reflections[i];
-                    if (!refl) continue;
-                    ctx.beginPath();
-                    ctx.setLineDash([5, 5]);
-                    ctx.moveTo(eye.x, eye.y);
-                    ctx.lineTo(refl.virtualImage.x, refl.virtualImage.y);
-                    ctx.strokeStyle = 'rgba(180, 100, 40, 0.35)';
-                    ctx.lineWidth = 1.5;
-                    ctx.stroke();
-                    ctx.setLineDash([]);
-                }
+            // Projection: dashed line from eye through reflection point to virtual image
+            if (showProjections && refl) {
+                ctx.beginPath();
+                ctx.setLineDash([5, 5]);
+                ctx.moveTo(eye.x, eye.y);
+                ctx.lineTo(refl.virtualImage.x, refl.virtualImage.y);
+                ctx.strokeStyle = 'rgba(180, 100, 40, 0.35)';
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+                ctx.setLineDash([]);
             }
 
             // Virtual image of coin
-            if (showImage && reflections[0] && reflections[1]) {
-                const vi0 = reflections[0].virtualImage;
-                const vi1 = reflections[1].virtualImage;
+            if (showImage && refl) {
+                const vi = refl.virtualImage;
+                ctx.beginPath();
+                ctx.arc(vi.x, vi.y, 5, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(180, 120, 50, 0.45)';
+                ctx.fill();
                 ctx.beginPath();
                 ctx.setLineDash([4, 4]);
-                ctx.moveTo(vi0.x, vi0.y);
-                ctx.lineTo(vi1.x, vi1.y);
+                ctx.arc(vi.x, vi.y, 5, 0, Math.PI * 2);
                 ctx.strokeStyle = 'rgba(160, 90, 30, 0.5)';
-                ctx.lineWidth = 2.5;
+                ctx.lineWidth = 1.5;
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                const vmx = (vi0.x + vi1.x) / 2;
-                const vmy = Math.min(vi0.y, vi1.y);
                 ctx.fillStyle = 'rgba(140, 80, 20, 0.6)';
                 ctx.font = '13px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('virtual', vmx, vmy - 18);
-                ctx.fillText('image', vmx, vmy - 5);
+                ctx.fillText('virtual', vi.x, vi.y - 18);
+                ctx.fillText('image', vi.x, vi.y - 5);
             }
 
-            // Rays
-            if (showRays) {
-                for (let i = 0; i < sources.length; i++) {
-                    const refl = reflections[i];
-                    if (!refl) continue;
-                    drawRayArrow(sources[i].x, sources[i].y, refl.x, refl.y, rayColor, 2.5);
-                    drawRayArrow(refl.x, refl.y, eye.x, eye.y, rayColor, 2.5);
-                }
+            // Ray
+            if (showRays && refl) {
+                drawRayArrow(source.x, source.y, refl.x, refl.y, rayColor, 2.5);
+                drawRayArrow(refl.x, refl.y, eye.x, eye.y, rayColor, 2.5);
             }
 
             drawMirror();
