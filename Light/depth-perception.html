@@ -14,6 +14,8 @@
             color: #eee;
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             min-height: 100vh;
+            max-width: 600px;
+            margin: 0 auto;
             user-select: none;
         }
         #instructions {
@@ -54,7 +56,7 @@
     <div id="controls">
         <button id="resetBtn">Reset</button>
     </div>
-    <canvas id="canvas" width="700" height="600"></canvas>
+    <canvas id="canvas" width="580" height="520"></canvas>
     <p id="status"></p>
 
     <script>
@@ -66,12 +68,12 @@
         // Layout constants
         const W = canvas.width;
         const H = canvas.height;
-        const eyeY = 100;
-        const eyeSep = 120;
+        const eyeY = 80;
+        const eyeSep = 110;
         const leftEyeX = W / 2 - eyeSep / 2;
         const rightEyeX = W / 2 + eyeSep / 2;
-        const blueDotY = 300;
-        const redDotY = 500; // twice as far from eyes as blue dot
+        const blueDotY = 250;
+        const redDotY = 420; // twice as far from eyes as blue dot
         const dotX = W / 2;
 
         // State
