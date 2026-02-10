@@ -1,0 +1,263 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Depth Perception – Quarter</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            min-height: 100vh;
+            max-width: 600px;
+            margin: 0 auto;
+            user-select: none;
+        }
+        #instructions {
+            margin: 12px 0 8px;
+            font-size: 14px;
+            color: #aaa;
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #333;
+            border-radius: 6px;
+            cursor: grab;
+            background: #12121f;
+        }
+        canvas.dragging { cursor: grabbing; }
+    </style>
+</head>
+<body>
+    <p id="instructions">Click and drag the quarter to move it.</p>
+    <canvas id="canvas" width="580" height="700"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // Layout
+        const eyeY = 80;
+        const eyeSep = 165;
+        const leftEyeX = W / 2 - eyeSep / 2;
+        const rightEyeX = W / 2 + eyeSep / 2;
+        const mirrorY = 380;
+        const mirrorX1 = 30;
+        const mirrorX2 = W - 30;
+
+        // Quarter
+        const coinRadius = 30;
+        let coinX = W / 2;
+        let coinY = 250;
+
+        // Drag state
+        let dragging = false;
+        let dragOffX = 0;
+        let dragOffY = 0;
+
+        // Load quarter image
+        const quarterImg = new Image();
+        quarterImg.src = 'quarter_transparent.png';
+        quarterImg.onload = () => draw();
+
+        function drawEye(cx, cy, radius) {
+            ctx.beginPath();
+            ctx.ellipse(cx, cy, radius * 1.5, radius, 0, 0, Math.PI * 2);
+            ctx.fillStyle = '#f0f0f0';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.6, 0, Math.PI * 2);
+            ctx.fillStyle = '#4a7a5a';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx, cy, radius * 0.28, 0, Math.PI * 2);
+            ctx.fillStyle = '#111';
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.arc(cx - radius * 0.15, cy - radius * 0.15, radius * 0.12, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255,255,255,0.7)';
+            ctx.fill();
+        }
+
+        function drawArrow(x1, y1, x2, y2, color, lw) {
+            const headLen = 14;
+            const angle = Math.atan2(y2 - y1, x2 - x1);
+
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lw;
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(x2, y2);
+            ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
+            ctx.lineTo(x2 - headLen * Math.cos(angle + Math.PI / 6), y2 - headLen * Math.sin(angle + Math.PI / 6));
+            ctx.closePath();
+            ctx.fillStyle = color;
+            ctx.fill();
+        }
+
+        // Given a ray from (sx, sy) that must reflect off the mirror (y = mirrorY)
+        // and reach (ex, ey), find the reflection point on the mirror.
+        // The virtual source is the mirror image of (sx, sy): (sx, 2*mirrorY - sy).
+        // The reflection point is the intersection of the line from virtual source to (ex, ey) with y = mirrorY.
+        function reflectionPoint(sx, sy, ex, ey) {
+            const virtualY = 2 * mirrorY - sy;
+            // Line from (sx, virtualY) to (ex, ey): parametric
+            // y = virtualY + t*(ey - virtualY) = mirrorY  =>  t = (mirrorY - virtualY) / (ey - virtualY)
+            const t = (mirrorY - virtualY) / (ey - virtualY);
+            const rx = sx + t * (ex - sx);
+            return { x: rx, y: mirrorY };
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            // Clip: don't draw anything below the mirror
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(0, 0, W, mirrorY);
+            ctx.clip();
+
+            // Draw eyes
+            drawEye(leftEyeX, eyeY, 22);
+            drawEye(rightEyeX, eyeY, 22);
+
+            // --- Reflected rays (mirror -> eye only) ---
+            let rLeft = reflectionPoint(coinX, coinY, leftEyeX, eyeY);
+            let rRight = reflectionPoint(coinX, coinY, rightEyeX, eyeY);
+
+            drawArrow(coinX, coinY, rLeft.x, rLeft.y, '#ffcc44', 2);
+            drawArrow(coinX, coinY, rRight.x, rRight.y, '#ffcc44', 2);
+            drawArrow(rLeft.x, rLeft.y, leftEyeX, eyeY, '#ffcc44', 2);
+            drawArrow(rRight.x, rRight.y, rightEyeX, eyeY, '#ffcc44', 2);
+
+            // Draw quarter image
+            if (quarterImg.complete && quarterImg.naturalWidth > 0) {
+                const size = coinRadius * 2;
+                ctx.drawImage(quarterImg, coinX - coinRadius, coinY - coinRadius, size, size);
+            } else {
+                // Fallback circle
+                ctx.beginPath();
+                ctx.arc(coinX, coinY, coinRadius, 0, Math.PI * 2);
+                ctx.fillStyle = '#c0c0c0';
+                ctx.fill();
+                ctx.strokeStyle = '#888';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+            }
+
+            ctx.restore(); // remove clip
+
+            // Draw mirror (on top, at exact mirrorY, not clipped)
+            ctx.beginPath();
+            ctx.moveTo(mirrorX1, mirrorY);
+            ctx.lineTo(mirrorX2, mirrorY);
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 6;
+            ctx.stroke();
+
+            ctx.font = '14px sans-serif';
+            ctx.fillStyle = '#ccc';
+            ctx.textAlign = 'center';
+            ctx.fillText('Mirror', W / 2, mirrorY + 20);
+
+            // --- Dotted lines behind mirror converging at virtual image ---
+            rLeft = reflectionPoint(coinX, coinY, leftEyeX, eyeY);
+            rRight = reflectionPoint(coinX, coinY, rightEyeX, eyeY);
+            const virtualImageX = coinX;
+            const virtualImageY = 2 * mirrorY - coinY;
+
+            ctx.setLineDash([6, 6]);
+            ctx.strokeStyle = '#ffcc44';
+            ctx.lineWidth = 2;
+
+            ctx.beginPath();
+            ctx.moveTo(rLeft.x, rLeft.y);
+            ctx.lineTo(virtualImageX, virtualImageY);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(rRight.x, rRight.y);
+            ctx.lineTo(virtualImageX, virtualImageY);
+            ctx.stroke();
+
+            ctx.setLineDash([]);
+        }
+
+        // --- Interaction ---
+        function getCanvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches ? e.touches[0] : e;
+            return {
+                x: (touch.clientX - rect.left) * (W / rect.width),
+                y: (touch.clientY - rect.top) * (H / rect.height)
+            };
+        }
+
+        function hitCoin(px, py) {
+            const dx = px - coinX;
+            const dy = py - coinY;
+            return dx * dx + dy * dy <= coinRadius * coinRadius;
+        }
+
+        function clampCoin() {
+            // Keep coin fully above mirror
+            coinX = Math.max(coinRadius, Math.min(W - coinRadius, coinX));
+            coinY = Math.max(coinRadius, Math.min(mirrorY - coinRadius, coinY));
+        }
+
+        function onDown(e) {
+            e.preventDefault();
+            const p = getCanvasPos(e);
+            if (hitCoin(p.x, p.y)) {
+                dragging = true;
+                dragOffX = coinX - p.x;
+                dragOffY = coinY - p.y;
+                canvas.classList.add('dragging');
+            }
+        }
+
+        function onMove(e) {
+            if (!dragging) return;
+            e.preventDefault();
+            const p = getCanvasPos(e);
+            coinX = p.x + dragOffX;
+            coinY = p.y + dragOffY;
+            clampCoin();
+            draw();
+        }
+
+        function onUp() {
+            dragging = false;
+            canvas.classList.remove('dragging');
+        }
+
+        canvas.addEventListener('mousedown', onDown);
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseup', onUp);
+        canvas.addEventListener('mouseleave', onUp);
+        canvas.addEventListener('touchstart', onDown, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', onUp);
+
+        draw();
+    </script>
+</body>
+</html>
