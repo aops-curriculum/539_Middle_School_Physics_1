@@ -197,6 +197,12 @@
             ctx.stroke();
 
             ctx.setLineDash([]);
+
+            // Label at virtual image
+            ctx.font = '13px sans-serif';
+            ctx.fillStyle = '#ccc';
+            ctx.textAlign = 'center';
+            ctx.fillText('image point', virtualImageX, virtualImageY + 18);
         }
 
         // --- Interaction ---

@@ -199,6 +199,16 @@
             ctx.stroke();
 
             ctx.setLineDash([]);
+
+            // Draw mirrored quarter at virtual image
+            if (quarterImg.complete && quarterImg.naturalWidth > 0) {
+                const size = coinRadius * 2;
+                ctx.save();
+                ctx.translate(virtualImageX, virtualImageY);
+                ctx.scale(1, -1);
+                ctx.drawImage(quarterImg, -coinRadius, -coinRadius, size, size);
+                ctx.restore();
+            }
         }
 
         // --- Interaction ---
