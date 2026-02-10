@@ -345,26 +345,33 @@
                 ctx.setLineDash([]);
             }
 
-            // Virtual image of coin
+            // Image of coin (same size as coin, reflected through mirror)
             if (showImage && refl) {
-                const vi = refl.virtualImage;
-                ctx.beginPath();
-                ctx.arc(vi.x, vi.y, 5, 0, Math.PI * 2);
-                ctx.fillStyle = 'rgba(180, 120, 50, 0.45)';
-                ctx.fill();
-                ctx.beginPath();
-                ctx.setLineDash([4, 4]);
-                ctx.arc(vi.x, vi.y, 5, 0, Math.PI * 2);
-                ctx.strokeStyle = 'rgba(160, 90, 30, 0.5)';
+                const viL = reflectPoint({ x: coinX - coinHalfW, y: tableY - coinThickness }, mBase, mTop);
+                const viR = reflectPoint({ x: coinX + coinHalfW, y: tableY - coinThickness }, mBase, mTop);
+                const viBL = reflectPoint({ x: coinX - coinHalfW, y: tableY }, mBase, mTop);
+                const viBR = reflectPoint({ x: coinX + coinHalfW, y: tableY }, mBase, mTop);
+
+                ctx.fillStyle = 'rgba(205, 127, 50, 0.35)';
+                ctx.strokeStyle = 'rgba(139, 90, 43, 0.5)';
                 ctx.lineWidth = 1.5;
+                ctx.setLineDash([4, 4]);
+                ctx.beginPath();
+                ctx.moveTo(viL.x, viL.y);
+                ctx.lineTo(viR.x, viR.y);
+                ctx.lineTo(viBR.x, viBR.y);
+                ctx.lineTo(viBL.x, viBL.y);
+                ctx.closePath();
+                ctx.fill();
                 ctx.stroke();
                 ctx.setLineDash([]);
 
+                const vmx = (viL.x + viR.x) / 2;
+                const vmy = Math.min(viL.y, viR.y);
                 ctx.fillStyle = 'rgba(140, 80, 20, 0.6)';
                 ctx.font = '13px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('virtual', vi.x, vi.y - 18);
-                ctx.fillText('image', vi.x, vi.y - 5);
+                ctx.fillText('image point', vmx, vmy - 10);
             }
 
             // Ray
