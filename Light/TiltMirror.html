@@ -26,15 +26,31 @@
         canvas {
             border: 1px solid #999;
             border-radius: 6px;
-            cursor: grab;
             background: #fff;
         }
-        canvas.dragging { cursor: grabbing; }
+        #controls {
+            display: flex;
+            gap: 18px;
+            margin: 10px 0;
+            font-size: 13px;
+            color: #444;
+        }
+        #controls label {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            cursor: pointer;
+        }
     </style>
 </head>
 <body>
-    <p id="instructions">Drag the top of the mirror to tilt it.</p>
+    <p id="instructions">Drag the mirror to tilt it. Slide the coin or move the eye.</p>
     <canvas id="canvas" width="600" height="500"></canvas>
+    <div id="controls">
+        <label><input type="checkbox" id="cbRays" checked> Rays</label>
+        <label><input type="checkbox" id="cbImage" checked> Image</label>
+        <label><input type="checkbox" id="cbProjections" checked> Projections</label>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
@@ -44,22 +60,40 @@
 
         // Layout
         const tableY = 440;
-        const coinX = 120;
-        const coinTopY = 405;
-        const coinBotY = 440;
-        const coinWidth = 8;
 
-        const eyeX = 250;
-        const eyeY = 65;
+        // Coin (lying flat on table)
+        const coinHalfW = 18;
+        const coinThickness = 6;
+        let coinX = 120;
+
+        // Eye
         const eyeRadius = 18;
+        let eyeX = 250;
+        let eyeY = 65;
 
+        // Mirror
         const mirrorBaseX = 280;
         const mirrorBaseY = tableY;
         const mirrorLength = 160;
-        let mirrorAngle = 0; // radians from vertical, positive = tilted right
+        let mirrorAngle = 0;
         const maxTilt = 40 * Math.PI / 180;
 
-        let isDragging = false;
+        // Drag state
+        let dragTarget = null; // 'mirror', 'coin', 'eye'
+
+        // Checkbox state
+        let showRays = true;
+        let showImage = true;
+        let showProjections = true;
+
+        // Source points: left and right edges of the coin top surface
+        function getCoinSources() {
+            const y = tableY - coinThickness;
+            return [
+                { x: coinX - coinHalfW, y },
+                { x: coinX + coinHalfW, y }
+            ];
+        }
 
         function getMirrorTop() {
             return {
@@ -68,20 +102,16 @@
             };
         }
 
-        // Reflect point P through the line from base to top
         function reflectPoint(P, base, top) {
-            const dx = top.x - base.x;
-            const dy = top.y - base.y;
+            const dx = top.x - base.x, dy = top.y - base.y;
             const len = Math.sqrt(dx * dx + dy * dy);
             const ux = dx / len, uy = dy / len;
             const vx = P.x - base.x, vy = P.y - base.y;
             const dot = vx * ux + vy * uy;
-            const perpX = vx - dot * ux;
-            const perpY = vy - dot * uy;
+            const perpX = vx - dot * ux, perpY = vy - dot * uy;
             return { x: P.x - 2 * perpX, y: P.y - 2 * perpY };
         }
 
-        // Intersect line p1→p2 with line p3→p4, return { t, u, x, y }
         function lineIntersect(p1, p2, p3, p4) {
             const d1x = p2.x - p1.x, d1y = p2.y - p1.y;
             const d2x = p4.x - p3.x, d2y = p4.y - p3.y;
@@ -92,7 +122,6 @@
             return { t, u, x: p1.x + t * d1x, y: p1.y + t * d1y };
         }
 
-        // Find the reflection point on the mirror that connects source → mirror → eye
         function computeReflection(source, eye, mBase, mTop) {
             const vi = reflectPoint(source, mBase, mTop);
             const hit = lineIntersect(eye, vi, mBase, mTop);
@@ -100,7 +129,6 @@
             return { x: hit.x, y: hit.y, virtualImage: vi };
         }
 
-        // Draw an arrow along a line segment (arrowhead at ~65% along)
         function drawRayArrow(x1, y1, x2, y2, color, lw) {
             ctx.beginPath();
             ctx.moveTo(x1, y1);
@@ -136,12 +164,16 @@
         }
 
         function drawCoin() {
-            // Small rectangle (coin on edge)
+            const x = coinX - coinHalfW;
+            const y = tableY - coinThickness;
+            const w = coinHalfW * 2;
+            const h = coinThickness;
+
             ctx.fillStyle = '#CD7F32';
             ctx.strokeStyle = '#8B5A2B';
             ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.rect(coinX - coinWidth / 2, coinTopY, coinWidth, coinBotY - coinTopY);
+            ctx.roundRect(x, y, w, h, 2);
             ctx.fill();
             ctx.stroke();
 
@@ -149,16 +181,15 @@
             ctx.fillStyle = '#666';
             ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
-            ctx.fillText('coin', coinX, coinTopY - 12);
+            ctx.fillText('coin', coinX, y - 10);
         }
 
         function drawEye(cx, cy, lookX, lookY) {
             const dx = lookX - cx, dy = lookY - cy;
             const dist = Math.sqrt(dx * dx + dy * dy);
-            const offX = (dx / dist) * eyeRadius * 0.25;
-            const offY = (dy / dist) * eyeRadius * 0.25;
+            const offX = dist > 1 ? (dx / dist) * eyeRadius * 0.25 : 0;
+            const offY = dist > 1 ? (dy / dist) * eyeRadius * 0.25 : 0;
 
-            // White
             ctx.beginPath();
             ctx.ellipse(cx, cy, eyeRadius * 1.5, eyeRadius, 0, 0, Math.PI * 2);
             ctx.fillStyle = '#f0f0f0';
@@ -167,30 +198,68 @@
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Iris
             ctx.beginPath();
             ctx.arc(cx + offX, cy + offY, eyeRadius * 0.55, 0, Math.PI * 2);
             ctx.fillStyle = '#4a7a5a';
             ctx.fill();
 
-            // Pupil
             ctx.beginPath();
             ctx.arc(cx + offX, cy + offY, eyeRadius * 0.25, 0, Math.PI * 2);
             ctx.fillStyle = '#111';
             ctx.fill();
 
-            // Highlight
             ctx.beginPath();
             ctx.arc(cx + offX - 2, cy + offY - 2, eyeRadius * 0.1, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(255,255,255,0.7)';
             ctx.fill();
         }
 
+        function drawAngleIndicator() {
+            // Dashed vertical reference line from mirror base straight up
+            ctx.beginPath();
+            ctx.setLineDash([6, 4]);
+            ctx.moveTo(mirrorBaseX, mirrorBaseY);
+            ctx.lineTo(mirrorBaseX, mirrorBaseY - mirrorLength - 15);
+            ctx.strokeStyle = '#aaa';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            const angleDeg = Math.round(Math.abs(mirrorAngle) * 180 / Math.PI);
+            if (angleDeg < 1) return;
+
+            // Arc between vertical and mirror
+            const arcR = 40;
+            const vertAngle = -Math.PI / 2;
+            const mirrorDir = -Math.PI / 2 + mirrorAngle;
+
+            ctx.beginPath();
+            if (mirrorAngle > 0) {
+                ctx.arc(mirrorBaseX, mirrorBaseY, arcR, vertAngle, mirrorDir, false);
+            } else {
+                ctx.arc(mirrorBaseX, mirrorBaseY, arcR, mirrorDir, vertAngle, false);
+            }
+            ctx.strokeStyle = '#666';
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+
+            // Angle label
+            const midA = vertAngle + mirrorAngle / 2;
+            const labelR = arcR + 14;
+            ctx.fillStyle = '#555';
+            ctx.font = '13px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(angleDeg + '°',
+                         mirrorBaseX + labelR * Math.cos(midA),
+                         mirrorBaseY + labelR * Math.sin(midA));
+            ctx.textBaseline = 'alphabetic';
+        }
+
         function drawMirror() {
             const top = getMirrorTop();
             const base = { x: mirrorBaseX, y: mirrorBaseY };
 
-            // Mirror surface (thick line)
             ctx.beginPath();
             ctx.moveTo(base.x, base.y);
             ctx.lineTo(top.x, top.y);
@@ -200,18 +269,17 @@
             ctx.stroke();
             ctx.lineCap = 'butt';
 
-            // Hash marks on the non-reflective side (away from coin)
+            // Hash marks on the non-reflective side
             const dx = top.x - base.x, dy = top.y - base.y;
             const len = Math.sqrt(dx * dx + dy * dy);
             const ux = dx / len, uy = dy / len;
 
-            // Normal pointing away from coin side
             const n1x = -uy, n1y = ux;
             const n2x = uy, n2y = -ux;
             const midX = (base.x + top.x) / 2, midY = (base.y + top.y) / 2;
-            const toCoinX = coinX - midX, toCoinY = ((coinTopY + coinBotY) / 2) - midY;
+            const toCoinX = coinX - midX;
+            const toCoinY = (tableY - coinThickness / 2) - midY;
             const dot1 = n1x * toCoinX + n1y * toCoinY;
-            // If dot1 > 0, n1 points toward coin → use n2 for hash marks
             const nx = dot1 > 0 ? n2x : n1x;
             const ny = dot1 > 0 ? n2y : n1y;
 
@@ -222,20 +290,18 @@
                 const t = i / numMarks;
                 const px = base.x + t * dx;
                 const py = base.y + t * dy;
-                // Angled hash marks (45° to mirror)
-                const hx = (nx + ux) * 0.5;
-                const hy = (ny + uy) * 0.5;
-                const hlen = 10;
+                const hx = nx + ux, hy = ny + uy;
+                const hScale = 8 / Math.sqrt(hx * hx + hy * hy);
                 ctx.beginPath();
                 ctx.moveTo(px, py);
-                ctx.lineTo(px + hx * hlen, py + hy * hlen);
+                ctx.lineTo(px + hx * hScale, py + hy * hScale);
                 ctx.stroke();
             }
 
             // Draggable handle at top
             ctx.beginPath();
             ctx.arc(top.x, top.y, 8, 0, Math.PI * 2);
-            ctx.fillStyle = isDragging ? 'rgba(34, 85, 170, 0.5)' : 'rgba(34, 85, 170, 0.25)';
+            ctx.fillStyle = dragTarget === 'mirror' ? 'rgba(34,85,170,0.5)' : 'rgba(34,85,170,0.25)';
             ctx.fill();
             ctx.strokeStyle = '#2255aa';
             ctx.lineWidth = 2;
@@ -265,32 +331,30 @@
             const eye = { x: eyeX, y: eyeY };
 
             drawTable();
+            drawAngleIndicator();
 
-            const sources = [
-                { x: coinX, y: coinTopY },
-                { x: coinX, y: coinBotY }
-            ];
-
+            const sources = getCoinSources();
             const rayColor = '#cc6600';
             const reflections = sources.map(s => computeReflection(s, eye, mBase, mTop));
 
-            // Draw dashed extensions to virtual images
-            for (let i = 0; i < sources.length; i++) {
-                const refl = reflections[i];
-                if (!refl) continue;
-
-                ctx.beginPath();
-                ctx.setLineDash([5, 5]);
-                ctx.moveTo(eye.x, eye.y);
-                ctx.lineTo(refl.virtualImage.x, refl.virtualImage.y);
-                ctx.strokeStyle = 'rgba(180, 100, 40, 0.35)';
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-                ctx.setLineDash([]);
+            // Projections: dashed lines from eye through reflection point to virtual image
+            if (showProjections) {
+                for (let i = 0; i < sources.length; i++) {
+                    const refl = reflections[i];
+                    if (!refl) continue;
+                    ctx.beginPath();
+                    ctx.setLineDash([5, 5]);
+                    ctx.moveTo(eye.x, eye.y);
+                    ctx.lineTo(refl.virtualImage.x, refl.virtualImage.y);
+                    ctx.strokeStyle = 'rgba(180, 100, 40, 0.35)';
+                    ctx.lineWidth = 1.5;
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+                }
             }
 
-            // Draw virtual image of coin (dashed)
-            if (reflections[0] && reflections[1]) {
+            // Virtual image of coin
+            if (showImage && reflections[0] && reflections[1]) {
                 const vi0 = reflections[0].virtualImage;
                 const vi1 = reflections[1].virtualImage;
                 ctx.beginPath();
@@ -302,36 +366,32 @@
                 ctx.stroke();
                 ctx.setLineDash([]);
 
-                // Virtual image label
                 const vmx = (vi0.x + vi1.x) / 2;
-                const vmy = (vi0.y + vi1.y) / 2;
+                const vmy = Math.min(vi0.y, vi1.y);
                 ctx.fillStyle = 'rgba(140, 80, 20, 0.6)';
                 ctx.font = '13px Arial';
                 ctx.textAlign = 'center';
-                ctx.fillText('virtual', vmx, Math.min(vi0.y, vi1.y) - 18);
-                ctx.fillText('image', vmx, Math.min(vi0.y, vi1.y) - 5);
+                ctx.fillText('virtual', vmx, vmy - 18);
+                ctx.fillText('image', vmx, vmy - 5);
             }
 
-            // Draw rays (incident and reflected)
-            for (let i = 0; i < sources.length; i++) {
-                const refl = reflections[i];
-                if (!refl) continue;
-
-                // Incident ray: source → reflection point
-                drawRayArrow(sources[i].x, sources[i].y, refl.x, refl.y, rayColor, 2.5);
-                // Reflected ray: reflection point → eye
-                drawRayArrow(refl.x, refl.y, eye.x, eye.y, rayColor, 2.5);
+            // Rays
+            if (showRays) {
+                for (let i = 0; i < sources.length; i++) {
+                    const refl = reflections[i];
+                    if (!refl) continue;
+                    drawRayArrow(sources[i].x, sources[i].y, refl.x, refl.y, rayColor, 2.5);
+                    drawRayArrow(refl.x, refl.y, eye.x, eye.y, rayColor, 2.5);
+                }
             }
 
             drawMirror();
             drawCoin();
 
-            // Draw eye looking toward mirror midpoint
             const mirrorMidX = (mBase.x + mTop.x) / 2;
             const mirrorMidY = (mBase.y + mTop.y) / 2;
             drawEye(eyeX, eyeY, mirrorMidX, mirrorMidY);
 
-            // Eye label
             ctx.fillStyle = '#444';
             ctx.font = 'bold 14px Arial';
             ctx.textAlign = 'center';
@@ -341,10 +401,10 @@
         // --- Interaction ---
         function getPos(e) {
             const rect = canvas.getBoundingClientRect();
-            const touch = e.touches ? e.touches[0] : e;
+            const src = e.touches ? e.touches[0] : e;
             return {
-                x: (touch.clientX - rect.left) * (W / rect.width),
-                y: (touch.clientY - rect.top) * (H / rect.height)
+                x: (src.clientX - rect.left) * (W / rect.width),
+                y: (src.clientY - rect.top) * (H / rect.height)
             };
         }
 
@@ -354,35 +414,69 @@
             let t = ((px - x1) * dx + (py - y1) * dy) / len2;
             t = Math.max(0, Math.min(1, t));
             const nx = x1 + t * dx, ny = y1 + t * dy;
-            const ddx = px - nx, ddy = py - ny;
-            return Math.sqrt(ddx * ddx + ddy * ddy);
+            return Math.sqrt((px - nx) ** 2 + (py - ny) ** 2);
         }
 
         function startDrag(e) {
             const pos = getPos(e);
+
+            // Check eye
+            const dEye = Math.sqrt((pos.x - eyeX) ** 2 + (pos.y - eyeY) ** 2);
+            if (dEye < 28) { dragTarget = 'eye'; draw(); return; }
+
+            // Check coin
+            const coinCY = tableY - coinThickness / 2;
+            const dCoin = Math.abs(pos.x - coinX) < coinHalfW + 15 &&
+                          Math.abs(pos.y - coinCY) < 25;
+            if (dCoin) { dragTarget = 'coin'; draw(); return; }
+
+            // Check mirror
             const top = getMirrorTop();
             const dTop = Math.sqrt((pos.x - top.x) ** 2 + (pos.y - top.y) ** 2);
             const dSeg = distToSegment(pos.x, pos.y, mirrorBaseX, mirrorBaseY, top.x, top.y);
-            if (dTop < 35 || dSeg < 20) {
-                isDragging = true;
-                canvas.classList.add('dragging');
-            }
+            if (dTop < 35 || dSeg < 20) { dragTarget = 'mirror'; draw(); return; }
         }
 
         function moveDrag(e) {
-            if (!isDragging) return;
+            if (!dragTarget) {
+                // Update cursor on hover
+                const pos = getPos(e);
+                const dEye = Math.sqrt((pos.x - eyeX) ** 2 + (pos.y - eyeY) ** 2);
+                if (dEye < 28) { canvas.style.cursor = 'move'; return; }
+                const coinCY = tableY - coinThickness / 2;
+                if (Math.abs(pos.x - coinX) < coinHalfW + 15 && Math.abs(pos.y - coinCY) < 25) {
+                    canvas.style.cursor = 'ew-resize'; return;
+                }
+                const top = getMirrorTop();
+                const dTop = Math.sqrt((pos.x - top.x) ** 2 + (pos.y - top.y) ** 2);
+                const dSeg = distToSegment(pos.x, pos.y, mirrorBaseX, mirrorBaseY, top.x, top.y);
+                if (dTop < 35 || dSeg < 20) { canvas.style.cursor = 'grab'; return; }
+                canvas.style.cursor = 'default';
+                return;
+            }
+
             const pos = getPos(e);
-            const dx = pos.x - mirrorBaseX;
-            const dy = pos.y - mirrorBaseY;
-            let angle = Math.atan2(dx, -dy);
-            angle = Math.max(-maxTilt, Math.min(maxTilt, angle));
-            mirrorAngle = angle;
+
+            if (dragTarget === 'eye') {
+                canvas.style.cursor = 'move';
+                eyeX = Math.max(30, Math.min(W - 30, pos.x));
+                eyeY = Math.max(30, Math.min(tableY - 30, pos.y));
+            } else if (dragTarget === 'coin') {
+                canvas.style.cursor = 'ew-resize';
+                coinX = Math.max(coinHalfW + 5, Math.min(W - coinHalfW - 5, pos.x));
+            } else if (dragTarget === 'mirror') {
+                canvas.style.cursor = 'grabbing';
+                const dx = pos.x - mirrorBaseX;
+                const dy = pos.y - mirrorBaseY;
+                let angle = Math.atan2(dx, -dy);
+                mirrorAngle = Math.max(-maxTilt, Math.min(maxTilt, angle));
+            }
             draw();
         }
 
         function endDrag() {
-            isDragging = false;
-            canvas.classList.remove('dragging');
+            dragTarget = null;
+            canvas.style.cursor = 'default';
         }
 
         canvas.addEventListener('mousedown', startDrag);
@@ -393,6 +487,11 @@
         canvas.addEventListener('touchstart', (e) => { e.preventDefault(); startDrag(e); }, { passive: false });
         canvas.addEventListener('touchmove', (e) => { e.preventDefault(); moveDrag(e); }, { passive: false });
         canvas.addEventListener('touchend', endDrag);
+
+        // Checkboxes
+        document.getElementById('cbRays').addEventListener('change', (e) => { showRays = e.target.checked; draw(); });
+        document.getElementById('cbImage').addEventListener('change', (e) => { showImage = e.target.checked; draw(); });
+        document.getElementById('cbProjections').addEventListener('change', (e) => { showProjections = e.target.checked; draw(); });
 
         draw();
     </script>
