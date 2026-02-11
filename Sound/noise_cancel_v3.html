@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=600, height=600">
+<title>Noise Cancellation – 3 Components</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    width: 600px;
+    height: 600px;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+    background: #f2f2f5;
+    color: #333;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ===== WAVEFORM DISPLAY ===== */
+  #display-area {
+    width: 600px;
+    height: 300px;
+    display: flex;
+    flex-direction: column;
+    padding: 6px 10px 0 10px;
+    gap: 4px;
+    background: #f2f2f5;
+  }
+
+  .wave-panel {
+    flex: 1;
+    position: relative;
+    background: #ffffff;
+    border: 1px solid #d8d8e0;
+    border-radius: 6px;
+    overflow: hidden;
+  }
+
+  .wave-panel canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  .wave-label {
+    position: absolute;
+    top: 3px;
+    left: 8px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    pointer-events: none;
+  }
+
+  /* Success message */
+  #success-msg {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-size: 13px;
+    font-weight: 700;
+    color: #22a860;
+    letter-spacing: 1px;
+    opacity: 0;
+    transition: opacity 0.4s;
+    pointer-events: none;
+    background: rgba(255,255,255,0.85);
+    padding: 4px 14px;
+    border-radius: 4px;
+  }
+
+  /* ===== DIVIDER ===== */
+  #divider {
+    height: 2px;
+    background: #d8d8e0;
+    flex-shrink: 0;
+  }
+
+  /* ===== CONTROLS ===== */
+  #controls-area {
+    flex: 1;
+    padding: 8px 20px 6px 20px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    background: #eaeaef;
+    overflow-y: auto;
+  }
+
+  .component-bank {
+    background: #ffffff;
+    border: 1px solid #d8d8e0;
+    border-radius: 8px;
+    padding: 6px 14px;
+  }
+  .bank-title {
+    font-size: 10px;
+    font-weight: 700;
+    color: #4a80c4;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 4px;
+  }
+
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 3px;
+  }
+  .slider-row:last-child { margin-bottom: 0; }
+
+  .slider-label {
+    width: 78px;
+    font-size: 11px;
+    color: #777;
+    flex-shrink: 0;
+  }
+
+  input[type="range"] {
+    flex: 1;
+    height: 5px;
+    -webkit-appearance: none;
+    appearance: none;
+    background: #d8d8e0;
+    border-radius: 3px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #4a80c4;
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: #4a80c4;
+    cursor: pointer;
+    border: 2px solid #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.2);
+  }
+
+  .slider-value {
+    width: 58px;
+    text-align: right;
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    color: #555;
+    flex-shrink: 0;
+  }
+
+  #reset-btn {
+    align-self: flex-end;
+    margin-top: auto;
+    padding: 4px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    color: #777;
+    background: #fff;
+    border: 1px solid #ccc;
+    border-radius: 5px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #reset-btn:hover { background: #e8e8ee; color: #333; }
+</style>
+</head>
+<body>
+
+<!-- ===== DISPLAY ===== -->
+<div id="display-area">
+
+  <div class="wave-panel" id="panel-target">
+    <canvas id="canvasTarget"></canvas>
+    <div class="wave-label" style="color:#d04040;">Target Noise</div>
+  </div>
+
+  <div class="wave-panel" id="panel-user">
+    <canvas id="canvasUser"></canvas>
+    <div class="wave-label" style="color:#4a80c4;">Your Wave</div>
+  </div>
+
+  <div class="wave-panel" id="panel-combined">
+    <canvas id="canvasCombined"></canvas>
+    <div class="wave-label" style="color:#22a860;">Result</div>
+    <div id="success-msg">✓ NOISE CANCELLED</div>
+  </div>
+
+</div>
+
+<div id="divider"></div>
+
+<!-- ===== CONTROLS ===== -->
+<div id="controls-area">
+
+  <!-- Component 1 -->
+  <div class="component-bank" id="bank-1">
+    <div class="bank-title">Component 1</div>
+    <div class="slider-row">
+      <span class="slider-label">Amplitude</span>
+      <input type="range" id="amp1" min="0" max="20" step="1" value="10">
+      <span class="slider-value" id="amp1-val">10 μm</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Frequency</span>
+      <input type="range" id="freq1" min="0" max="500" step="50" value="100">
+      <span class="slider-value" id="freq1-val">100 Hz</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Phase</span>
+      <input type="range" id="phase1" min="0" max="360" step="5" value="180">
+      <span class="slider-value" id="phase1-val">180°</span>
+    </div>
+  </div>
+
+  <!-- Component 2 -->
+  <div class="component-bank" id="bank-2">
+    <div class="bank-title">Component 2</div>
+    <div class="slider-row">
+      <span class="slider-label">Amplitude</span>
+      <input type="range" id="amp2" min="0" max="20" step="1" value="6">
+      <span class="slider-value" id="amp2-val">6 μm</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Frequency</span>
+      <input type="range" id="freq2" min="0" max="500" step="50" value="200">
+      <span class="slider-value" id="freq2-val">200 Hz</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Phase</span>
+      <input type="range" id="phase2" min="0" max="360" step="5" value="180">
+      <span class="slider-value" id="phase2-val">180°</span>
+    </div>
+  </div>
+
+  <!-- Component 3 -->
+  <div class="component-bank" id="bank-3">
+    <div class="bank-title">Component 3</div>
+    <div class="slider-row">
+      <span class="slider-label">Amplitude</span>
+      <input type="range" id="amp3" min="0" max="20" step="1" value="0">
+      <span class="slider-value" id="amp3-val">0 μm</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Frequency</span>
+      <input type="range" id="freq3" min="0" max="500" step="50" value="50">
+      <span class="slider-value" id="freq3-val">50 Hz</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Phase</span>
+      <input type="range" id="phase3" min="0" max="360" step="5" value="0">
+      <span class="slider-value" id="phase3-val">0°</span>
+    </div>
+  </div>
+
+  <button id="reset-btn">Reset Sliders</button>
+</div>
+
+<script>
+// ============================================================
+//  BACK-END CONFIGURATION
+//  Harmonic series: fundamental + 2nd + 3rd harmonic
+// ============================================================
+// Converts display Hz to visual frequency for the wave equation
+const FREQ_SCALE = 0.01; // 500 Hz on slider → 5.0 visual freq
+
+const TARGET_COMPONENTS = [
+  { amp: 10, freq: 100 * FREQ_SCALE, phase: 0 },
+  { amp: 6,  freq: 200 * FREQ_SCALE, phase: 0 },
+  { amp: 3,  freq: 300 * FREQ_SCALE, phase: 0 }
+];
+
+// ============================================================
+//  CANVAS SETUP
+// ============================================================
+const canvases = {
+  target:   document.getElementById('canvasTarget'),
+  user:     document.getElementById('canvasUser'),
+  combined: document.getElementById('canvasCombined')
+};
+
+function sizeCanvases() {
+  for (const key in canvases) {
+    const cvs = canvases[key];
+    const panel = cvs.parentElement;
+    cvs.width  = panel.clientWidth;
+    cvs.height = panel.clientHeight;
+  }
+}
+sizeCanvases();
+
+const TIME_WINDOW = 4;
+const PAD_X = 6;
+
+// ============================================================
+//  SLIDER REFERENCES
+// ============================================================
+const sliders = {};
+const vals = {};
+for (const n of ['1', '2', '3']) {
+  sliders['amp' + n]   = document.getElementById('amp' + n);
+  sliders['freq' + n]  = document.getElementById('freq' + n);
+  sliders['phase' + n] = document.getElementById('phase' + n);
+  vals['amp' + n]   = document.getElementById('amp' + n + '-val');
+  vals['freq' + n]  = document.getElementById('freq' + n + '-val');
+  vals['phase' + n] = document.getElementById('phase' + n + '-val');
+}
+
+const successMsg = document.getElementById('success-msg');
+
+// Slider readouts
+for (const n of ['1', '2', '3']) {
+  sliders['amp' + n].addEventListener('input',   () => { vals['amp' + n].textContent   = sliders['amp' + n].value + ' μm'; });
+  sliders['freq' + n].addEventListener('input',  () => { vals['freq' + n].textContent  = sliders['freq' + n].value + ' Hz'; });
+  sliders['phase' + n].addEventListener('input', () => { vals['phase' + n].textContent = sliders['phase' + n].value + '°'; });
+}
+
+// Reset
+document.getElementById('reset-btn').addEventListener('click', () => {
+  for (const n of ['1', '2', '3']) {
+    sliders['amp' + n].value = 0;    vals['amp' + n].textContent = '0 μm';
+    sliders['freq' + n].value = 50;   vals['freq' + n].textContent = '50 Hz';
+    sliders['phase' + n].value = 0;  vals['phase' + n].textContent = '0°';
+  }
+});
+
+// ============================================================
+//  WAVE MATH
+// ============================================================
+function degToRad(deg) { return deg * Math.PI / 180; }
+
+function targetAt(t) {
+  let y = 0;
+  for (const c of TARGET_COMPONENTS) {
+    y += c.amp * Math.sin(2 * Math.PI * c.freq * t + degToRad(c.phase));
+  }
+  return y;
+}
+
+function userAt(t, userComps) {
+  let y = 0;
+  for (const c of userComps) {
+    y += c.amp * Math.sin(2 * Math.PI * c.freq * t + degToRad(c.phase));
+  }
+  return y;
+}
+
+function getUserComponents() {
+  const comps = [];
+  for (const n of ['1', '2', '3']) {
+    comps.push({
+      amp:   parseFloat(sliders['amp' + n].value),
+      freq:  parseFloat(sliders['freq' + n].value) * FREQ_SCALE,
+      phase: parseFloat(sliders['phase' + n].value)
+    });
+  }
+  return comps;
+}
+
+// ============================================================
+//  DRAWING
+// ============================================================
+function drawGrid(ctx, w, h) {
+  const cy = h / 2;
+  ctx.strokeStyle = '#d0d0d8';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(PAD_X, cy);
+  ctx.lineTo(w - PAD_X, cy);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#ececf0';
+  ctx.setLineDash([3, 5]);
+  const quarter = (h / 2 - 8) * 0.5;
+  for (const sign of [-1, 1]) {
+    ctx.beginPath();
+    ctx.moveTo(PAD_X, cy + sign * quarter);
+    ctx.lineTo(w - PAD_X, cy + sign * quarter);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+// Peak possible is 10+6+3 = 19, so 20 still works well
+const AMP_SCALE = 20;
+
+function drawWaveOnCanvas(cvs, evalFn, color, lineWidth) {
+  const ctx = cvs.getContext('2d');
+  const w = cvs.width;
+  const h = cvs.height;
+  const cy = h / 2;
+  const maxAmpPx = (h / 2) - 8;
+  const drawW = w - PAD_X * 2;
+
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  ctx.beginPath();
+  for (let px = 0; px <= drawW; px++) {
+    const t = (px / drawW) * TIME_WINDOW;
+    const y = evalFn(t) / AMP_SCALE;
+    const canvasY = cy - y * maxAmpPx;
+    if (px === 0) ctx.moveTo(PAD_X + px, canvasY);
+    else ctx.lineTo(PAD_X + px, canvasY);
+  }
+  ctx.stroke();
+}
+
+// Target RMS for normalization
+const targetRMS = (() => {
+  let sumSq = 0;
+  const N = 400;
+  for (let i = 0; i < N; i++) {
+    const t = (i / N) * TIME_WINDOW;
+    const v = targetAt(t);
+    sumSq += v * v;
+  }
+  return Math.sqrt(sumSq / N);
+})();
+
+function computeResidualRMS(userComps) {
+  let sumSq = 0;
+  const N = 400;
+  for (let i = 0; i < N; i++) {
+    const t = (i / N) * TIME_WINDOW;
+    const combined = targetAt(t) + userAt(t, userComps);
+    sumSq += combined * combined;
+  }
+  return Math.sqrt(sumSq / N);
+}
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+function frame() {
+  const userComps = getUserComponents();
+
+  const ctxT = canvases.target.getContext('2d');
+  ctxT.clearRect(0, 0, canvases.target.width, canvases.target.height);
+  drawGrid(ctxT, canvases.target.width, canvases.target.height);
+  drawWaveOnCanvas(canvases.target, t => targetAt(t), '#d04040', 2.5);
+
+  const ctxU = canvases.user.getContext('2d');
+  ctxU.clearRect(0, 0, canvases.user.width, canvases.user.height);
+  drawGrid(ctxU, canvases.user.width, canvases.user.height);
+  drawWaveOnCanvas(canvases.user, t => userAt(t, userComps), '#4a80c4', 2.5);
+
+  const ctxC = canvases.combined.getContext('2d');
+  ctxC.clearRect(0, 0, canvases.combined.width, canvases.combined.height);
+  drawGrid(ctxC, canvases.combined.width, canvases.combined.height);
+  drawWaveOnCanvas(canvases.combined, t => targetAt(t) + userAt(t, userComps), '#22a860', 2.5);
+
+  const rms = computeResidualRMS(userComps);
+  const normalizedRMS = Math.min(rms / (targetRMS || 1), 2);
+  successMsg.style.opacity = normalizedRMS < 0.03 ? '1' : '0';
+
+  requestAnimationFrame(frame);
+}
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
