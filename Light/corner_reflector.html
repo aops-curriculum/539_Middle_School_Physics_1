@@ -1,0 +1,490 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corner Reflector</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .instructions {
+            font-size: 14px;
+            color: #aaa;
+            text-align: center;
+            padding: 16px 8px 8px;
+        }
+        canvas {
+            border: 1px solid #333;
+            border-radius: 6px;
+            cursor: crosshair;
+            display: block;
+        }
+        .controls {
+            text-align: center;
+            padding: 8px;
+        }
+        button {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            cursor: pointer;
+            margin: 4px;
+        }
+        button:hover {
+            background: rgba(76, 175, 80, 1);
+        }
+    </style>
+</head>
+<body>
+    <p class="instructions">Click and drag to draw lines. Lines snap to the mirrors and to endpoints of existing lines.</p>
+    <canvas id="canvas" width="600" height="600"></canvas>
+    <div class="controls">
+        <button id="undoBtn">Undo</button>
+        <button id="clearBtn">Clear All</button>
+    </div>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = 600;
+        const H = 600;
+
+        // Corner reflector: two mirrors meeting at 90° at vertex
+        // Vertex near top-center, mirrors go diagonally down-left and down-right
+        const vertex = { x: 300, y: 10 };
+        const mirrorLen = 300;
+
+        // Mirror 1: vertex -> down-left at 45°
+        const mirror1 = {
+            x1: vertex.x, y1: vertex.y,
+            x2: vertex.x - mirrorLen * Math.cos(Math.PI / 4),
+            y2: vertex.y + mirrorLen * Math.sin(Math.PI / 4)
+        };
+        // Mirror 2: vertex -> down-right at 45°
+        const mirror2 = {
+            x1: vertex.x, y1: vertex.y,
+            x2: vertex.x + mirrorLen * Math.cos(Math.PI / 4),
+            y2: vertex.y + mirrorLen * Math.sin(Math.PI / 4)
+        };
+
+        const mirrors = [mirror1, mirror2];
+
+        // User-drawn lines
+        let lines = [];
+        let drawing = false;
+        let startPoint = null;
+        let currentEnd = null;
+
+        const SNAP_DIST = 15;
+        const NORMAL_LEN = 40;
+        const ARC_RADIUS = 25;
+
+        // Load image
+        const rainbowImg = new Image();
+        rainbowImg.src = 'rainbow_overhead_transparent.png';
+        rainbowImg.onload = draw;
+
+        // --- Geometry helpers ---
+
+        function nearestPointOnSegment(px, py, x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            const lenSq = dx * dx + dy * dy;
+            if (lenSq === 0) return { x: x1, y: y1 };
+            let t = ((px - x1) * dx + (py - y1) * dy) / lenSq;
+            t = Math.max(0, Math.min(1, t));
+            return { x: x1 + t * dx, y: y1 + t * dy };
+        }
+
+        function dist(x1, y1, x2, y2) {
+            const dx = x2 - x1;
+            const dy = y2 - y1;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        // Try to snap a point to mirror surfaces or existing line endpoints
+        function snapPoint(px, py) {
+            let bestDist = SNAP_DIST;
+            let bestPoint = null;
+            let snapType = null;
+            let mirrorIndex = -1;
+
+            // Check existing line endpoints
+            for (let i = 0; i < lines.length; i++) {
+                const line = lines[i];
+                let d = dist(px, py, line.x1, line.y1);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestPoint = { x: line.x1, y: line.y1 };
+                    snapType = 'endpoint';
+                    mirrorIndex = -1;
+                }
+                d = dist(px, py, line.x2, line.y2);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestPoint = { x: line.x2, y: line.y2 };
+                    snapType = 'endpoint';
+                    mirrorIndex = -1;
+                }
+            }
+
+            // Check mirror surfaces
+            for (let i = 0; i < mirrors.length; i++) {
+                const m = mirrors[i];
+                const np = nearestPointOnSegment(px, py, m.x1, m.y1, m.x2, m.y2);
+                const d = dist(px, py, np.x, np.y);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestPoint = { x: np.x, y: np.y };
+                    snapType = 'mirror';
+                    mirrorIndex = i;
+                }
+            }
+
+            if (bestPoint) {
+                return { ...bestPoint, snapType, mirrorIndex };
+            }
+            return { x: px, y: py, snapType: null, mirrorIndex: -1 };
+        }
+
+        // --- Input handling ---
+
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const src = e.touches ? e.touches[0] : e;
+            return {
+                x: (src.clientX - rect.left) * (W / rect.width),
+                y: (src.clientY - rect.top) * (H / rect.height)
+            };
+        }
+
+        function onStart(e) {
+            e.preventDefault();
+            const pos = getPos(e);
+            const snapped = snapPoint(pos.x, pos.y);
+            startPoint = snapped;
+            currentEnd = { ...snapped };
+            drawing = true;
+            canvas.style.cursor = 'crosshair';
+            draw();
+        }
+
+        function onMove(e) {
+            e.preventDefault();
+            if (!drawing) return;
+            const pos = getPos(e);
+            currentEnd = snapPoint(pos.x, pos.y);
+            draw();
+        }
+
+        function onEnd(e) {
+            e.preventDefault();
+            if (!drawing) return;
+            drawing = false;
+            canvas.style.cursor = 'crosshair';
+
+            if (startPoint && currentEnd) {
+                const d = dist(startPoint.x, startPoint.y, currentEnd.x, currentEnd.y);
+                if (d > 5) {
+                    lines.push({
+                        x1: startPoint.x, y1: startPoint.y,
+                        x2: currentEnd.x, y2: currentEnd.y,
+                        startSnap: startPoint.snapType,
+                        startMirror: startPoint.mirrorIndex,
+                        endSnap: currentEnd.snapType,
+                        endMirror: currentEnd.mirrorIndex
+                    });
+                }
+            }
+            startPoint = null;
+            currentEnd = null;
+            draw();
+        }
+
+        canvas.addEventListener('mousedown', onStart);
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseup', onEnd);
+        canvas.addEventListener('mouseleave', onEnd);
+        canvas.addEventListener('touchstart', onStart, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', onEnd, { passive: false });
+
+        document.getElementById('undoBtn').addEventListener('click', () => {
+            lines.pop();
+            draw();
+        });
+
+        document.getElementById('clearBtn').addEventListener('click', () => {
+            lines = [];
+            draw();
+        });
+
+        // --- Drawing ---
+
+        function getMirrorNormal(mirrorIdx, snapX, snapY, otherX, otherY) {
+            const m = mirrors[mirrorIdx];
+            const mdx = m.x2 - m.x1;
+            const mdy = m.y2 - m.y1;
+            const mlen = Math.sqrt(mdx * mdx + mdy * mdy);
+            // Two possible perpendicular directions
+            let nx = -mdy / mlen;
+            let ny = mdx / mlen;
+            // Pick the one pointing toward the other end of the drawn line
+            const toOtherX = otherX - snapX;
+            const toOtherY = otherY - snapY;
+            if (nx * toOtherX + ny * toOtherY < 0) {
+                nx = -nx;
+                ny = -ny;
+            }
+            return { nx, ny };
+        }
+
+        function drawAngleArc(cx, cy, nx, ny, lx, ly) {
+            const normalAngle = Math.atan2(ny, nx);
+            const lineAngle = Math.atan2(ly, lx);
+
+            let angleDiff = lineAngle - normalAngle;
+            while (angleDiff > Math.PI) angleDiff -= 2 * Math.PI;
+            while (angleDiff < -Math.PI) angleDiff += 2 * Math.PI;
+
+            const degrees = Math.abs(angleDiff) * 180 / Math.PI;
+
+            let startA, endA;
+            if (angleDiff >= 0) {
+                startA = normalAngle;
+                endA = normalAngle + angleDiff;
+            } else {
+                startA = normalAngle + angleDiff;
+                endA = normalAngle;
+            }
+
+            // Arc
+            ctx.beginPath();
+            ctx.arc(cx, cy, ARC_RADIUS, startA, endA);
+            ctx.strokeStyle = '#FFD700';
+            ctx.lineWidth = 1.5;
+            ctx.setLineDash([]);
+            ctx.stroke();
+
+            // Degree label
+            const midA = (startA + endA) / 2;
+            const labelR = ARC_RADIUS + 15;
+            const labelX = cx + labelR * Math.cos(midA);
+            const labelY = cy + labelR * Math.sin(midA);
+
+            ctx.font = 'bold 14px Arial';
+            ctx.fillStyle = '#FFD700';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(Math.round(degrees) + '°', labelX, labelY);
+        }
+
+        function drawMirrorAnnotation(snapX, snapY, otherX, otherY, mirrorIdx) {
+            const dx = otherX - snapX;
+            const dy = otherY - snapY;
+            const len = Math.sqrt(dx * dx + dy * dy);
+            if (len < 1) return;
+
+            const { nx, ny } = getMirrorNormal(mirrorIdx, snapX, snapY, otherX, otherY);
+
+            // Normal line (dotted)
+            ctx.beginPath();
+            ctx.setLineDash([3, 3]);
+            ctx.moveTo(snapX - nx * NORMAL_LEN * 0.3, snapY - ny * NORMAL_LEN * 0.3);
+            ctx.lineTo(snapX + nx * NORMAL_LEN, snapY + ny * NORMAL_LEN);
+            ctx.strokeStyle = 'rgba(200, 200, 200, 0.6)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Angle arc
+            drawAngleArc(snapX, snapY, nx, ny, dx / len, dy / len);
+        }
+
+        function drawCornerReflector() {
+            // Mirror surfaces - thick lines
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#88CCFF';
+            ctx.lineCap = 'round';
+
+            ctx.beginPath();
+            ctx.moveTo(mirror1.x1, mirror1.y1);
+            ctx.lineTo(mirror1.x2, mirror1.y2);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(mirror2.x1, mirror2.y1);
+            ctx.lineTo(mirror2.x2, mirror2.y2);
+            ctx.stroke();
+
+            // Hatching on non-reflective (outer) side of each mirror
+            ctx.lineWidth = 1;
+            ctx.strokeStyle = 'rgba(136, 204, 255, 0.35)';
+            const hatchSpacing = 10;
+            const hatchLen = 8;
+
+            for (let mi = 0; mi < 2; mi++) {
+                const m = mirrors[mi];
+                const mdx = m.x2 - m.x1;
+                const mdy = m.y2 - m.y1;
+                const mlen = Math.sqrt(mdx * mdx + mdy * mdy);
+                const ux = mdx / mlen;
+                const uy = mdy / mlen;
+                // Normal pointing outward (away from the reflector cavity)
+                // Cavity is between the mirrors (below vertex, between the two lines)
+                // Mirror 1 (left): outward normal points upper-left
+                // Mirror 2 (right): outward normal points upper-right
+                let nx, ny;
+                if (mi === 0) {
+                    nx = -uy; ny = ux; // perpendicular, rotated
+                    // For mirror1 going down-left, (-uy, ux) = (-sin45, -cos45) which points up-left. That's outward.
+                    // Actually let me just compute: mirror1 direction is (-cos45, sin45) in canvas coords
+                    // (-uy, ux) = (-sin45, -cos45) — points up-left. That's outer for left mirror. Good.
+                } else {
+                    nx = uy; ny = -ux;
+                    // mirror2 direction is (cos45, sin45). (uy, -ux) = (sin45, -cos45) — points upper-right. Outer for right mirror. Good.
+                }
+
+                for (let t = hatchSpacing; t < mlen; t += hatchSpacing) {
+                    const px = m.x1 + ux * t;
+                    const py = m.y1 + uy * t;
+                    ctx.beginPath();
+                    ctx.moveTo(px, py);
+                    ctx.lineTo(px + nx * hatchLen, py + ny * hatchLen);
+                    ctx.stroke();
+                }
+            }
+
+            // Right-angle indicator at vertex
+            const sq = 12;
+            const m1ux = (mirror1.x2 - mirror1.x1) / mirrorLen;
+            const m1uy = (mirror1.y2 - mirror1.y1) / mirrorLen;
+            const m2ux = (mirror2.x2 - mirror2.x1) / mirrorLen;
+            const m2uy = (mirror2.y2 - mirror2.y1) / mirrorLen;
+
+            ctx.beginPath();
+            ctx.moveTo(vertex.x + m1ux * sq, vertex.y + m1uy * sq);
+            ctx.lineTo(vertex.x + m1ux * sq + m2ux * sq, vertex.y + m1uy * sq + m2uy * sq);
+            ctx.lineTo(vertex.x + m2ux * sq, vertex.y + m2uy * sq);
+            ctx.strokeStyle = 'rgba(136, 204, 255, 0.5)';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+        }
+
+        function drawRainbow() {
+            if (!rainbowImg.complete || rainbowImg.naturalWidth === 0) return;
+
+            const imgW = rainbowImg.naturalWidth;
+            const imgH = rainbowImg.naturalHeight;
+
+            // After 90° CCW rotation, displayed dimensions swap: (imgH, imgW)
+            const maxDrawW = W * 1.575;
+            const maxDrawH = 405;
+            const scale = Math.min(maxDrawW / imgH, maxDrawH / imgW);
+
+            const drawW = imgH * scale; // rotated width
+            const drawH = imgW * scale; // rotated height
+
+            ctx.save();
+            ctx.translate(W / 2, H - 20 - drawH / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.drawImage(rainbowImg, -imgW * scale / 2, -imgH * scale / 2, imgW * scale, imgH * scale);
+            ctx.restore();
+        }
+
+        function drawLine(x1, y1, x2, y2, color, width, dash) {
+            ctx.beginPath();
+            ctx.setLineDash(dash);
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x2, y2);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = width;
+            ctx.lineCap = 'round';
+            ctx.stroke();
+            ctx.setLineDash([]);
+        }
+
+        function drawSnapIndicator(x, y) {
+            ctx.beginPath();
+            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.strokeStyle = '#4CAF50';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([]);
+            ctx.stroke();
+        }
+
+        function drawEndpoint(x, y) {
+            ctx.beginPath();
+            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.fillStyle = '#FF6B6B';
+            ctx.fill();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            // Background
+            ctx.fillStyle = '#1a1a2e';
+            ctx.fillRect(0, 0, W, H);
+
+            // Rainbow image at bottom
+            drawRainbow();
+
+            // Corner reflector
+            drawCornerReflector();
+
+            // Existing user-drawn lines
+            for (const line of lines) {
+                drawLine(line.x1, line.y1, line.x2, line.y2, '#FF6B6B', 4, [5, 5]);
+
+                // Annotations at mirror-snapped ends
+                if (line.startSnap === 'mirror' && line.startMirror >= 0) {
+                    drawMirrorAnnotation(line.x1, line.y1, line.x2, line.y2, line.startMirror);
+                }
+                if (line.endSnap === 'mirror' && line.endMirror >= 0) {
+                    drawMirrorAnnotation(line.x2, line.y2, line.x1, line.y1, line.endMirror);
+                }
+
+                // Endpoints
+                drawEndpoint(line.x1, line.y1);
+                drawEndpoint(line.x2, line.y2);
+            }
+
+            // Line currently being drawn
+            if (drawing && startPoint && currentEnd) {
+                drawLine(startPoint.x, startPoint.y, currentEnd.x, currentEnd.y,
+                    'rgba(255, 107, 107, 0.6)', 4, [5, 5]);
+
+                // Live annotations for mirror snaps
+                if (startPoint.snapType === 'mirror' && startPoint.mirrorIndex >= 0) {
+                    drawMirrorAnnotation(startPoint.x, startPoint.y, currentEnd.x, currentEnd.y, startPoint.mirrorIndex);
+                }
+                if (currentEnd.snapType === 'mirror' && currentEnd.mirrorIndex >= 0) {
+                    drawMirrorAnnotation(currentEnd.x, currentEnd.y, startPoint.x, startPoint.y, currentEnd.mirrorIndex);
+                }
+
+                // Snap indicators
+                if (startPoint.snapType) {
+                    drawSnapIndicator(startPoint.x, startPoint.y);
+                }
+                if (currentEnd.snapType) {
+                    drawSnapIndicator(currentEnd.x, currentEnd.y);
+                }
+            }
+        }
+
+        draw();
+    </script>
+</body>
+</html>
