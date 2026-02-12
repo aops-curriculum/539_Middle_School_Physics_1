@@ -256,6 +256,90 @@
       "description": "Compare sound detection with two microphone positions.",
       "emoji": "🎙️",
       "category": "sound"
+    },
+    {
+      "path": "Light/DepthPerceptionQuarter.html",
+      "title": "Depth Perception – Quarter",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/DepthPerceptionQuarter2.html",
+      "title": "Depth Perception – Quarter",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/DepthPerceptionQuarter3.html",
+      "title": "Depth Perception – Quarter",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/DepthPerceptionQuarter4.html",
+      "title": "Depth Perception – Quarter",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/DepthPerceptionQuarter5.html",
+      "title": "Depth Perception – Quarter",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/TiltMirror.html",
+      "title": "Tilt Mirror",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/corner_reflector.html",
+      "title": "Corner Reflector",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/corner_reflector_parity.html",
+      "title": "Corner Reflector – Mirror Challenge",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/depth-perception.html",
+      "title": "Depth Perception",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Sound/noise_cancel_v1.html",
+      "title": "Noise Cancellation – 1 Component",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/noise_cancel_v2.html",
+      "title": "Noise Cancellation – 2 Components",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/noise_cancel_v3.html",
+      "title": "Noise Cancellation – 3 Components",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
