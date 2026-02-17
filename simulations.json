@@ -340,6 +340,41 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Light/arrow_pair.html",
+      "title": "Arrow Pair – Drag &amp; Rotate",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/corner_reflector_handedness.html",
+      "title": "Corner Reflector – Mirror Challenge 2",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/corner_reflector_handedness_viz.html",
+      "title": "Corner Reflector – Second Reflection Visualization",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/corner_reflector_parity_viz.html",
+      "title": "Corner Reflector – Reflection Visualization",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/rainbow_overhead.html",
+      "title": "Rainbow Overhead – Drag &amp; Rotate",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
