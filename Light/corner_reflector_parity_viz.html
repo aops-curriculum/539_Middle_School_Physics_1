@@ -1,0 +1,275 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corner Reflector – Reflection Visualization</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 16px 0;
+        }
+        canvas {
+            display: block;
+            border: 1px solid #333;
+            border-radius: 6px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="canvas" width="600" height="550"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = 600, H = 550;
+
+        // ── Corner reflector ──
+        const vx = 280, vy = 200;
+        const mirrorLen = 165;
+        const md = mirrorLen / Math.SQRT2;
+
+        const blackEnd = { x: vx - md, y: vy + md };
+        const redEnd   = { x: vx + md, y: vy + md };
+
+        // Red mirror line: x - y = c
+        const c = vx - vy; // 80
+
+        // ── Arrow shape constants ──
+        const AL = 50;      // half-length
+        const BH = 16;      // body half-height
+        const HH = 28;      // head half-height
+        const HS = 15;      // x where head widens
+
+        // ── Fixed arrow ──
+        const fixed = { x: vx, y: 380, angle: 0, flipped: false };
+
+        // ── Reflected arrow ──
+        // Reflection across x - y = c: (px, py) → (py + c, px - c)
+        const reflected = {
+            x: fixed.y + c,       // 460
+            y: fixed.x - c,       // 200
+            angle: Math.PI / 2,
+            flipped: true
+        };
+
+        // ── Arrow vertices in local coords ──
+        // 7 edge vertices of the arrow outline
+        const arrowVertices = [
+            { x: -AL, y: -BH },   // top-left corner
+            { x: -AL, y:  BH },   // bottom-left corner
+            { x:  HS, y: -BH },   // top body-to-head junction
+            { x:  HS, y:  BH },   // bottom body-to-head junction
+            { x:  HS, y: -HH },   // top arrowhead tip
+            { x:  HS, y:  HH },   // bottom arrowhead tip
+            { x:  AL, y:   0 },   // point of arrow
+        ];
+
+        const samplePoints = arrowVertices;
+
+        // Transform local point by arrow state
+        function transformPoint(lx, ly, arrow) {
+            let px = lx, py = ly;
+            if (arrow.flipped) py = -py;
+            const cos = Math.cos(arrow.angle);
+            const sin = Math.sin(arrow.angle);
+            return {
+                x: arrow.x + px * cos - py * sin,
+                y: arrow.y + px * sin + py * cos
+            };
+        }
+
+        // Reflect point across the red mirror (line x - y = c)
+        function reflectAcrossRedMirror(px, py) {
+            return { x: py + c, y: px - c };
+        }
+
+        // Find intersection of segment (p1→p2) with line x - y = c
+        // Line: x - y - c = 0
+        function segmentMirrorIntersection(p1, p2) {
+            const d1 = p1.x - p1.y - c;
+            const d2 = p2.x - p2.y - c;
+            if (Math.abs(d1 - d2) < 1e-9) return null; // parallel
+            const t = d1 / (d1 - d2);
+            if (t < -0.01 || t > 1.01) return null;
+            return {
+                x: p1.x + t * (p2.x - p1.x),
+                y: p1.y + t * (p2.y - p1.y)
+            };
+        }
+
+        // ────────────────── drawing ──────────────────
+
+        function drawArrow(x, y, angle, flipped, alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha;
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            if (flipped) ctx.scale(1, -1);
+
+            // Top half (blue)
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(-AL, -BH);
+            ctx.lineTo(HS, -BH);
+            ctx.lineTo(HS, -HH);
+            ctx.lineTo(AL, 0);
+            ctx.closePath();
+            ctx.fillStyle = '#4488ff';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Bottom half (red)
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(-AL, BH);
+            ctx.lineTo(HS, BH);
+            ctx.lineTo(HS, HH);
+            ctx.lineTo(AL, 0);
+            ctx.closePath();
+            ctx.fillStyle = '#ee3333';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Centre divider
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(AL, 0);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, W, H);
+
+            // ── Corner reflector ──
+            ctx.save();
+            ctx.lineCap = 'round';
+
+            // Left (black) mirror
+            ctx.beginPath();
+            ctx.moveTo(vx, vy);
+            ctx.lineTo(blackEnd.x, blackEnd.y);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Right (red) mirror
+            ctx.beginPath();
+            ctx.moveTo(vx, vy);
+            ctx.lineTo(redEnd.x, redEnd.y);
+            ctx.strokeStyle = '#cc0000';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Right-angle square at vertex
+            const sq = 12;
+            const u1x = (blackEnd.x - vx) / mirrorLen * Math.SQRT2;
+            const u1y = (blackEnd.y - vy) / mirrorLen * Math.SQRT2;
+            const u2x = (redEnd.x - vx) / mirrorLen * Math.SQRT2;
+            const u2y = (redEnd.y - vy) / mirrorLen * Math.SQRT2;
+            ctx.beginPath();
+            ctx.moveTo(vx + u1x * sq, vy + u1y * sq);
+            ctx.lineTo(vx + u1x * sq + u2x * sq, vy + u1y * sq + u2y * sq);
+            ctx.lineTo(vx + u2x * sq, vy + u2y * sq);
+            ctx.strokeStyle = '#888';
+            ctx.lineWidth = 1.5;
+            ctx.lineCap = 'butt';
+            ctx.stroke();
+
+            ctx.restore();
+
+            // Vertex dot
+            ctx.beginPath();
+            ctx.arc(vx, vy, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#333';
+            ctx.fill();
+
+            // ── Fixed arrow ──
+            drawArrow(fixed.x, fixed.y, fixed.angle, fixed.flipped, 1.0);
+
+            // ── Reflected arrow ──
+            drawArrow(reflected.x, reflected.y, reflected.angle, reflected.flipped, 0.55);
+
+            // ── Ray lines from sample points to mirror and on to image (on top) ──
+            const colors = [
+                '#e67e22', '#2ecc71', '#9b59b6', '#1abc9c',
+                '#e74c3c', '#3498db', '#f39c12'
+            ];
+
+            for (let i = 0; i < samplePoints.length; i++) {
+                const lp = samplePoints[i];
+                const obj = transformPoint(lp.x, lp.y, fixed);
+                const img = reflectAcrossRedMirror(obj.x, obj.y);
+                const hit = segmentMirrorIntersection(obj, img);
+
+                const color = colors[i % colors.length];
+
+                if (hit) {
+                    // Solid line: object point → mirror
+                    ctx.beginPath();
+                    ctx.moveTo(obj.x, obj.y);
+                    ctx.lineTo(hit.x, hit.y);
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([]);
+                    ctx.stroke();
+
+                    // Dotted line: mirror → image point
+                    ctx.beginPath();
+                    ctx.moveTo(hit.x, hit.y);
+                    ctx.lineTo(img.x, img.y);
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 4]);
+                    ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Small dot at mirror hit
+                    ctx.beginPath();
+                    ctx.arc(hit.x, hit.y, 3, 0, Math.PI * 2);
+                    ctx.fillStyle = color;
+                    ctx.fill();
+                }
+
+                // Small dot on object point
+                ctx.beginPath();
+                ctx.arc(obj.x, obj.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+
+                // Small dot on image point
+                ctx.beginPath();
+                ctx.arc(img.x, img.y, 3, 0, Math.PI * 2);
+                ctx.fillStyle = color;
+                ctx.fill();
+            }
+
+            // Labels
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#999';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('object', fixed.x, fixed.y + HH + 10);
+            ctx.fillText('image', reflected.x, reflected.y + AL + 14);
+        }
+
+        draw();
+    </script>
+</body>
+</html>

@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rainbow Overhead – Drag &amp; Rotate</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f0f0f0;
+            color: #333;
+            font-family: Arial, sans-serif;
+            min-height: 100vh;
+            max-width: 600px;
+            margin: 0 auto;
+            user-select: none;
+        }
+        #instructions {
+            margin: 12px 0 8px;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #333;
+            border-radius: 6px;
+            cursor: grab;
+            background: #ffffff;
+        }
+        canvas.dragging { cursor: grabbing; }
+    </style>
+</head>
+<body>
+    <p id="instructions">Drag to move. Scroll wheel to rotate. Right-click to flip.</p>
+    <canvas id="canvas" width="600" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // Load pre-processed transparent image
+        let img = null;
+        let imgW = 0, imgH = 0;
+
+        // Two sprites: each has position, rotation, scale
+        const sprites = [
+            { x: 180, y: 280, angle: 0, scale: 0.56, flipX: 1, flipY: 1, label: 'Rainbow' },
+            { x: 420, y: 280, angle: 0, scale: 0.56, flipX: 1, flipY: 1, label: 'Spectrum' }
+        ];
+
+        let dragging = null; // index of sprite being dragged
+        let dragOffsetX = 0, dragOffsetY = 0;
+
+        const srcImg = new Image();
+        srcImg.onload = function () {
+            img = srcImg;
+            imgW = srcImg.naturalWidth;
+            imgH = srcImg.naturalHeight;
+            draw();
+        };
+        srcImg.src = 'rainbow_overhead_transparent.png';
+
+        function hitTest(mx, my, sprite) {
+            if (!img) return false;
+            // Check distance from sprite center – use bounding circle
+            const sw = imgW * sprite.scale;
+            const sh = imgH * sprite.scale;
+            const radius = Math.sqrt(sw * sw + sh * sh) / 2;
+            const dx = mx - sprite.x;
+            const dy = my - sprite.y;
+            return (dx * dx + dy * dy) <= radius * radius;
+        }
+
+        function topSpriteAt(mx, my) {
+            // Later sprites draw on top, so check in reverse
+            for (let i = sprites.length - 1; i >= 0; i--) {
+                if (hitTest(mx, my, sprites[i])) return i;
+            }
+            return -1;
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            if (!img) return;
+
+            for (const sp of sprites) {
+                const sw = imgW * sp.scale;
+                const sh = imgH * sp.scale;
+
+                // Draw rotated & flipped image
+                ctx.save();
+                ctx.translate(sp.x, sp.y);
+                ctx.rotate(sp.angle);
+                ctx.scale(sp.flipX, sp.flipY);
+                ctx.drawImage(img, -sw / 2, -sh / 2, sw, sh);
+                ctx.restore();
+
+                // Draw label below image (no rotation, follows translation)
+                const labelY = sp.y + sh / 2 + 6;
+                let lo = 8, hi = 200;
+                while (hi - lo > 1) {
+                    const mid = (lo + hi) / 2;
+                    ctx.font = 'bold ' + mid + 'px Arial';
+                    if (ctx.measureText(sp.label).width <= sw) lo = mid;
+                    else hi = mid;
+                }
+                const fontSize = Math.round(lo * 0.6);
+                ctx.font = 'bold ' + fontSize + 'px Arial';
+                ctx.fillStyle = '#333';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'top';
+                ctx.fillText(sp.label, sp.x, labelY);
+            }
+        }
+
+        // --- Pointer helpers ---
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches ? e.touches[0] : e;
+            return {
+                x: (touch.clientX - rect.left) * (W / rect.width),
+                y: (touch.clientY - rect.top) * (H / rect.height)
+            };
+        }
+
+        // --- Mouse / touch: drag ---
+        function onDown(e) {
+            e.preventDefault();
+            const pos = getPos(e);
+            const idx = topSpriteAt(pos.x, pos.y);
+            if (idx >= 0) {
+                dragging = idx;
+                dragOffsetX = pos.x - sprites[idx].x;
+                dragOffsetY = pos.y - sprites[idx].y;
+                canvas.classList.add('dragging');
+
+                // Bring to front
+                if (idx < sprites.length - 1) {
+                    const sp = sprites.splice(idx, 1)[0];
+                    sprites.push(sp);
+                    dragging = sprites.length - 1;
+                }
+            }
+        }
+
+        function onMove(e) {
+            if (dragging === null) return;
+            e.preventDefault();
+            const pos = getPos(e);
+            sprites[dragging].x = pos.x - dragOffsetX;
+            sprites[dragging].y = pos.y - dragOffsetY;
+            draw();
+        }
+
+        function onUp(e) {
+            dragging = null;
+            canvas.classList.remove('dragging');
+        }
+
+        canvas.addEventListener('mousedown', onDown);
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseup', onUp);
+        canvas.addEventListener('mouseleave', onUp);
+
+        canvas.addEventListener('touchstart', onDown, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', onUp);
+
+        // --- Scroll wheel: rotate ---
+        canvas.addEventListener('wheel', function (e) {
+            e.preventDefault();
+            const pos = getPos(e);
+            const idx = topSpriteAt(pos.x, pos.y);
+            if (idx >= 0) {
+                sprites[idx].angle += e.deltaY * 0.005;
+                draw();
+            }
+        }, { passive: false });
+
+        // --- Right-click: mirror flip ---
+        canvas.addEventListener('contextmenu', function (e) {
+            e.preventDefault();
+            const pos = getPos(e);
+            const idx = topSpriteAt(pos.x, pos.y);
+            if (idx >= 0) {
+                // Flip along the sprite's local horizontal axis
+                sprites[idx].flipY *= -1;
+                draw();
+            }
+        });
+    </script>
+</body>
+</html>

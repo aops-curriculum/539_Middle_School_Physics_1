@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(start \"\" \"C:\\\\Users\\\\Mark Eichenlaub\\\\github-aops\\\\539_Middle_School_Physics_1\\\\Light\\\\Haibao\\\\mirror_to_haibao.html\")",
+      "Bash(git commit:*)"
+    ]
+  }
+}

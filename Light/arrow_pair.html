@@ -1,0 +1,209 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Arrow Pair – Drag &amp; Rotate</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            background: #f0f0f0;
+            color: #333;
+            font-family: Arial, sans-serif;
+            min-height: 100vh;
+            max-width: 600px;
+            margin: 0 auto;
+            user-select: none;
+        }
+        #instructions {
+            margin: 12px 0 8px;
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+        }
+        canvas {
+            border: 1px solid #333;
+            border-radius: 6px;
+            cursor: grab;
+            background: #ffffff;
+        }
+        canvas.dragging { cursor: grabbing; }
+    </style>
+</head>
+<body>
+    <p id="instructions">Drag to move. Scroll wheel to rotate. Right-click to flip.</p>
+    <canvas id="canvas" width="600" height="600"></canvas>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = canvas.width;
+        const H = canvas.height;
+
+        // ── Arrow shape constants ──
+        const AL = 50;      // half-length
+        const BH = 16;      // body half-height
+        const HH = 28;      // head half-height
+        const HS = 15;      // x where head widens
+
+        // Two sprites: each has position, rotation, flip
+        const sprites = [
+            { x: 200, y: 300, angle: 0, flipY: 1 },
+            { x: 400, y: 300, angle: 0, flipY: 1 }
+        ];
+
+        let dragging = null;
+        let dragOffsetX = 0, dragOffsetY = 0;
+
+        function hitTest(mx, my, sprite) {
+            const radius = AL + 10;
+            const dx = mx - sprite.x;
+            const dy = my - sprite.y;
+            return (dx * dx + dy * dy) <= radius * radius;
+        }
+
+        function topSpriteAt(mx, my) {
+            for (let i = sprites.length - 1; i >= 0; i--) {
+                if (hitTest(mx, my, sprites[i])) return i;
+            }
+            return -1;
+        }
+
+        function drawArrow(sp) {
+            ctx.save();
+            ctx.translate(sp.x, sp.y);
+            ctx.rotate(sp.angle);
+            ctx.scale(1, sp.flipY);
+
+            // Top half (blue)
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(-AL, -BH);
+            ctx.lineTo(HS, -BH);
+            ctx.lineTo(HS, -HH);
+            ctx.lineTo(AL, 0);
+            ctx.closePath();
+            ctx.fillStyle = '#4488ff';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Bottom half (red)
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(-AL, BH);
+            ctx.lineTo(HS, BH);
+            ctx.lineTo(HS, HH);
+            ctx.lineTo(AL, 0);
+            ctx.closePath();
+            ctx.fillStyle = '#ee3333';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Centre divider
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(AL, 0);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            for (const sp of sprites) {
+                drawArrow(sp);
+            }
+        }
+
+        // --- Pointer helpers ---
+        function getPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const touch = e.touches ? e.touches[0] : e;
+            return {
+                x: (touch.clientX - rect.left) * (W / rect.width),
+                y: (touch.clientY - rect.top) * (H / rect.height)
+            };
+        }
+
+        // --- Mouse / touch: drag ---
+        function onDown(e) {
+            e.preventDefault();
+            const pos = getPos(e);
+            const idx = topSpriteAt(pos.x, pos.y);
+            if (idx >= 0) {
+                dragging = idx;
+                dragOffsetX = pos.x - sprites[idx].x;
+                dragOffsetY = pos.y - sprites[idx].y;
+                canvas.classList.add('dragging');
+
+                // Bring to front
+                if (idx < sprites.length - 1) {
+                    const sp = sprites.splice(idx, 1)[0];
+                    sprites.push(sp);
+                    dragging = sprites.length - 1;
+                }
+            }
+        }
+
+        function onMove(e) {
+            if (dragging === null) return;
+            e.preventDefault();
+            const pos = getPos(e);
+            sprites[dragging].x = pos.x - dragOffsetX;
+            sprites[dragging].y = pos.y - dragOffsetY;
+            draw();
+        }
+
+        function onUp(e) {
+            dragging = null;
+            canvas.classList.remove('dragging');
+        }
+
+        canvas.addEventListener('mousedown', onDown);
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseup', onUp);
+        canvas.addEventListener('mouseleave', onUp);
+
+        canvas.addEventListener('touchstart', onDown, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', onUp);
+
+        // --- Scroll wheel: rotate ---
+        canvas.addEventListener('wheel', function (e) {
+            e.preventDefault();
+            const pos = getPos(e);
+            const idx = topSpriteAt(pos.x, pos.y);
+            if (idx >= 0) {
+                sprites[idx].angle += e.deltaY * 0.005;
+                draw();
+            }
+        }, { passive: false });
+
+        // --- Right-click: mirror flip ---
+        canvas.addEventListener('contextmenu', function (e) {
+            e.preventDefault();
+            const pos = getPos(e);
+            const idx = topSpriteAt(pos.x, pos.y);
+            if (idx >= 0) {
+                sprites[idx].flipY *= -1;
+                draw();
+            }
+        });
+
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>

@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Corner Reflector – Mirror Challenge 2</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 16px 0;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+        .instructions {
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+            padding: 0 12px 10px;
+            line-height: 1.6;
+        }
+        canvas {
+            display: block;
+            border: 1px solid #333;
+            border-radius: 6px;
+            cursor: grab;
+        }
+        canvas.grabbing { cursor: grabbing; }
+        .controls {
+            display: flex;
+            gap: 10px;
+            margin-top: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            padding: 0 12px;
+        }
+        button {
+            background: rgba(76, 175, 80, 0.9);
+            color: white;
+            border: none;
+            border-radius: 4px;
+            padding: 8px 16px;
+            font-size: 12px;
+            font-weight: bold;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            cursor: pointer;
+        }
+        button:hover { background: rgba(76, 175, 80, 1); }
+        #submitBtn {
+            background: rgba(33, 150, 243, 0.9);
+        }
+        #submitBtn:hover {
+            background: rgba(33, 150, 243, 1);
+        }
+        .message {
+            text-align: center;
+            margin-top: 10px;
+            font-size: 16px;
+            font-weight: bold;
+            min-height: 24px;
+            padding: 0 12px;
+        }
+        .success { color: #4CAF50; }
+        .error { color: #d32f2f; }
+    </style>
+</head>
+<body>
+    <p class="instructions">
+        The object arrow and its reflection in the right mirror are already shown.<br>
+        Move the draggable arrow until it is a reflection of the image across the <span style="color:#cc0000;font-weight:bold">red</span> mirror.<br>
+        <strong>Drag</strong> to move &middot; <strong>Rotate</strong> to turn 5&deg; &middot; <strong>Flip</strong> to mirror the arrow
+    </p>
+    <canvas id="canvas" width="600" height="500"></canvas>
+    <div class="controls">
+        <button id="rotateBtn">&#8635; Rotate 5&deg;</button>
+        <button id="flipBtn">&#8596; Flip</button>
+        <button id="resetBtn">Reset</button>
+        <button id="submitBtn">Submit</button>
+    </div>
+    <div id="message" class="message"></div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = 600, H = 500;
+
+        // ── Corner reflector ──
+        const vx = 280, vy = 230;
+        const mirrorLen = 165;
+        const md = mirrorLen / Math.SQRT2;
+
+        const leftEnd  = { x: vx - md, y: vy + md };   // RED mirror
+        const rightEnd = { x: vx + md, y: vy + md };    // BLACK mirror
+
+        // Left mirror line: x + y = k
+        const k = vx + vy;                               // 510
+        // Right mirror line: x - y = c
+        const c = vx - vy;                               // 50
+
+        // Dashed extension of left mirror past vertex (up and to the right)
+        const extLen = 180;
+        const extD = extLen / Math.SQRT2;
+        const extEnd = { x: vx + extD, y: vy - extD };
+
+        // ── Arrow shape constants ──
+        const AL = 50;
+        const BH = 16;
+        const HH = 28;
+        const HS = 15;
+
+        // ── Object arrow ──
+        const obj = { x: vx, y: 400, angle: 0, flipped: false };
+
+        // ── First reflection (over right mirror, already shown) ──
+        // Reflection across x - y = c: (px, py) → (py + c, px - c)
+        const img1 = {
+            x: obj.y + c,              // 450
+            y: obj.x - c,              // 230
+            angle: Math.PI / 2,
+            flipped: true
+        };
+
+        // ── Correct second reflection (over left mirror) ──
+        // Reflection across x + y = k: (px, py) → (k - py, k - px)
+        // Direction (0,1) reflects to (-1,0) → angle = π
+        // Two reflections restore handedness → flipped = false
+        const correct = {
+            x: k - img1.y,             // 280
+            y: k - img1.x,             // 60
+            angle: Math.PI,
+            flipped: false
+        };
+
+        // ── Movable arrow ──
+        let mov = { x: 100, y: 430, angle: 0, flipped: false };
+
+        // ── State ──
+        let dragging = false;
+        let dragOff = { x: 0, y: 0 };
+        let showCorrect = false;
+
+        // ────────────────── drawing ──────────────────
+
+        function drawArrow(x, y, angle, flipped, highlight, alpha) {
+            ctx.save();
+            ctx.globalAlpha = alpha !== undefined ? alpha : 1;
+            ctx.translate(x, y);
+            ctx.rotate(angle);
+            if (flipped) ctx.scale(1, -1);
+
+            // Top half (blue)
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(-AL, -BH);
+            ctx.lineTo(HS, -BH);
+            ctx.lineTo(HS, -HH);
+            ctx.lineTo(AL, 0);
+            ctx.closePath();
+            ctx.fillStyle = '#4488ff';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Bottom half (red)
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(-AL, BH);
+            ctx.lineTo(HS, BH);
+            ctx.lineTo(HS, HH);
+            ctx.lineTo(AL, 0);
+            ctx.closePath();
+            ctx.fillStyle = '#ee3333';
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2.5;
+            ctx.lineJoin = 'round';
+            ctx.stroke();
+
+            // Centre divider
+            ctx.beginPath();
+            ctx.moveTo(-AL, 0);
+            ctx.lineTo(AL, 0);
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Dashed green border when movable
+            if (highlight) {
+                ctx.setLineDash([5, 5]);
+                ctx.strokeStyle = '#4CAF50';
+                ctx.lineWidth = 2;
+                ctx.strokeRect(-AL - 6, -HH - 6, AL * 2 + 12, HH * 2 + 12);
+                ctx.setLineDash([]);
+            }
+
+            ctx.restore();
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+            ctx.fillStyle = '#fff';
+            ctx.fillRect(0, 0, W, H);
+
+            // ── Corner reflector ──
+            ctx.save();
+            ctx.lineCap = 'round';
+
+            // Left (RED) mirror
+            ctx.beginPath();
+            ctx.moveTo(vx, vy);
+            ctx.lineTo(leftEnd.x, leftEnd.y);
+            ctx.strokeStyle = '#cc0000';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Dashed extension of left mirror past vertex
+            ctx.beginPath();
+            ctx.moveTo(vx, vy);
+            ctx.lineTo(extEnd.x, extEnd.y);
+            ctx.strokeStyle = '#cc0000';
+            ctx.lineWidth = 2;
+            ctx.setLineDash([8, 6]);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            // Right (BLACK) mirror
+            ctx.beginPath();
+            ctx.moveTo(vx, vy);
+            ctx.lineTo(rightEnd.x, rightEnd.y);
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 5;
+            ctx.stroke();
+
+            // Right-angle square at vertex
+            const sq = 12;
+            const u1x = (leftEnd.x - vx) / mirrorLen * Math.SQRT2;
+            const u1y = (leftEnd.y - vy) / mirrorLen * Math.SQRT2;
+            const u2x = (rightEnd.x - vx) / mirrorLen * Math.SQRT2;
+            const u2y = (rightEnd.y - vy) / mirrorLen * Math.SQRT2;
+            ctx.beginPath();
+            ctx.moveTo(vx + u1x * sq, vy + u1y * sq);
+            ctx.lineTo(vx + u1x * sq + u2x * sq, vy + u1y * sq + u2y * sq);
+            ctx.lineTo(vx + u2x * sq, vy + u2y * sq);
+            ctx.strokeStyle = '#888';
+            ctx.lineWidth = 1.5;
+            ctx.lineCap = 'butt';
+            ctx.stroke();
+
+            ctx.restore();
+
+            // Vertex dot
+            ctx.beginPath();
+            ctx.arc(vx, vy, 4, 0, Math.PI * 2);
+            ctx.fillStyle = '#333';
+            ctx.fill();
+
+            // ── Object arrow (fixed) ──
+            drawArrow(obj.x, obj.y, obj.angle, obj.flipped, false);
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#999';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('(object)', obj.x, obj.y + HH + 10);
+
+            // ── First reflection (fixed, semi-transparent) ──
+            drawArrow(img1.x, img1.y, img1.angle, img1.flipped, false, 0.55);
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#999';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('(image in right mirror)', img1.x, img1.y + AL + 10);
+
+            // ── Correct-position ghost (shown after success) ──
+            if (showCorrect) {
+                ctx.save();
+                ctx.globalAlpha = 0.3;
+                drawArrow(correct.x, correct.y, correct.angle, correct.flipped, false);
+                ctx.restore();
+            }
+
+            // ── Movable arrow ──
+            drawArrow(mov.x, mov.y, mov.angle, mov.flipped, true);
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#4CAF50';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('(drag to move)', mov.x, mov.y + HH + 14);
+        }
+
+        // ────────────────── interaction ──────────────────
+
+        function hitTest(mx, my) {
+            return Math.hypot(mx - mov.x, my - mov.y) < AL + 20;
+        }
+
+        function getPos(e) {
+            const r = canvas.getBoundingClientRect();
+            const t = e.touches ? e.touches[0] : e;
+            return {
+                x: (t.clientX - r.left) * (W / r.width),
+                y: (t.clientY - r.top)  * (H / r.height)
+            };
+        }
+
+        function onDown(e) {
+            e.preventDefault();
+            const p = getPos(e);
+            if (hitTest(p.x, p.y)) {
+                dragging = true;
+                dragOff.x = p.x - mov.x;
+                dragOff.y = p.y - mov.y;
+                canvas.classList.add('grabbing');
+            }
+        }
+
+        function onMove(e) {
+            e.preventDefault();
+            if (!dragging) return;
+            const p = getPos(e);
+            mov.x = Math.max(AL, Math.min(W - AL, p.x - dragOff.x));
+            mov.y = Math.max(HH, Math.min(H - HH, p.y - dragOff.y));
+            draw();
+        }
+
+        function onUp() {
+            dragging = false;
+            canvas.classList.remove('grabbing');
+        }
+
+        canvas.addEventListener('mousedown', onDown);
+        canvas.addEventListener('mousemove', onMove);
+        canvas.addEventListener('mouseup', onUp);
+        canvas.addEventListener('mouseleave', onUp);
+        canvas.addEventListener('touchstart', onDown, { passive: false });
+        canvas.addEventListener('touchmove', onMove, { passive: false });
+        canvas.addEventListener('touchend', onUp);
+
+        // ── Buttons ──
+
+        function clearFeedback() {
+            document.getElementById('message').textContent = '';
+            showCorrect = false;
+        }
+
+        document.getElementById('rotateBtn').onclick = function () {
+            mov.angle = (mov.angle + Math.PI / 36) % (Math.PI * 2);  // 5°
+            clearFeedback();
+            draw();
+        };
+
+        document.getElementById('flipBtn').onclick = function () {
+            mov.flipped = !mov.flipped;
+            clearFeedback();
+            draw();
+        };
+
+        document.getElementById('resetBtn').onclick = function () {
+            mov = { x: 100, y: 430, angle: 0, flipped: false };
+            clearFeedback();
+            draw();
+        };
+
+        document.getElementById('submitBtn').onclick = function () {
+            var msg = document.getElementById('message');
+
+            var dist = Math.hypot(mov.x - correct.x, mov.y - correct.y);
+
+            // Normalise angles to [0, 2π)
+            var ma = ((mov.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            var ca = ((correct.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
+            var ad = Math.abs(ma - ca);
+            if (ad > Math.PI) ad = Math.PI * 2 - ad;
+
+            if (dist < 40 && ad < 0.3 && mov.flipped === correct.flipped) {
+                msg.className = 'message success';
+                msg.textContent = 'Congratulations! The secret password is: handedness';
+                showCorrect = true;
+            } else {
+                msg.className = 'message error';
+                msg.textContent = "That\u2019s not quite right. Try again!";
+                showCorrect = false;
+            }
+            draw();
+        };
+
+        // ── Initial draw ──
+        draw();
+    </script>
+</body>
+</html>
