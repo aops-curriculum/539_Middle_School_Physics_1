@@ -1,0 +1,823 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>String Tension &amp; Frequency</title>
+<style>
+  /* ── Reset & Full-Viewport Canvas ── */
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    overflow: hidden;
+    background: #2b2b2b;          /* dark surround for the iframe */
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  canvas {
+    display: block;
+    /* Allow the canvas to scale down if the viewport is smaller than 600px */
+    max-width: 100vw;
+    max-height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="sim" width="600" height="600"></canvas>
+
+<script>
+/* ================================================================
+   STRING TENSION & FREQUENCY SIMULATOR
+   ================================================================
+   Physics model:
+     f = (1 / 2L) × √(T / μ)
+   where:
+     f  = fundamental frequency (Hz)
+     L  = vibrating string length (m)
+     T  = tension in the string = sum of hanging weights  (N)
+     μ  = linear mass density of the string (kg/m)
+
+   The user drags weight blocks (labeled in Newtons) from a tray
+   at the bottom of the screen and drops them near the pulley.
+   They stack and hang from the string, creating tension.  Clicking
+   the horizontal part of the string "plucks" it — it vibrates in
+   the fundamental mode and the calculated frequency is displayed.
+   ================================================================ */
+
+
+// ── Canvas Setup ────────────────────────────────────────────────
+// "canvas" is the HTML <canvas> element.
+// "ctx" is the 2D drawing context — every drawing command goes
+// through this object (e.g. ctx.fillRect, ctx.beginPath, etc.).
+const canvas = document.getElementById('sim');
+const ctx    = canvas.getContext('2d');
+
+
+// ── Physics Constants ───────────────────────────────────────────
+const STRING_LENGTH  = 0.65;   // vibrating length of string (metres)
+const LINEAR_DENSITY = 0.002;  // μ — linear mass density (kg/m)
+// With these values, 10 N of tension gives f ≈ 54 Hz,
+// and 80 N gives f ≈ 154 Hz — a nice range for exploration.
+
+
+// ── Layout Constants (pixel coordinates) ────────────────────────
+// These define where every visual element sits on the 600×600 canvas.
+
+// Left fixed attachment
+const FIXED_X  = 55;           // x of the clamp on the left wall
+const STRING_Y = 175;          // y of the horizontal string
+
+// Pulley (the string meets the TOP of this circle horizontally)
+const PULLEY_R  = 18;                        // radius in pixels
+const PULLEY_CX = 478;                       // center x
+const PULLEY_CY = STRING_Y + PULLEY_R;       // center y (= 193)
+
+// The string exits the pulley on its right side and hangs down
+const HANG_X       = PULLEY_CX + PULLEY_R;   // 496
+const HANG_START_Y = PULLEY_CY;              // 193
+
+// Weight-tray shelf at the bottom
+const TRAY_Y = 530;
+
+// Dimensions of weight blocks
+const TRAY_BLOCK_W = 70;   // width in the tray
+const TRAY_BLOCK_H = 42;
+const HANG_BLOCK_W = 52;   // width when hanging
+const HANG_BLOCK_H = 36;
+
+// The four available weight values (Newtons)
+const AVAILABLE_WEIGHTS = [1, 5, 10, 20];
+
+// Colour scheme for each weight value
+const WEIGHT_COLORS = {
+  1:  { fill: '#5b9bd5', stroke: '#3a7cc0', label: '1 N'  },
+  5:  { fill: '#6ab04c', stroke: '#4a8a2c', label: '5 N'  },
+  10: { fill: '#f0932b', stroke: '#c0730b', label: '10 N' },
+  20: { fill: '#eb4d4b', stroke: '#c0302e', label: '20 N' }
+};
+
+
+// ── State Variables ─────────────────────────────────────────────
+// These change as the user interacts with the simulation.
+
+let hangingWeights = [];   // Array of weight values (N) currently on the string
+let dragging       = null; // null, or { weight, x, y } when dragging a weight
+let vibration      = null; // null, or { startTime, frequency } when vibrating
+let lastFrequency  = null; // remember the last frequency to keep it on screen
+
+// Hover-detection state (updated every frame via mousemove)
+let mouseX      = 0;
+let mouseY      = 0;
+let hoverTray   = -1;     // index into AVAILABLE_WEIGHTS, or -1
+let hoverHang   = -1;     // index into hangingWeights, or -1
+let hoverString = false;
+
+
+// ── Physics Helpers ─────────────────────────────────────────────
+
+/** Sum of all weights currently hanging from the string (N). */
+function getTension() {
+  // "reduce" walks through the array, adding each value to a
+  // running total that starts at 0.
+  return hangingWeights.reduce((sum, w) => sum + w, 0);
+}
+
+/** Fundamental frequency (Hz) using f = (1/2L)√(T/μ). */
+function getFrequency() {
+  const T = getTension();
+  if (T <= 0) return 0;
+  return (1 / (2 * STRING_LENGTH)) * Math.sqrt(T / LINEAR_DENSITY);
+}
+
+
+// ── Drawing Utilities ───────────────────────────────────────────
+
+/**
+ * Trace a rounded-rectangle path (does NOT fill or stroke — the
+ * caller does that).  This is used for weight blocks, panels, etc.
+ *
+ * @param {number} x      Left edge
+ * @param {number} y      Top edge
+ * @param {number} w      Width
+ * @param {number} h      Height
+ * @param {number} r      Corner radius
+ */
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);        // top-right corner
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r); // bottom-right
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);          // bottom-left
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);                  // top-left
+  ctx.closePath();
+}
+
+/**
+ * Attempt to lighten a hex colour by adding a fixed amount to
+ * each RGB channel.  Used for hover highlights.
+ */
+function lighten(hex, amount) {
+  const num = parseInt(hex.slice(1), 16);
+  const r = Math.min(255, (num >> 16) + amount);
+  const g = Math.min(255, ((num >> 8) & 0xff) + amount);
+  const b = Math.min(255, (num & 0xff) + amount);
+  return `rgb(${r},${g},${b})`;
+}
+
+
+// ── Scene Drawing Functions ─────────────────────────────────────
+// Each function draws one layer of the scene.  They are called in
+// order every frame inside the main `draw()` loop.
+
+function drawBackground() {
+  // Warm off-white background — like a classroom wall
+  ctx.fillStyle = '#f5f0e8';
+  ctx.fillRect(0, 0, 600, 600);
+}
+
+/** The wall bracket and clamp on the left side. */
+function drawLeftMount() {
+  // Vertical wall strip
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(18, STRING_Y - 35, 16, 70);
+  // Horizontal clamp
+  ctx.fillStyle = '#707070';
+  roundRect(34, STRING_Y - 10, 24, 20, 3);
+  ctx.fill();
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  // Decorative bolt
+  ctx.beginPath();
+  ctx.arc(46, STRING_Y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#606060';
+  ctx.fill();
+  ctx.strokeStyle = '#444';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+}
+
+/** Vertical support bracket that holds the pulley. */
+function drawPulleyMount() {
+  // Vertical bar above the pulley
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(PULLEY_CX - 5, 95, 10, PULLEY_CY - PULLEY_R - 95);
+  // Top bracket plate
+  ctx.fillStyle = '#8a8a8a';
+  roundRect(PULLEY_CX - 16, 90, 32, 12, 3);
+  ctx.fill();
+}
+
+/** The circular pulley wheel. */
+function drawPulley() {
+  // Outer wheel
+  ctx.beginPath();
+  ctx.arc(PULLEY_CX, PULLEY_CY, PULLEY_R, 0, Math.PI * 2);
+  ctx.fillStyle = '#d0d0d0';
+  ctx.fill();
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+  // Inner groove ring
+  ctx.beginPath();
+  ctx.arc(PULLEY_CX, PULLEY_CY, PULLEY_R - 5, 0, Math.PI * 2);
+  ctx.strokeStyle = '#bbb';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  // Centre axle
+  ctx.beginPath();
+  ctx.arc(PULLEY_CX, PULLEY_CY, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#999';
+  ctx.fill();
+  ctx.strokeStyle = '#777';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+}
+
+/**
+ * The string: three segments —
+ *   1. Horizontal vibrating portion (fixed end → top of pulley)
+ *   2. Arc wrapping over the pulley (90° from top to right)
+ *   3. Vertical hanging portion (right of pulley → bottom of weight stack)
+ */
+function drawString() {
+  ctx.strokeStyle = '#4a3728';
+  ctx.lineWidth   = 2.5;
+  ctx.lineCap     = 'round';
+
+  // ── 1) Horizontal vibrating portion ──
+  // Pixel length of the section that can vibrate:
+  const vibPixelLen = PULLEY_CX - FIXED_X;
+
+  ctx.beginPath();
+  if (vibration) {
+    // How many seconds since the pluck
+    const elapsed = (performance.now() - vibration.startTime) / 1000;
+
+    // Visual oscillation speed — intentionally slow so the human eye
+    // can follow it.  The REAL frequency is shown in the readout.
+    const visualFreq = 3.5;
+
+    // Amplitude: oscillates with visualFreq and decays exponentially
+    const amp = 35
+              * Math.sin(2 * Math.PI * visualFreq * elapsed)
+              * Math.exp(-2.5 * elapsed);
+
+    // If the visible amplitude is negligible, stop the vibration
+    if (Math.abs(amp) < 0.3) {
+      vibration = null;
+    }
+
+    // Draw the vibrating string as many short line segments
+    // following a half-sine (fundamental mode shape).
+    for (let px = 0; px <= vibPixelLen; px += 2) {
+      const x = FIXED_X + px;
+      // normalizedX goes 0→1 along the vibrating length
+      const norm = px / vibPixelLen;
+      // sin(π·norm) gives the half-sine fundamental mode shape:
+      // zero at both ends, maximum in the middle.
+      const y = STRING_Y + amp * Math.sin(Math.PI * norm);
+      if (px === 0) ctx.moveTo(x, y);
+      else          ctx.lineTo(x, y);
+    }
+  } else {
+    // String is still — just a straight horizontal line
+    ctx.moveTo(FIXED_X, STRING_Y);
+    ctx.lineTo(PULLEY_CX, STRING_Y);
+  }
+  ctx.stroke();
+
+  // ── 2) Arc over the pulley ──
+  // The string wraps from the top of the pulley (angle −π/2)
+  // clockwise to the right side (angle 0).  We draw it slightly
+  // outside the pulley radius so it looks like it sits in the groove.
+  ctx.beginPath();
+  ctx.arc(PULLEY_CX, PULLEY_CY, PULLEY_R + 1, -Math.PI / 2, 0);
+  ctx.stroke();
+
+  // ── 3) Vertical hanging portion ──
+  const bottomY = getWeightStackBottom();
+  ctx.beginPath();
+  ctx.moveTo(HANG_X, PULLEY_CY);
+  ctx.lineTo(HANG_X, bottomY);
+  ctx.stroke();
+}
+
+/** Returns the y-coordinate of the bottom of the weight stack. */
+function getWeightStackBottom() {
+  if (hangingWeights.length === 0) return HANG_START_Y + 50;
+  const n = hangingWeights.length;
+  return HANG_START_Y + 16 + n * (HANG_BLOCK_H + 3) + 4;
+}
+
+/**
+ * Draw each weight block stacked below the pulley.
+ */
+function drawHangingWeights() {
+  hangingWeights.forEach((weight, i) => {
+    const colors = WEIGHT_COLORS[weight];
+    const bx = HANG_X - HANG_BLOCK_W / 2;
+    const by = HANG_START_Y + 16 + i * (HANG_BLOCK_H + 3);
+    const isHov = (hoverHang === i && !dragging);
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    roundRect(bx + 2, by + 2, HANG_BLOCK_W, HANG_BLOCK_H, 5);
+    ctx.fill();
+
+    // Block body
+    roundRect(bx, by, HANG_BLOCK_W, HANG_BLOCK_H, 5);
+    ctx.fillStyle = isHov ? lighten(colors.fill, 25) : colors.fill;
+    ctx.fill();
+    ctx.strokeStyle = colors.stroke;
+    ctx.lineWidth   = isHov ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // Subtle top highlight (gives a 3-D look)
+    ctx.save();
+    ctx.globalAlpha = 0.25;
+    roundRect(bx + 2, by + 1, HANG_BLOCK_W - 4, HANG_BLOCK_H / 2, 4);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+
+    // Weight label
+    ctx.fillStyle    = '#fff';
+    ctx.font         = 'bold 12px Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(colors.label, HANG_X, by + HANG_BLOCK_H / 2);
+  });
+}
+
+/**
+ * The weight-tray shelf at the bottom of the screen.  It contains
+ * one copy of each available weight; dragging from here creates a
+ * new weight (unlimited supply).
+ */
+function drawWeightTray() {
+  // Shelf background
+  ctx.fillStyle = '#d4c5a9';
+  ctx.fillRect(0, TRAY_Y - 15, 600, 85);
+  // Top edge line
+  ctx.fillStyle = '#bfae8e';
+  ctx.fillRect(0, TRAY_Y - 15, 600, 3);
+
+  // Instruction text below the blocks
+  ctx.fillStyle    = '#7d6e58';
+  ctx.font         = '12px Arial, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillText('⬆  Drag weights to the string  ⬆', 300, TRAY_Y + TRAY_BLOCK_H + 8);
+
+  // Calculate horizontal position so the blocks are centred
+  const gap    = 18;  // space between blocks
+  const totalW = AVAILABLE_WEIGHTS.length * TRAY_BLOCK_W
+               + (AVAILABLE_WEIGHTS.length - 1) * gap;
+  const startX = (600 - totalW) / 2;
+
+  AVAILABLE_WEIGHTS.forEach((weight, i) => {
+    const colors = WEIGHT_COLORS[weight];
+    const bx = startX + i * (TRAY_BLOCK_W + gap);
+    const by = TRAY_Y;
+    const isHov = (hoverTray === i && !dragging);
+
+    // Drop shadow
+    ctx.fillStyle = 'rgba(0,0,0,0.12)';
+    roundRect(bx + 2, by + 2, TRAY_BLOCK_W, TRAY_BLOCK_H, 6);
+    ctx.fill();
+
+    // Block body
+    roundRect(bx, by, TRAY_BLOCK_W, TRAY_BLOCK_H, 6);
+    ctx.fillStyle = isHov ? lighten(colors.fill, 25) : colors.fill;
+    ctx.fill();
+    ctx.strokeStyle = colors.stroke;
+    ctx.lineWidth   = isHov ? 2.5 : 1.5;
+    ctx.stroke();
+
+    // Top highlight
+    ctx.save();
+    ctx.globalAlpha = 0.2;
+    roundRect(bx + 3, by + 2, TRAY_BLOCK_W - 6, TRAY_BLOCK_H / 2, 5);
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.restore();
+
+    // Label
+    ctx.fillStyle    = '#fff';
+    ctx.font         = 'bold 14px Arial, sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(colors.label, bx + TRAY_BLOCK_W / 2, by + TRAY_BLOCK_H / 2);
+  });
+}
+
+/**
+ * While dragging, draw a semi-transparent "drop zone" highlight
+ * near the hanging area so the user knows where to release.
+ */
+function drawDropZone() {
+  if (!dragging) return;
+
+  // Pulsing glow to draw attention
+  const pulse = 0.5 + 0.3 * Math.sin(performance.now() / 250);
+
+  ctx.save();
+  ctx.globalAlpha = pulse * 0.25;
+  roundRect(HANG_X - 50, HANG_START_Y - 10,
+            100, getWeightStackBottom() - HANG_START_Y + 50, 10);
+  ctx.fillStyle = '#27ae60';
+  ctx.fill();
+  ctx.restore();
+
+  // Thin dashed border
+  ctx.save();
+  ctx.globalAlpha = pulse * 0.5;
+  ctx.setLineDash([5, 5]);
+  roundRect(HANG_X - 50, HANG_START_Y - 10,
+            100, getWeightStackBottom() - HANG_START_Y + 50, 10);
+  ctx.strokeStyle = '#27ae60';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+/**
+ * Draw the weight block currently being dragged by the mouse.
+ * It floats above everything else (drawn last).
+ */
+function drawDraggingWeight() {
+  if (!dragging) return;
+  const colors = WEIGHT_COLORS[dragging.weight];
+  const w = TRAY_BLOCK_W;
+  const h = TRAY_BLOCK_H;
+  const bx = dragging.x - w / 2;
+  const by = dragging.y - h / 2;
+
+  // Larger shadow while in the air
+  ctx.fillStyle = 'rgba(0,0,0,0.22)';
+  roundRect(bx + 4, by + 6, w, h, 6);
+  ctx.fill();
+
+  // Block
+  roundRect(bx, by, w, h, 6);
+  ctx.fillStyle = colors.fill;
+  ctx.fill();
+  ctx.strokeStyle = colors.stroke;
+  ctx.lineWidth   = 2.5;
+  ctx.stroke();
+
+  // Label
+  ctx.fillStyle    = '#fff';
+  ctx.font         = 'bold 14px Arial, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(colors.label, dragging.x, dragging.y);
+}
+
+/**
+ * Information panel in the upper-left corner.
+ * Always shows tension; shows frequency while/after vibrating.
+ */
+function drawInfoPanel() {
+  const tension = getTension();
+  const freq    = vibration ? vibration.frequency : lastFrequency;
+
+  // Panel height depends on whether we have a frequency to show
+  const panelH = freq !== null ? 80 : 48;
+
+  // White rounded panel with shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  roundRect(17, 17, 262, panelH, 8);
+  ctx.fill();
+  roundRect(15, 15, 262, panelH, 8);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  // ── Tension (always shown) ──
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle    = '#555';
+  ctx.font         = '15px Arial, sans-serif';
+  ctx.fillText('Tension:', 28, 26);
+  ctx.fillStyle = '#2c3e50';
+  ctx.font      = 'bold 15px Arial, sans-serif';
+  ctx.fillText(tension.toFixed(1) + ' N', 100, 26);
+
+  // ── Frequency (shown when vibrating or just after) ──
+  if (freq !== null) {
+    ctx.fillStyle = '#555';
+    ctx.font      = '15px Arial, sans-serif';
+    ctx.fillText('Frequency:', 28, 55);
+    ctx.fillStyle = vibration ? '#c0392b' : '#888';
+    ctx.font      = 'bold 15px Arial, sans-serif';
+    ctx.fillText(freq.toFixed(1) + ' Hz', 118, 55);
+
+    // Fading indicator while vibrating
+    if (vibration) {
+      const elapsed = (performance.now() - vibration.startTime) / 1000;
+      const alpha   = Math.max(0, 1 - elapsed / 3);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#e74c3c';
+      ctx.beginPath();
+      ctx.arc(255, 63, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+/**
+ * Context-sensitive instruction text that guides the user.
+ */
+function drawInstructions() {
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  const tension = getTension();
+
+  if (tension === 0 && !dragging) {
+    // No weights yet — tell the user what to do
+    ctx.fillStyle = '#aaa';
+    ctx.font      = '15px Arial, sans-serif';
+    ctx.fillText('Drag weights from the tray to add tension',
+                 250, STRING_Y + 65);
+  } else if (tension > 0 && !vibration && !dragging) {
+    // Weights present, string is still — invite a pluck
+    // Subtle pulsing opacity draws the eye
+    const pulse = 0.5 + 0.4 * Math.sin(performance.now() / 350);
+    ctx.fillStyle = `rgba(120, 100, 80, ${0.35 + 0.35 * pulse})`;
+    ctx.font      = '15px Arial, sans-serif';
+    ctx.fillText('Click the string to pluck it!', 250, STRING_Y + 65);
+  }
+
+  // Hint about removing weights
+  if (hangingWeights.length > 0 && !dragging && !vibration) {
+    ctx.fillStyle = '#c0b8a8';
+    ctx.font      = '11px Arial, sans-serif';
+    ctx.fillText('Click a hanging weight to remove it',
+                 HANG_X, getWeightStackBottom() + 18);
+  }
+}
+
+/**
+ * A subtle highlight on the string when the mouse hovers over it,
+ * indicating it's clickable.
+ */
+function drawStringHighlight() {
+  if (!hoverString || dragging || getTension() <= 0) return;
+
+  ctx.save();
+  ctx.globalAlpha  = 0.15;
+  ctx.strokeStyle  = '#e67e22';
+  ctx.lineWidth    = 12;
+  ctx.lineCap      = 'round';
+  ctx.beginPath();
+  ctx.moveTo(FIXED_X + 20, STRING_Y);
+  ctx.lineTo(PULLEY_CX - 20, STRING_Y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+
+// ── Hit Testing ─────────────────────────────────────────────────
+// These functions check whether a given (x, y) coordinate falls
+// within a clickable region.
+
+/**
+ * Returns the index of the tray weight under (x,y), or -1.
+ */
+function getTrayWeightAt(x, y) {
+  const gap    = 18;
+  const totalW = AVAILABLE_WEIGHTS.length * TRAY_BLOCK_W
+               + (AVAILABLE_WEIGHTS.length - 1) * gap;
+  const startX = (600 - totalW) / 2;
+
+  for (let i = 0; i < AVAILABLE_WEIGHTS.length; i++) {
+    const bx = startX + i * (TRAY_BLOCK_W + gap);
+    if (x >= bx && x <= bx + TRAY_BLOCK_W &&
+        y >= TRAY_Y && y <= TRAY_Y + TRAY_BLOCK_H) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Returns the index of the hanging weight under (x,y), or -1.
+ */
+function getHangingWeightAt(x, y) {
+  for (let i = 0; i < hangingWeights.length; i++) {
+    const bx = HANG_X - HANG_BLOCK_W / 2;
+    const by = HANG_START_Y + 16 + i * (HANG_BLOCK_H + 3);
+    if (x >= bx && x <= bx + HANG_BLOCK_W &&
+        y >= by && y <= by + HANG_BLOCK_H) {
+      return i;
+    }
+  }
+  return -1;
+}
+
+/**
+ * Is the point near the horizontal vibrating portion of the string?
+ */
+function isOnString(x, y) {
+  if (getTension() <= 0) return false;
+  if (x < FIXED_X + 15 || x > PULLEY_CX - 15) return false;
+  return Math.abs(y - STRING_Y) < 15;
+}
+
+/**
+ * Is the point in the "drop zone" near the hanging weights?
+ * This is a generous target so dropping is easy.
+ */
+function isInDropZone(x, y) {
+  return (x > HANG_X - 70 && x < HANG_X + 70 &&
+          y > HANG_START_Y - 40 && y < TRAY_Y - 40);
+}
+
+
+// ── Coordinate Helper ───────────────────────────────────────────
+// The canvas may be displayed at a size different from its internal
+// 600×600 resolution (CSS scaling).  This function converts a
+// mouse/touch event position to canvas-space coordinates.
+
+function canvasCoords(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (600 / rect.width),
+    y: (clientY - rect.top)  * (600 / rect.height)
+  };
+}
+
+
+// ── Mouse Event Handlers ────────────────────────────────────────
+
+canvas.addEventListener('mousedown', (e) => {
+  const { x, y } = canvasCoords(e.clientX, e.clientY);
+
+  // 1) Check if clicking a weight in the tray → start dragging
+  const trayIdx = getTrayWeightAt(x, y);
+  if (trayIdx >= 0) {
+    dragging = { weight: AVAILABLE_WEIGHTS[trayIdx], x, y };
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // 2) Check if clicking a hanging weight → remove it
+  const hangIdx = getHangingWeightAt(x, y);
+  if (hangIdx >= 0) {
+    hangingWeights.splice(hangIdx, 1); // remove from array
+    vibration     = null;              // tension changed → stop vibrating
+    lastFrequency = null;
+    return;
+  }
+
+  // 3) Check if clicking the string → pluck it
+  if (isOnString(x, y)) {
+    pluckString();
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const { x, y } = canvasCoords(e.clientX, e.clientY);
+  mouseX = x;
+  mouseY = y;
+
+  if (dragging) {
+    // Update the position of the weight being dragged
+    dragging.x = x;
+    dragging.y = y;
+    canvas.style.cursor = 'grabbing';
+  } else {
+    // Update hover states for visual feedback
+    hoverTray   = getTrayWeightAt(x, y);
+    hoverHang   = getHangingWeightAt(x, y);
+    hoverString = isOnString(x, y);
+
+    // Set appropriate cursor
+    if (hoverTray >= 0)       canvas.style.cursor = 'grab';
+    else if (hoverHang >= 0)  canvas.style.cursor = 'pointer';
+    else if (hoverString)     canvas.style.cursor = 'pointer';
+    else                      canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (dragging) {
+    // If released inside the drop zone, add the weight
+    if (isInDropZone(dragging.x, dragging.y)) {
+      // Cap at 8 hanging weights so they don't overlap the tray
+      if (hangingWeights.length < 8) {
+        hangingWeights.push(dragging.weight);
+        vibration     = null;  // tension changed
+        lastFrequency = null;
+      }
+    }
+    dragging = null;
+    canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  dragging    = null;
+  hoverTray   = -1;
+  hoverHang   = -1;
+  hoverString = false;
+  canvas.style.cursor = 'default';
+});
+
+
+// ── Touch Event Handlers (mobile/tablet support) ────────────────
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const { x, y } = canvasCoords(e.touches[0].clientX, e.touches[0].clientY);
+
+  const trayIdx = getTrayWeightAt(x, y);
+  if (trayIdx >= 0) {
+    dragging = { weight: AVAILABLE_WEIGHTS[trayIdx], x, y };
+    return;
+  }
+  const hangIdx = getHangingWeightAt(x, y);
+  if (hangIdx >= 0) {
+    hangingWeights.splice(hangIdx, 1);
+    vibration     = null;
+    lastFrequency = null;
+    return;
+  }
+  if (isOnString(x, y)) pluckString();
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (dragging) {
+    const { x, y } = canvasCoords(e.touches[0].clientX, e.touches[0].clientY);
+    dragging.x = x;
+    dragging.y = y;
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  if (dragging) {
+    if (isInDropZone(dragging.x, dragging.y) && hangingWeights.length < 8) {
+      hangingWeights.push(dragging.weight);
+      vibration     = null;
+      lastFrequency = null;
+    }
+    dragging = null;
+  }
+}, { passive: false });
+
+
+// ── Pluck Action ────────────────────────────────────────────────
+
+function pluckString() {
+  const freq = getFrequency();
+  if (freq <= 0) return;
+  vibration = {
+    startTime: performance.now(),
+    frequency: freq
+  };
+  lastFrequency = freq;
+}
+
+
+// ── Main Animation Loop ────────────────────────────────────────
+// This function runs ~60 times per second.  Each call redraws the
+// entire scene from scratch (this is normal for Canvas animations).
+
+function draw() {
+  drawBackground();
+  drawLeftMount();
+  drawPulleyMount();
+  drawStringHighlight();  // glow behind the string
+  drawString();
+  drawPulley();
+  drawHangingWeights();
+  drawDropZone();         // green glow while dragging
+  drawWeightTray();
+  drawInfoPanel();
+  drawInstructions();
+  drawDraggingWeight();   // floating weight on top of everything
+
+  // Schedule the next frame
+  requestAnimationFrame(draw);
+}
+
+// Kick off the loop!
+draw();
+</script>
+</body>
+</html>
