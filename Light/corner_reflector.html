@@ -86,6 +86,14 @@
         let startPoint = null;
         let currentEnd = null;
 
+        // Click-to-click path mode
+        let clickPathActive = false;
+        let clickPathStart = null;  // The last placed point in click-path mode
+        let clickPathHover = null;  // Current hover position for live preview
+        let dragDetected = false;   // Whether mouse moved enough to count as drag
+        let mouseDownPos = null;    // Position at mousedown, to detect drag vs click
+        const DRAG_THRESHOLD = 5;   // Pixels of movement before it counts as a drag
+
         const SNAP_DIST = 15;
         const NORMAL_LEN = 40;
         const ARC_RADIUS = 25;
@@ -169,64 +177,194 @@
             };
         }
 
+        function finishClickPath() {
+            clickPathActive = false;
+            clickPathStart = null;
+            clickPathHover = null;
+            draw();
+        }
+
+        function commitSegment(from, to) {
+            const d = dist(from.x, from.y, to.x, to.y);
+            if (d > 5) {
+                lines.push({
+                    x1: from.x, y1: from.y,
+                    x2: to.x, y2: to.y,
+                    startSnap: from.snapType,
+                    startMirror: from.mirrorIndex,
+                    endSnap: to.snapType,
+                    endMirror: to.mirrorIndex
+                });
+            }
+        }
+
         function onStart(e) {
             e.preventDefault();
             const pos = getPos(e);
             const snapped = snapPoint(pos.x, pos.y);
+
+            // If click-path is active, a mousedown starts potential extension
+            if (clickPathActive) {
+                // We'll handle the actual placement in onEnd
+                mouseDownPos = { x: pos.x, y: pos.y };
+                dragDetected = false;
+                // Start a drag from the click-path's current point
+                startPoint = { ...clickPathStart };
+                currentEnd = snapped;
+                drawing = true;
+                draw();
+                return;
+            }
+
+            // Normal start: begin potential drag
+            mouseDownPos = { x: pos.x, y: pos.y };
+            dragDetected = false;
             startPoint = snapped;
             currentEnd = { ...snapped };
             drawing = true;
-            canvas.style.cursor = 'crosshair';
             draw();
         }
 
         function onMove(e) {
             e.preventDefault();
-            if (!drawing) return;
             const pos = getPos(e);
-            currentEnd = snapPoint(pos.x, pos.y);
-            draw();
+
+            // Check if we've dragged far enough to count as drag
+            if (drawing && mouseDownPos) {
+                const d = dist(pos.x, pos.y, mouseDownPos.x, mouseDownPos.y);
+                if (d > DRAG_THRESHOLD) {
+                    dragDetected = true;
+                }
+            }
+
+            if (drawing) {
+                currentEnd = snapPoint(pos.x, pos.y);
+                draw();
+                return;
+            }
+
+            // If click-path is active, update hover preview
+            if (clickPathActive) {
+                clickPathHover = snapPoint(pos.x, pos.y);
+                draw();
+            }
         }
 
         function onEnd(e) {
             e.preventDefault();
             if (!drawing) return;
             drawing = false;
-            canvas.style.cursor = 'crosshair';
 
-            if (startPoint && currentEnd) {
-                const d = dist(startPoint.x, startPoint.y, currentEnd.x, currentEnd.y);
-                if (d > 5) {
-                    lines.push({
-                        x1: startPoint.x, y1: startPoint.y,
-                        x2: currentEnd.x, y2: currentEnd.y,
-                        startSnap: startPoint.snapType,
-                        startMirror: startPoint.mirrorIndex,
-                        endSnap: currentEnd.snapType,
-                        endMirror: currentEnd.mirrorIndex
-                    });
+            const pos = e.touches ? null : getPos(e);
+            // For touch end, use currentEnd as-is; for mouse, re-snap
+            if (pos) {
+                currentEnd = snapPoint(pos.x, pos.y);
+            }
+
+            if (dragDetected) {
+                // This was a real drag - commit the line and end any click-path
+                if (startPoint && currentEnd) {
+                    commitSegment(startPoint, currentEnd);
+                }
+                clickPathActive = false;
+                clickPathStart = null;
+                clickPathHover = null;
+            } else {
+                // This was a click (no significant drag)
+                if (clickPathActive) {
+                    const snapped = currentEnd || snapPoint(pos.x, pos.y);
+                    // If clicked on the same point, finish the path
+                    const d = dist(clickPathStart.x, clickPathStart.y, snapped.x, snapped.y);
+                    if (d <= SNAP_DIST) {
+                        finishClickPath();
+                        startPoint = null;
+                        currentEnd = null;
+                        mouseDownPos = null;
+                        return;
+                    }
+                    // Place next point in click-path
+                    commitSegment(clickPathStart, snapped);
+                    clickPathStart = snapped;
+                    clickPathHover = snapped;
+                } else {
+                    // Start a new click-path
+                    const snapped = startPoint;
+                    clickPathActive = true;
+                    clickPathStart = snapped;
+                    clickPathHover = snapped;
                 }
             }
+
             startPoint = null;
             currentEnd = null;
+            mouseDownPos = null;
             draw();
         }
+
+        // Double-click finishes click-path and removes the duplicate segment
+        // from the second click event that fires before dblclick
+        canvas.addEventListener('dblclick', (e) => {
+            e.preventDefault();
+            if (clickPathActive || lines.length > 0) {
+                // The second click of the double-click already committed a segment
+                // with ~zero length (same point to same point). Remove it.
+                if (lines.length > 0) {
+                    const last = lines[lines.length - 1];
+                    const d = dist(last.x1, last.y1, last.x2, last.y2);
+                    if (d < 10) {
+                        lines.pop();
+                    }
+                }
+                finishClickPath();
+            }
+        });
+
+        // Escape finishes click-path
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && clickPathActive) {
+                finishClickPath();
+            }
+        });
 
         canvas.addEventListener('mousedown', onStart);
         canvas.addEventListener('mousemove', onMove);
         canvas.addEventListener('mouseup', onEnd);
-        canvas.addEventListener('mouseleave', onEnd);
+        canvas.addEventListener('mouseleave', (e) => {
+            // Only cancel if dragging, don't cancel click-path on mouseleave
+            if (drawing) {
+                drawing = false;
+                startPoint = null;
+                currentEnd = null;
+                mouseDownPos = null;
+                draw();
+            }
+        });
         canvas.addEventListener('touchstart', onStart, { passive: false });
         canvas.addEventListener('touchmove', onMove, { passive: false });
         canvas.addEventListener('touchend', onEnd, { passive: false });
 
         document.getElementById('undoBtn').addEventListener('click', () => {
-            lines.pop();
+            if (clickPathActive) {
+                // If in click-path mode, undo last segment and update path start
+                if (lines.length > 0) {
+                    const removed = lines.pop();
+                    // Move click-path start back to the start of the removed segment
+                    clickPathStart = { x: removed.x1, y: removed.y1, snapType: removed.startSnap, mirrorIndex: removed.startMirror };
+                    clickPathHover = { ...clickPathStart };
+                }
+                // If no lines left after undo, exit click-path
+                if (lines.length === 0) {
+                    finishClickPath();
+                }
+            } else {
+                lines.pop();
+            }
             draw();
         });
 
         document.getElementById('clearBtn').addEventListener('click', () => {
             lines = [];
+            finishClickPath();
             draw();
         });
 
@@ -461,7 +599,7 @@
                 drawEndpoint(line.x2, line.y2);
             }
 
-            // Line currently being drawn
+            // Line currently being drawn (drag or click-path drag)
             if (drawing && startPoint && currentEnd) {
                 drawLine(startPoint.x, startPoint.y, currentEnd.x, currentEnd.y,
                     'rgba(255, 107, 107, 0.6)', 4, [5, 5]);
@@ -480,6 +618,31 @@
                 }
                 if (currentEnd.snapType) {
                     drawSnapIndicator(currentEnd.x, currentEnd.y);
+                }
+            }
+
+            // Click-path hover preview (when not actively dragging)
+            if (clickPathActive && !drawing && clickPathStart && clickPathHover) {
+                const hd = dist(clickPathStart.x, clickPathStart.y, clickPathHover.x, clickPathHover.y);
+                if (hd > 2) {
+                    drawLine(clickPathStart.x, clickPathStart.y, clickPathHover.x, clickPathHover.y,
+                        'rgba(255, 107, 107, 0.4)', 4, [5, 5]);
+
+                    // Live annotations for click-path preview
+                    if (clickPathStart.snapType === 'mirror' && clickPathStart.mirrorIndex >= 0) {
+                        drawMirrorAnnotation(clickPathStart.x, clickPathStart.y, clickPathHover.x, clickPathHover.y, clickPathStart.mirrorIndex);
+                    }
+                    if (clickPathHover.snapType === 'mirror' && clickPathHover.mirrorIndex >= 0) {
+                        drawMirrorAnnotation(clickPathHover.x, clickPathHover.y, clickPathStart.x, clickPathStart.y, clickPathHover.mirrorIndex);
+                    }
+
+                    // Snap indicators for click-path
+                    if (clickPathStart.snapType) {
+                        drawSnapIndicator(clickPathStart.x, clickPathStart.y);
+                    }
+                    if (clickPathHover.snapType) {
+                        drawSnapIndicator(clickPathHover.x, clickPathHover.y);
+                    }
                 }
             }
         }
