@@ -169,6 +169,10 @@ let state = 'waiting_first';
 let firstClick = null;
 let secondClick = null;
 let mousePos = null;
+let dragStart = null;
+let isDragging = false;
+let suppressClick = false;
+const DRAG_THRESHOLD = 10;
 
 // --- Drawing ---
 function drawScene() {
@@ -186,8 +190,10 @@ function drawScene() {
   drawMirror();
   drawDimensionArrows();
 
-  // Preview ray while waiting for second click
-  if (state === 'waiting_second' && firstClick && mousePos) {
+  // Preview ray while dragging or waiting for second click
+  if (isDragging && dragStart && mousePos) {
+    drawArrow(mousePos.x, mousePos.y, dragStart.x, dragStart.y, RED, 2.5);
+  } else if (state === 'waiting_second' && firstClick && mousePos) {
     drawArrow(mousePos.x, mousePos.y, firstClick.x, firstClick.y, RED, 2.5);
   }
 
@@ -436,18 +442,66 @@ function drawHeightArrow(startY) {
 }
 
 // --- Interaction ---
+canvas.addEventListener('mousedown', (e) => {
+  if (state !== 'waiting_first') return;
+  const rect = canvas.getBoundingClientRect();
+  dragStart = {
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top
+  };
+  isDragging = false;
+});
+
 canvas.addEventListener('mousemove', (e) => {
   const rect = canvas.getBoundingClientRect();
   mousePos = {
     x: e.clientX - rect.left,
     y: e.clientY - rect.top
   };
+  if (dragStart && state === 'waiting_first') {
+    const dx = mousePos.x - dragStart.x;
+    const dy = mousePos.y - dragStart.y;
+    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+      isDragging = true;
+    }
+    if (isDragging) {
+      drawScene();
+      return;
+    }
+  }
   if (state === 'waiting_second') {
     drawScene();
   }
 });
 
+canvas.addEventListener('mouseup', (e) => {
+  if (isDragging && dragStart && state === 'waiting_first') {
+    const rect = canvas.getBoundingClientRect();
+    const endX = e.clientX - rect.left;
+    const endY = e.clientY - rect.top;
+    firstClick = { x: dragStart.x, y: dragStart.y };
+    secondClick = { x: endX, y: endY };
+    state = 'done';
+    instructionEl.textContent = '';
+    dragStart = null;
+    isDragging = false;
+    suppressClick = true;
+
+    checkBackward();
+    showInfo();
+    drawScene();
+    return;
+  }
+  dragStart = null;
+  isDragging = false;
+});
+
 canvas.addEventListener('click', (e) => {
+  if (suppressClick) {
+    suppressClick = false;
+    return;
+  }
+
   const rect = canvas.getBoundingClientRect();
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
@@ -509,6 +563,9 @@ function reset() {
   firstClick = null;
   secondClick = null;
   mousePos = null;
+  dragStart = null;
+  isDragging = false;
+  suppressClick = false;
   instructionEl.textContent = 'Click the point where your ray ends (on Haibao).';
   infoEl.textContent = '';
   warningEl.style.display = 'none';
