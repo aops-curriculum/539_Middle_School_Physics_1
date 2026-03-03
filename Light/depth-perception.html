@@ -80,6 +80,9 @@
         let arrows = [];
         let startPoint = null;
         let mousePos = null;
+        let isDragging = false;
+        let dragMoved = false;
+        const DRAG_THRESHOLD = 5;
 
         function drawEye(cx, cy, radius) {
             // White of eye
@@ -163,18 +166,29 @@
             }
         }
 
-        canvas.addEventListener('click', (e) => {
+        function getCanvasPos(e) {
             const rect = canvas.getBoundingClientRect();
-            const x = (e.clientX - rect.left) * (W / rect.width);
-            const y = (e.clientY - rect.top) * (H / rect.height);
+            return {
+                x: (e.clientX - rect.left) * (W / rect.width),
+                y: (e.clientY - rect.top) * (H / rect.height)
+            };
+        }
 
+        canvas.addEventListener('mousedown', (e) => {
+            const pos = getCanvasPos(e);
             if (!startPoint) {
-                startPoint = { x, y };
+                // First click: begin a new arrow
+                startPoint = { x: pos.x, y: pos.y };
+                isDragging = true;
+                dragMoved = false;
                 statusEl.textContent = 'Click again to place the arrowhead.';
             } else {
-                arrows.push({ x1: startPoint.x, y1: startPoint.y, x2: x, y2: y });
+                // Second click: complete the arrow (click-click mode)
+                arrows.push({ x1: startPoint.x, y1: startPoint.y, x2: pos.x, y2: pos.y });
                 startPoint = null;
                 mousePos = null;
+                isDragging = false;
+                dragMoved = false;
                 statusEl.textContent = '';
                 draw();
             }
@@ -182,13 +196,31 @@
 
         canvas.addEventListener('mousemove', (e) => {
             if (startPoint) {
-                const rect = canvas.getBoundingClientRect();
-                mousePos = {
-                    x: (e.clientX - rect.left) * (W / rect.width),
-                    y: (e.clientY - rect.top) * (H / rect.height)
-                };
+                const pos = getCanvasPos(e);
+                mousePos = pos;
+                if (isDragging && !dragMoved) {
+                    const dx = pos.x - startPoint.x;
+                    const dy = pos.y - startPoint.y;
+                    if (Math.sqrt(dx * dx + dy * dy) > DRAG_THRESHOLD) {
+                        dragMoved = true;
+                    }
+                }
                 draw();
             }
+        });
+
+        canvas.addEventListener('mouseup', (e) => {
+            if (isDragging && dragMoved && startPoint) {
+                // Drag completed: finalize the arrow
+                const pos = getCanvasPos(e);
+                arrows.push({ x1: startPoint.x, y1: startPoint.y, x2: pos.x, y2: pos.y });
+                startPoint = null;
+                mousePos = null;
+                statusEl.textContent = '';
+                draw();
+            }
+            isDragging = false;
+            dragMoved = false;
         });
 
         resetBtn.addEventListener('click', () => {
