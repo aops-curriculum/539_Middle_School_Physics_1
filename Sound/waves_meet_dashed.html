@@ -1,0 +1,675 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wave Superposition Simulation</title>
+    <style>
+        /*************************************************************
+         * STYLES
+         * We use a clean, minimal design suitable for embedding
+         * in an educational iframe.
+         *************************************************************/
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            font-size: 14px;
+            background: #ffffff;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            width: 600px;
+            height: 600px;
+            overflow: hidden;
+        }
+        
+        /* Control panel at the top */
+        .controls {
+            width: 100%;
+            max-width: 570px;
+            margin: 0 auto;
+            padding: 10px 10px;
+            background: #f5f5f5;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            box-sizing: border-box;
+        }
+        
+        /* Row of controls (left pulse, right pulse) */
+        .control-row {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+        }
+        
+        /* Each pulse's control group */
+        .pulse-controls {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            gap: 4px;
+        }
+        
+        .pulse-controls label {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+        }
+        
+        .pulse-options {
+            display: flex;
+            gap: 4px;
+            flex-wrap: nowrap;
+        }
+        
+        select {
+            padding: 4px 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            background: white;
+            font-size: 12px;
+            cursor: pointer;
+        }
+        
+        /* Make direction dropdown narrower */
+        #leftDirection, #rightDirection {
+            padding: 4px 4px;
+            width: 52px;
+        }
+        
+        select:hover {
+            border-color: #999;
+        }
+        
+        /* Color indicators for left (blue) and right (magenta) pulses */
+        .left-label { color: #2962ff; }
+        .right-label { color: #c2185b; }
+        
+        /* Time slider section */
+        .slider-section {
+            width: 100%;
+            max-width: 570px;
+            margin: 0 auto;
+            padding: 8px 10px;
+            background: #fafafa;
+            border-bottom: 1px solid #ddd;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            box-sizing: border-box;
+        }
+        
+        .slider-section label {
+            font-weight: 600;
+            color: #333;
+            font-size: 13px;
+            white-space: nowrap;
+        }
+        
+        .slider-section input[type="range"] {
+            flex: 1;
+            cursor: pointer;
+        }
+        
+        .time-display {
+            font-size: 12px;
+            color: #666;
+            min-width: 80px;
+            text-align: right;
+        }
+        
+        /* Canvas container fills remaining space */
+        .canvas-container {
+            flex: 1;
+            width: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding: 0px 10px 10px 10px;
+        }
+        
+        canvas {
+            border: 1px solid #ddd;
+            background: #fff;
+        }
+        
+        /* Legend between slider and canvas */
+        .legend {
+            width: 100%;
+            padding: 0px 10px;
+            display: flex;
+            justify-content: center;
+            gap: 25px;
+            font-size: 12px;
+        }
+        
+        .legend-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+    </style>
+</head>
+<body>
+    <!--=============================================================
+        CONTROL PANEL
+        Users select pulse shape, direction, and amplitude for each side
+    ==============================================================-->
+    <div class="controls">
+        <div class="control-row">
+            <!-- Left pulse controls -->
+            <div class="pulse-controls">
+                <label class="left-label">Left Pulse</label>
+                <div class="pulse-options">
+                    <select id="leftShape" title="Pulse shape">
+                        <option value="gaussian">Bell Curve</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="square">Square</option>
+                        <option value="sinePacket">Sine Packet</option>
+                    </select>
+                    <select id="leftDirection" title="Pulse direction">
+                        <option value="up">Up</option>
+                        <option value="down">Down</option>
+                    </select>
+                    <select id="leftAmplitude" title="Pulse amplitude">
+                        <option value="small">Small</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="large">Large</option>
+                    </select>
+                </div>
+            </div>
+            
+            <!-- Right pulse controls -->
+            <div class="pulse-controls">
+                <label class="right-label">Right Pulse</label>
+                <div class="pulse-options">
+                    <select id="rightShape" title="Pulse shape">
+                        <option value="gaussian">Bell Curve</option>
+                        <option value="triangle">Triangle</option>
+                        <option value="square">Square</option>
+                        <option value="sinePacket">Sine Packet</option>
+                    </select>
+                    <select id="rightDirection" title="Pulse direction">
+                        <option value="up">Up</option>
+                        <option value="down">Down</option>
+                    </select>
+                    <select id="rightAmplitude" title="Pulse amplitude">
+                        <option value="small">Small</option>
+                        <option value="medium" selected>Medium</option>
+                        <option value="large">Large</option>
+                    </select>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!--=============================================================
+        TIME SLIDER
+        Allows user to scrub through the interaction
+    ==============================================================-->
+    <div class="slider-section">
+        <label for="timeSlider">Time:</label>
+        <input type="range" id="timeSlider" min="0" max="100" value="0">
+        <span class="time-display" id="timeDisplay">Before collision</span>
+    </div>
+    
+    <!--=============================================================
+        LEGEND
+        Shows what each line style means
+    ==============================================================-->
+    <div class="legend">
+        <div class="legend-item">
+            <svg width="25" height="10"><line x1="0" y1="5" x2="25" y2="5" stroke="#2962ff" stroke-width="2" stroke-dasharray="5,3"/></svg>
+            <span>Left pulse</span>
+        </div>
+        <div class="legend-item">
+            <svg width="25" height="10"><line x1="0" y1="5" x2="25" y2="5" stroke="#c2185b" stroke-width="2" stroke-dasharray="5,3"/></svg>
+            <span>Right pulse</span>
+        </div>
+        <div class="legend-item">
+            <svg width="25" height="10"><line x1="0" y1="5" x2="25" y2="5" stroke="#333333" stroke-width="3"/></svg>
+            <span>Resultant</span>
+        </div>
+    </div>
+    
+    <!--=============================================================
+        CANVAS
+        Where we draw the waves
+    ==============================================================-->
+    <div class="canvas-container">
+        <canvas id="waveCanvas" width="570" height="400"></canvas>
+    </div>
+    
+
+    <script>
+        /*************************************************************
+         * WAVE SUPERPOSITION SIMULATION
+         * 
+         * This script handles:
+         * 1. Defining mathematical pulse shapes
+         * 2. Calculating pulse positions based on time
+         * 3. Computing the superposition (sum) of two pulses
+         * 4. Drawing everything to the canvas
+         *************************************************************/
+
+        // =============================================================
+        // SETUP: Get references to HTML elements
+        // =============================================================
+        
+        // Canvas and its 2D drawing context
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Control elements for left pulse
+        const leftShapeSelect = document.getElementById('leftShape');
+        const leftDirectionSelect = document.getElementById('leftDirection');
+        const leftAmplitudeSelect = document.getElementById('leftAmplitude');
+        
+        // Control elements for right pulse
+        const rightShapeSelect = document.getElementById('rightShape');
+        const rightDirectionSelect = document.getElementById('rightDirection');
+        const rightAmplitudeSelect = document.getElementById('rightAmplitude');
+        
+        // Time slider and display
+        const timeSlider = document.getElementById('timeSlider');
+        const timeDisplay = document.getElementById('timeDisplay');
+
+        // =============================================================
+        // CONSTANTS: Define the coordinate system and appearance
+        // =============================================================
+        
+        // Margins around the drawing area (in pixels)
+        const MARGIN = {
+            left: 40,    // Space for y-axis labels
+            right: 20,
+            top: 20,
+            bottom: 30   // Space for x-axis labels
+        };
+        
+        // Calculate the actual drawing area
+        const PLOT_WIDTH = canvas.width - MARGIN.left - MARGIN.right;
+        const PLOT_HEIGHT = canvas.height - MARGIN.top - MARGIN.bottom;
+        
+        // The y-coordinate of the equilibrium line (center of plot)
+        const EQUILIBRIUM_Y = MARGIN.top + PLOT_HEIGHT / 2;
+        
+        // Pulse width (how wide each pulse appears, in plot units)
+        // The plot x-axis ranges from 0 to 1
+        const PULSE_WIDTH = 0.15;
+        
+        // Amplitude values in pixels for small/medium/large
+        const AMPLITUDE_VALUES = {
+            small: PLOT_HEIGHT * 0.15,    // 15% of plot height
+            medium: PLOT_HEIGHT * 0.25,   // 25% of plot height
+            large: PLOT_HEIGHT * 0.35     // 35% of plot height
+        };
+        
+        // Colors for drawing
+        const COLORS = {
+            leftPulse: '#c2185b',    // 
+            rightPulse: '#2962ff',   // 
+            resultant: '#333333',    // Dark gray
+            axis: '#666666',         // Medium gray
+            grid: '#e0e0e0'          // Light gray
+        };
+
+        // =============================================================
+        // PULSE SHAPE FUNCTIONS
+        // 
+        // Each function takes:
+        //   x: horizontal distance from pulse center (in plot units, 0-1 range)
+        //   
+        // And returns:
+        //   A value between -1 and 1 (will be scaled by amplitude later)
+        //   
+        // The PULSE_WIDTH constant controls how wide the pulses appear.
+        // =============================================================
+        
+        const pulseShapes = {
+            /**
+             * GAUSSIAN (Bell Curve)
+             * A smooth, symmetric hump that tapers to zero.
+             * Formula: e^(-x²/(2σ²)) where σ controls width
+             */
+            gaussian: function(x) {
+                // Sigma (σ) controls the width - we scale by PULSE_WIDTH
+                const sigma = PULSE_WIDTH / 2.5;
+                
+                // The Gaussian formula
+                return Math.exp(-(x * x) / (2 * sigma * sigma));
+            },
+            
+            /**
+             * TRIANGLE
+             * A linear rise and fall forming a peak.
+             * Value is 1 at center, drops linearly to 0 at edges.
+             */
+            triangle: function(x) {
+                const halfWidth = PULSE_WIDTH;
+                
+                // If outside the pulse width, return 0
+                if (Math.abs(x) > halfWidth) {
+                    return 0;
+                }
+                
+                // Linear interpolation from 1 (center) to 0 (edges)
+                return 1 - Math.abs(x) / halfWidth;
+            },
+            
+            /**
+             * SQUARE
+             * A flat-topped pulse with sharp edges.
+             * Value is 1 within the width, 0 outside.
+             */
+            square: function(x) {
+                const halfWidth = PULSE_WIDTH * 0.7;  // Slightly narrower looks better
+                
+                // Simple threshold check
+                if (Math.abs(x) < halfWidth) {
+                    return 1;
+                } else {
+                    return 0;
+                }
+            },
+            
+            /**
+             * SINE PACKET
+             * A wave packet: oscillations inside a Gaussian envelope.
+             * This shows what a localized wave might look like.
+             */
+            sinePacket: function(x) {
+                // Envelope (Gaussian shape)
+                const sigma = PULSE_WIDTH / 2;
+                const envelope = Math.exp(-(x * x) / (2 * sigma * sigma));
+                
+                // Carrier wave (oscillation inside the envelope)
+                // We use ~2.5 oscillations within the pulse
+                const frequency = 8;  // Oscillations per unit
+                const carrier = Math.sin(2 * Math.PI * frequency * x);
+                
+                // Multiply envelope by carrier
+                return envelope * carrier;
+            }
+        };
+
+        // =============================================================
+        // HELPER FUNCTION: Convert plot coordinates to canvas pixels
+        // 
+        // Plot coordinates: x ranges 0 to 1, y ranges -1 to 1
+        // Canvas coordinates: x in pixels from left, y in pixels from top
+        // =============================================================
+        
+        function plotToCanvas(plotX, plotY) {
+            // Convert x: 0 -> MARGIN.left, 1 -> MARGIN.left + PLOT_WIDTH
+            const canvasX = MARGIN.left + plotX * PLOT_WIDTH;
+            
+            // Convert y: positive plotY should go UP (but canvas y increases DOWN)
+            // So we subtract instead of add
+            const canvasY = EQUILIBRIUM_Y - plotY;
+            
+            return { x: canvasX, y: canvasY };
+        }
+
+        // =============================================================
+        // CALCULATE PULSE POSITIONS
+        // 
+        // As time (t) goes from 0 to 1:
+        // - Left pulse travels from left edge to right edge
+        // - Right pulse travels from right edge to left edge
+        // =============================================================
+        
+        function getPulsePositions(t) {
+            // At t=0: left pulse at x=-0.2 (off left edge), right at x=1.2 (off right edge)
+            // At t=1: left pulse at x=1.2 (off right edge), right at x=-0.2 (off left edge)
+            
+            const travelDistance = 1.4;  // Total distance each pulse travels
+            const startOffset = 0.2;     // How far off-screen pulses start
+            
+            return {
+                leftCenter: -startOffset + t * travelDistance,
+                rightCenter: 1 + startOffset - t * travelDistance
+            };
+        }
+
+        // =============================================================
+        // CALCULATE WAVE VALUES
+        // 
+        // For a given x position (0 to 1), calculate:
+        // - leftY: displacement from left pulse only
+        // - rightY: displacement from right pulse only
+        // - resultantY: sum of both (superposition!)
+        // =============================================================
+        
+        function calculateWaveValues(x, t, settings) {
+            // Get pulse center positions at this time
+            const positions = getPulsePositions(t);
+            
+            // Get the selected shape functions
+            const leftShapeFn = pulseShapes[settings.leftShape];
+            const rightShapeFn = pulseShapes[settings.rightShape];
+            
+            // Calculate displacement from left pulse
+            // (x minus center gives distance from center)
+            const leftDistance = x - positions.leftCenter;
+            let leftY = leftShapeFn(leftDistance) * settings.leftAmplitude;
+            
+            // Apply direction (up or down)
+            if (settings.leftDirection === 'down') {
+                leftY = -leftY;
+            }
+            
+            // Calculate displacement from right pulse
+            const rightDistance = x - positions.rightCenter;
+            let rightY = rightShapeFn(rightDistance) * settings.rightAmplitude;
+            
+            // Apply direction
+            if (settings.rightDirection === 'down') {
+                rightY = -rightY;
+            }
+            
+            // SUPERPOSITION: The resultant is simply the sum!
+            const resultantY = leftY + rightY;
+            
+            return { leftY, rightY, resultantY };
+        }
+
+        // =============================================================
+        // DRAW THE COORDINATE AXES
+        // =============================================================
+        
+        function drawAxes() {
+            ctx.strokeStyle = COLORS.axis;
+            ctx.lineWidth = 1;
+            
+            // Draw equilibrium line (horizontal axis)
+            ctx.beginPath();
+            ctx.moveTo(MARGIN.left, EQUILIBRIUM_Y);
+            ctx.lineTo(MARGIN.left + PLOT_WIDTH, EQUILIBRIUM_Y);
+            ctx.stroke();
+            
+            // Draw axis label
+            ctx.fillStyle = COLORS.axis;
+            ctx.font = '11px sans-serif';
+            ctx.textAlign = 'center';
+            ctx.fillText('Position', MARGIN.left + PLOT_WIDTH / 2, canvas.height - 8);
+            
+            // Draw y-axis label
+            ctx.save();
+            ctx.translate(12, EQUILIBRIUM_Y);
+            ctx.rotate(-Math.PI / 2);
+            ctx.fillText('Displacement', 0, 0);
+            ctx.restore();
+            
+            // Draw small tick marks at edges
+            ctx.beginPath();
+            ctx.moveTo(MARGIN.left, EQUILIBRIUM_Y - 5);
+            ctx.lineTo(MARGIN.left, EQUILIBRIUM_Y + 5);
+            ctx.moveTo(MARGIN.left + PLOT_WIDTH, EQUILIBRIUM_Y - 5);
+            ctx.lineTo(MARGIN.left + PLOT_WIDTH, EQUILIBRIUM_Y + 5);
+            ctx.stroke();
+        }
+
+        // =============================================================
+        // DRAW A WAVE (used for left pulse, right pulse, and resultant)
+        // 
+        // Parameters:
+        //   getY: function that takes x (0-1) and returns y displacement in pixels
+        //   color: stroke color
+        //   dashed: if true, draw as dashed line
+        // =============================================================
+        
+        function drawWave(getY, color, dashed = false) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = dashed ? 2 : 3;
+            
+            // Set dash pattern if needed
+            if (dashed) {
+                ctx.setLineDash([6, 4]);  // 6px dash, 4px gap
+            } else {
+                ctx.setLineDash([]);      // Solid line
+            }
+            
+            ctx.beginPath();
+            
+            // Sample many points across the x-axis
+            const numPoints = 500;  // More points = smoother curve
+            
+            for (let i = 0; i <= numPoints; i++) {
+                // Calculate x in plot coordinates (0 to 1)
+                const plotX = i / numPoints;
+                
+                // Get y displacement from the provided function
+                const plotY = getY(plotX);
+                
+                // Convert to canvas coordinates
+                const canvasCoords = plotToCanvas(plotX, plotY);
+                
+                // Draw line to this point (or move to if first point)
+                if (i === 0) {
+                    ctx.moveTo(canvasCoords.x, canvasCoords.y);
+                } else {
+                    ctx.lineTo(canvasCoords.x, canvasCoords.y);
+                }
+            }
+            
+            ctx.stroke();
+            
+            // Reset dash pattern to solid
+            ctx.setLineDash([]);
+        }
+
+        // =============================================================
+        // GET CURRENT SETTINGS FROM UI CONTROLS
+        // =============================================================
+        
+        function getCurrentSettings() {
+            return {
+                leftShape: leftShapeSelect.value,
+                leftDirection: leftDirectionSelect.value,
+                leftAmplitude: AMPLITUDE_VALUES[leftAmplitudeSelect.value],
+                
+                rightShape: rightShapeSelect.value,
+                rightDirection: rightDirectionSelect.value,
+                rightAmplitude: AMPLITUDE_VALUES[rightAmplitudeSelect.value]
+            };
+        }
+
+        // =============================================================
+        // UPDATE TIME DISPLAY TEXT
+        // =============================================================
+        
+        function updateTimeDisplay(t) {
+            // Provide descriptive labels based on where we are in the timeline
+            if (t < 0.35) {
+                timeDisplay.textContent = 'Approaching';
+            } else if (t < 0.65) {
+                timeDisplay.textContent = 'Overlapping';
+            } else {
+                timeDisplay.textContent = 'Separating';
+            }
+        }
+
+        // =============================================================
+        // MAIN DRAW FUNCTION
+        // This is called whenever we need to update the display
+        // =============================================================
+        
+        function draw() {
+            // Get current time from slider (0 to 100) -> normalize to (0 to 1)
+            const t = timeSlider.value / 100;
+            
+            // Get current settings from dropdowns
+            const settings = getCurrentSettings();
+            
+            // Clear the canvas
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw the axes
+            drawAxes();
+            
+            // Create functions that return the y-value for each wave type
+            // These are passed to drawWave()
+            
+            const getLeftY = (x) => {
+                const values = calculateWaveValues(x, t, settings);
+                return values.leftY;
+            };
+            
+            const getRightY = (x) => {
+                const values = calculateWaveValues(x, t, settings);
+                return values.rightY;
+            };
+            
+            const getResultantY = (x) => {
+                const values = calculateWaveValues(x, t, settings);
+                return values.resultantY;
+            };
+            
+            // Draw the waves in order:
+            // 1. Individual pulses (dashed, behind)
+            // 2. Resultant (solid, in front)
+            
+            drawWave(getLeftY, COLORS.leftPulse, true);    // Dashed blue
+            drawWave(getRightY, COLORS.rightPulse, true);  // Dashed red
+            drawWave(getResultantY, COLORS.resultant, false);  // Solid dark
+            
+            // Update the time display text
+            updateTimeDisplay(t);
+        }
+
+        // =============================================================
+        // EVENT LISTENERS
+        // Redraw whenever any control changes
+        // =============================================================
+        
+        // Time slider
+        timeSlider.addEventListener('input', draw);
+        
+        // Left pulse controls
+        leftShapeSelect.addEventListener('change', draw);
+        leftDirectionSelect.addEventListener('change', draw);
+        leftAmplitudeSelect.addEventListener('change', draw);
+        
+        // Right pulse controls
+        rightShapeSelect.addEventListener('change', draw);
+        rightDirectionSelect.addEventListener('change', draw);
+        rightAmplitudeSelect.addEventListener('change', draw);
+
+        // =============================================================
+        // INITIAL DRAW
+        // Draw the initial state when the page loads
+        // =============================================================
+        
+        draw();
+    </script>
+</body>
+</html>
