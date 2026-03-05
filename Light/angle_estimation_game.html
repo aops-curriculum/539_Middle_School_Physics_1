@@ -12,414 +12,447 @@
             max-width: 600px;
             margin: 0 auto;
             user-select: none;
-            padding: 16px 0 24px;
             display: flex;
             flex-direction: column;
             align-items: center;
         }
-        #instructions {
-            font-size: 14px;
-            color: #aaa;
-            text-align: center;
-            margin-bottom: 10px;
-            padding: 0 12px;
-            line-height: 1.5;
-        }
-        canvas {
-            display: block;
-            border: 1px solid #333;
-            border-radius: 6px;
-        }
+        canvas { display: block; border: 1px solid #333; border-radius: 6px; }
         #controls {
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            margin-top: 14px;
+            display: flex; align-items: center; justify-content: center;
+            gap: 8px; padding: 7px 0; width: 100%;
         }
-        #guess-label {
-            font-size: 14px;
-            color: #ccc;
-        }
+        #guess-label { font-size: 13px; color: #ccc; }
         #guess-input {
-            width: 72px;
-            padding: 7px 8px;
-            font-size: 16px;
-            border-radius: 4px;
-            border: 1px solid #555;
-            background: #2a2a4e;
-            color: #fff;
-            text-align: center;
+            width: 68px; padding: 6px 8px; font-size: 15px;
+            border-radius: 4px; border: 1px solid #555;
+            background: #2a2a4e; color: #fff; text-align: center;
         }
-        #guess-input:focus {
-            outline: none;
-            border-color: #88aaff;
-        }
+        #guess-input:focus { outline: none; border-color: #88aaff; }
         #action-btn {
-            background: rgba(76, 175, 80, 0.9);
-            color: white;
-            border: none;
-            border-radius: 4px;
-            padding: 8px 18px;
-            font-size: 13px;
-            font-weight: bold;
-            cursor: pointer;
+            background: rgba(76,175,80,0.9); color: #fff; border: none;
+            border-radius: 4px; padding: 7px 16px; font-size: 12px;
+            font-weight: bold; cursor: pointer;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
-            transition: background 0.15s;
         }
-        #action-btn:hover { background: rgba(76, 175, 80, 1.0); }
-        #action-btn.next { background: rgba(33, 150, 243, 0.9); }
-        #action-btn.next:hover { background: rgba(33, 150, 243, 1.0); }
+        #action-btn:hover { background: rgba(76,175,80,1); }
+        #action-btn.next { background: rgba(33,150,243,0.9); }
+        #action-btn.next:hover { background: rgba(33,150,243,1); }
         #feedback {
-            text-align: center;
-            margin-top: 11px;
-            font-size: 15px;
-            font-weight: bold;
-            min-height: 22px;
-            color: #ccc;
+            font-size: 13px; font-weight: bold; min-height: 18px;
+            text-align: center; color: #aaa; padding: 0 6px;
         }
-        #feedback.correct { color: #7dff82; }
-        #feedback.wrong   { color: #ff7070; }
-        #streak-display {
-            text-align: center;
-            margin-top: 8px;
-            font-size: 14px;
-            color: #888;
+        #feedback.correct  { color: #44ff88; }
+        #feedback.toobig   { color: #4488ff; }
+        #feedback.toosmall { color: #ff5555; }
+        #streak-row {
+            display: flex; align-items: center; gap: 6px; padding: 5px 0 6px;
         }
-        #streak-pips {
-            display: flex;
-            justify-content: center;
-            gap: 5px;
-            margin-top: 7px;
-        }
+        #streak-label { font-size: 12px; color: #666; }
         .pip {
-            width: 14px;
-            height: 14px;
-            border-radius: 50%;
-            background: #333;
-            border: 1.5px solid #555;
-            transition: background 0.2s;
+            width: 12px; height: 12px; border-radius: 50%;
+            background: #2a2a4e; border: 1.5px solid #445;
+            transition: background 0.15s, border-color 0.15s;
         }
-        .pip.filled { background: #7dff82; border-color: #7dff82; }
+        .pip.filled { background: #44ff88; border-color: #44ff88; }
         #password-reveal {
-            display: none;
-            text-align: center;
-            margin-top: 18px;
-            padding: 16px 24px;
-            background: rgba(76, 175, 80, 0.15);
-            border: 2px solid rgba(76, 175, 80, 0.5);
-            border-radius: 8px;
-            font-size: 15px;
-            color: #ccc;
-            width: 100%;
-            max-width: 580px;
+            display: none; text-align: center; margin: 2px 0 8px;
+            padding: 9px 20px; width: 100%;
+            background: rgba(68,255,136,0.1);
+            border: 2px solid rgba(68,255,136,0.4);
+            border-radius: 8px; font-size: 13px; color: #aaa;
         }
-        #password-reveal .pw-word {
-            font-size: 26px;
-            font-weight: bold;
-            color: #7dff82;
-            letter-spacing: 4px;
-            margin-top: 8px;
+        #password-reveal .pw {
+            font-size: 22px; font-weight: bold;
+            color: #44ff88; letter-spacing: 4px; margin-top: 4px;
         }
     </style>
 </head>
 <body>
-    <p id="instructions">A light ray reflects off a mirror. Estimate the <strong style="color:#ffe566">angle of incidence</strong> — the angle between the incoming ray and the normal (dashed line).</p>
-    <canvas id="canvas" width="600" height="400"></canvas>
+    <canvas id="canvas" width="600" height="340"></canvas>
     <div id="controls">
-        <label id="guess-label" for="guess-input">Your guess (0–90°):</label>
-        <input type="number" id="guess-input" min="0" max="90" step="1" placeholder="e.g. 35">
+        <label id="guess-label" for="gi">Angle of incidence (0–90°):</label>
+        <input id="gi" type="number" min="0" max="90" step="1" placeholder="e.g. 35">
         <button id="action-btn">Submit</button>
     </div>
     <div id="feedback">&nbsp;</div>
-    <div id="streak-display">Streak: <span id="streak-num">0</span> / 10</div>
-    <div id="streak-pips"></div>
+    <div id="streak-row">
+        <span id="streak-label">Streak:</span>
+        <div id="pips"></div>
+    </div>
     <div id="password-reveal">
-        You got 10 in a row! Here is the password:<br>
-        <div class="pw-word">chirality</div>
+        10 in a row — you earned the password:<br>
+        <div class="pw">chirality</div>
     </div>
 
     <script>
-        const canvas = document.getElementById('canvas');
-        const ctx = canvas.getContext('2d');
-        const W = canvas.width;
-        const H = canvas.height;
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    const W = canvas.width, H = canvas.height;
 
-        const guessInput  = document.getElementById('guess-input');
-        const actionBtn   = document.getElementById('action-btn');
-        const feedbackEl  = document.getElementById('feedback');
-        const streakNumEl = document.getElementById('streak-num');
-        const pipsEl      = document.getElementById('streak-pips');
-        const passwordEl  = document.getElementById('password-reveal');
+    const guessInput = document.getElementById('gi');
+    const actionBtn  = document.getElementById('action-btn');
+    const feedbackEl = document.getElementById('feedback');
+    const pipsEl     = document.getElementById('pips');
+    const passwordEl = document.getElementById('password-reveal');
 
-        // Mirror geometry
-        const MIR_Y  = 330;
-        const MIR_X1 = 70;
-        const MIR_X2 = 530;
-        const REF_X  = W / 2;
-        const REF_Y  = MIR_Y;
-        const RAY_LEN    = 230;
-        const NORMAL_LEN = 200;
+    // Build 10 pips
+    for (let i = 0; i < 10; i++) {
+        const d = document.createElement('div');
+        d.className = 'pip'; d.id = 'pip' + i;
+        pipsEl.appendChild(d);
+    }
+    function updatePips(n) {
+        for (let i = 0; i < 10; i++)
+            document.getElementById('pip' + i).classList.toggle('filled', i < n);
+    }
 
-        // Game state
-        let streak       = 0;
-        let correctAngle = 0;
-        let submitted    = false;
+    // ── Geometry constants ──────────────────────────────────────────────────
+    const REF_X = W / 2, REF_Y = 252;
+    const RAY_LEN = 188, NORMAL_LEN = 146, MIR_HALF = 150;
 
-        // Build pip row
-        for (let i = 0; i < 10; i++) {
-            const pip = document.createElement('div');
-            pip.className = 'pip';
-            pip.id = 'pip-' + i;
-            pipsEl.appendChild(pip);
+    // ── State ───────────────────────────────────────────────────────────────
+    let mirrorDeg = 0;   // mirror tilt in degrees
+    let correct   = 0;   // correct angle of incidence (degrees)
+    let guess     = null;// submitted guess, null if not yet submitted
+    let streak    = 0;
+    let anim      = null;// { type, t0, particles }
+    let rafId     = null;
+
+    // ── Geometry helpers ────────────────────────────────────────────────────
+    // Normal unit vector (points toward incoming-light side)
+    function norm(a) { return { x: Math.sin(a), y: -Math.cos(a) }; }
+    // Source position (incoming ray start)
+    function srcPos(a, theta) {
+        return { x: REF_X + RAY_LEN * Math.sin(a - theta),
+                 y: REF_Y - RAY_LEN * Math.cos(a - theta) };
+    }
+    // Outgoing ray end
+    function outPos(a, theta) {
+        return { x: REF_X + RAY_LEN * Math.sin(a + theta),
+                 y: REF_Y - RAY_LEN * Math.cos(a + theta) };
+    }
+
+    function arrowHead(x1, y1, x2, y2, color) {
+        const ang = Math.atan2(y2 - y1, x2 - x1), h = 12, s = Math.PI / 6;
+        ctx.fillStyle = color;
+        ctx.beginPath();
+        ctx.moveTo(x2, y2);
+        ctx.lineTo(x2 - h * Math.cos(ang - s), y2 - h * Math.sin(ang - s));
+        ctx.lineTo(x2 - h * Math.cos(ang + s), y2 - h * Math.sin(ang + s));
+        ctx.closePath(); ctx.fill();
+    }
+
+    // ── New round ───────────────────────────────────────────────────────────
+    function newRound() {
+        const tilts = [-25,-20,-15,-10,-5,0,5,10,15,20,25];
+        mirrorDeg = tilts[Math.floor(Math.random() * tilts.length)];
+        const maxAngle = Math.min(80, 89 - Math.abs(mirrorDeg));
+        correct = Math.floor(Math.random() * (maxAngle - 10 + 1)) + 10;
+        guess = null;
+        feedbackEl.textContent = '\u00a0'; feedbackEl.className = '';
+        guessInput.value = ''; guessInput.disabled = false;
+        actionBtn.textContent = 'Submit'; actionBtn.className = '';
+        guessInput.focus();
+        draw(false);
+    }
+
+    // ── Main draw ───────────────────────────────────────────────────────────
+    function draw(showGuess) {
+        ctx.clearRect(0, 0, W, H);
+        ctx.fillStyle = '#1a1a2e'; ctx.fillRect(0, 0, W, H);
+
+        const a = mirrorDeg * Math.PI / 180;
+        const theta = correct * Math.PI / 180;
+
+        const mx = Math.cos(a), my = Math.sin(a);  // along mirror
+        const n  = norm(a);                          // normal (upward from mirror)
+        const src = srcPos(a, theta);
+        const out = outPos(a, theta);
+        const ntx = REF_X + NORMAL_LEN * n.x, nty = REF_Y + NORMAL_LEN * n.y;
+
+        // Mirror endpoints
+        const mAx = REF_X - MIR_HALF * mx, mAy = REF_Y - MIR_HALF * my;
+        const mBx = REF_X + MIR_HALF * mx, mBy = REF_Y + MIR_HALF * my;
+
+        // ── Mirror ──────────────────────────────────────────────────────────
+        ctx.strokeStyle = '#b8c8e0'; ctx.lineWidth = 5; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(mAx, mAy); ctx.lineTo(mBx, mBy); ctx.stroke();
+        ctx.lineCap = 'butt';
+
+        // Hatching (back side of mirror)
+        const hdx = -n.x + mx * 0.5, hdy = -n.y + my * 0.5;
+        const hlen = 14 / Math.hypot(hdx, hdy);
+        ctx.strokeStyle = '#3a4a5a'; ctx.lineWidth = 1.5;
+        for (let s2 = -MIR_HALF; s2 <= MIR_HALF; s2 += 17) {
+            const px = REF_X + s2 * mx, py = REF_Y + s2 * my;
+            ctx.beginPath(); ctx.moveTo(px, py);
+            ctx.lineTo(px + hdx * hlen, py + hdy * hlen); ctx.stroke();
         }
 
-        function updatePips() {
-            for (let i = 0; i < 10; i++) {
-                document.getElementById('pip-' + i).classList.toggle('filled', i < streak);
-            }
+        // ── Normal line (dashed) ─────────────────────────────────────────────
+        ctx.strokeStyle = 'rgba(160,190,255,0.5)';
+        ctx.lineWidth = 1.5; ctx.setLineDash([7, 6]);
+        ctx.beginPath();
+        ctx.moveTo(REF_X - 22 * n.x, REF_Y - 22 * n.y); // slight below-mirror extension
+        ctx.lineTo(ntx, nty);
+        ctx.stroke(); ctx.setLineDash([]);
+
+        // "normal" label just beyond the tip
+        ctx.fillStyle = 'rgba(160,190,255,0.65)';
+        ctx.font = 'italic 12px Arial';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('normal', ntx + n.x * 14, nty + n.y * 14);
+
+        // ── Rays ─────────────────────────────────────────────────────────────
+        ctx.shadowColor = '#ffe566'; ctx.shadowBlur = 10;
+        ctx.strokeStyle = '#ffe566'; ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(src.x, src.y); ctx.lineTo(REF_X, REF_Y); ctx.stroke();
+        arrowHead(src.x, src.y, REF_X, REF_Y, '#ffe566');
+        ctx.beginPath(); ctx.moveTo(REF_X, REF_Y); ctx.lineTo(out.x, out.y); ctx.stroke();
+        arrowHead(REF_X, REF_Y, out.x, out.y, '#ffe566');
+        ctx.shadowBlur = 0;
+
+        // Reflection dot
+        ctx.fillStyle = '#fff'; ctx.shadowColor = '#fff'; ctx.shadowBlur = 6;
+        ctx.beginPath(); ctx.arc(REF_X, REF_Y, 4, 0, Math.PI * 2); ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // ── Ray labels ───────────────────────────────────────────────────────
+        ctx.font = 'bold 12px Arial';
+        ctx.fillStyle = 'rgba(255,230,100,0.7)';
+        ctx.textBaseline = 'middle'; ctx.textAlign = 'center';
+
+        // "incoming": perp from midpoint toward the upward side
+        {
+            const dirX = (REF_X - src.x) / RAY_LEN, dirY = (REF_Y - src.y) / RAY_LEN;
+            // Two perpendiculars; choose the one pointing more toward negative-y (upward in canvas)
+            let px = -dirY, py = dirX;
+            if (py > 0) { px = -px; py = -py; }
+            const mx2 = (src.x + REF_X) / 2, my2 = (src.y + REF_Y) / 2;
+            ctx.fillText('incoming', mx2 + px * 18, my2 + py * 18);
         }
-
-        function randomAngle() {
-            return Math.floor(Math.random() * 71) + 10; // 10–80
+        // "reflected": same but for outgoing ray
+        {
+            const dirX = (out.x - REF_X) / RAY_LEN, dirY = (out.y - REF_Y) / RAY_LEN;
+            let px = dirY, py = -dirX;
+            if (py > 0) { px = -px; py = -py; }
+            const mx2 = (REF_X + out.x) / 2, my2 = (REF_Y + out.y) / 2;
+            ctx.fillText('reflected', mx2 + px * 18, my2 + py * 18);
         }
+        ctx.textBaseline = 'alphabetic';
 
-        function newRound() {
-            correctAngle = randomAngle();
-            submitted    = false;
-            feedbackEl.textContent = '\u00a0';
-            feedbackEl.className   = '';
-            guessInput.value       = '';
-            guessInput.disabled    = false;
-            actionBtn.textContent  = 'Submit';
-            actionBtn.className    = '';
-            guessInput.focus();
-            draw(false);
-        }
+        // ── After guess ──────────────────────────────────────────────────────
+        if (showGuess && guess !== null) {
+            const diff = guess - correct;  // positive = too big, negative = too small
+            const ok   = Math.abs(diff) <= 10;
+            const col  = ok ? '#44ff88' : (diff < 0 ? '#ff5555' : '#4488ff');
 
-        // ─── Drawing helpers ───────────────────────────────────────────────
+            const g   = guess * Math.PI / 180;
+            const gex = REF_X + RAY_LEN * Math.sin(a - g);
+            const gey = REF_Y - RAY_LEN * Math.cos(a - g);
 
-        function drawArrowHead(x1, y1, x2, y2, color) {
-            const angle   = Math.atan2(y2 - y1, x2 - x1);
-            const headLen = 13;
-            const spread  = Math.PI / 6;
-            ctx.fillStyle = color;
-            ctx.beginPath();
-            ctx.moveTo(x2, y2);
-            ctx.lineTo(x2 - headLen * Math.cos(angle - spread),
-                       y2 - headLen * Math.sin(angle - spread));
-            ctx.lineTo(x2 - headLen * Math.cos(angle + spread),
-                       y2 - headLen * Math.sin(angle + spread));
-            ctx.closePath();
-            ctx.fill();
-        }
+            // Dashed guess line
+            ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
+            ctx.beginPath(); ctx.moveTo(REF_X, REF_Y); ctx.lineTo(gex, gey);
+            ctx.stroke(); ctx.setLineDash([]);
+            arrowHead(REF_X, REF_Y, gex, gey, col);
 
-        // ─── Main draw ─────────────────────────────────────────────────────
+            // Angle arcs (drawn after guess)
+            const srcAng  = Math.atan2(src.y - REF_Y, src.x - REF_X);
+            const normAng = Math.atan2(n.y, n.x);
+            const outAng  = Math.atan2(out.y - REF_Y, out.x - REF_X);
+            const arcR = 46;
 
-        function draw(reveal) {
-            ctx.clearRect(0, 0, W, H);
+            // Incidence arc (orange, src→normal, clockwise = anticlockwise:false)
+            ctx.strokeStyle = 'rgba(255,178,50,0.9)'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.arc(REF_X, REF_Y, arcR, srcAng, normAng, false); ctx.stroke();
 
-            // Background
-            ctx.fillStyle = '#1a1a2e';
-            ctx.fillRect(0, 0, W, H);
+            // Reflection arc (sky-blue, normal→out, clockwise)
+            ctx.strokeStyle = 'rgba(100,195,255,0.75)';
+            ctx.beginPath(); ctx.arc(REF_X, REF_Y, arcR, normAng, outAng, false); ctx.stroke();
 
-            // Mirror surface
-            ctx.strokeStyle = '#b8c8e0';
-            ctx.lineWidth   = 5;
-            ctx.lineCap     = 'round';
-            ctx.beginPath();
-            ctx.moveTo(MIR_X1, MIR_Y);
-            ctx.lineTo(MIR_X2, MIR_Y);
-            ctx.stroke();
-            ctx.lineCap = 'butt';
-
-            // Hatching below mirror (shows solid backing)
-            ctx.strokeStyle = '#445566';
-            ctx.lineWidth   = 1.5;
-            for (let x = MIR_X1 + 8; x <= MIR_X2; x += 18) {
-                ctx.beginPath();
-                ctx.moveTo(x, MIR_Y);
-                ctx.lineTo(x - 13, MIR_Y + 15);
-                ctx.stroke();
-            }
-
-            // Normal line (dashed)
-            ctx.strokeStyle = 'rgba(160, 190, 255, 0.55)';
-            ctx.lineWidth   = 1.5;
-            ctx.setLineDash([7, 6]);
-            ctx.beginPath();
-            ctx.moveTo(REF_X, MIR_Y - NORMAL_LEN);
-            ctx.lineTo(REF_X, MIR_Y + 28);
-            ctx.stroke();
-            ctx.setLineDash([]);
-
-            // "normal" label
-            ctx.fillStyle    = 'rgba(160, 190, 255, 0.6)';
-            ctx.font         = 'italic 13px Arial';
-            ctx.textAlign    = 'left';
-            ctx.textBaseline = 'top';
-            ctx.fillText('normal', REF_X + 6, MIR_Y - NORMAL_LEN + 2);
-            ctx.textBaseline = 'alphabetic';
-
-            // Ray geometry
-            const θ    = correctAngle * Math.PI / 180;
-            const srcX = REF_X - RAY_LEN * Math.sin(θ);
-            const srcY = REF_Y - RAY_LEN * Math.cos(θ);
-            const outX = REF_X + RAY_LEN * Math.sin(θ);
-            const outY = REF_Y - RAY_LEN * Math.cos(θ);
-
-            // Rays with glow
-            ctx.shadowColor = '#ffe566';
-            ctx.shadowBlur  = 12;
-            ctx.strokeStyle = '#ffe566';
-            ctx.lineWidth   = 2.5;
-
-            ctx.beginPath();
-            ctx.moveTo(srcX, srcY);
-            ctx.lineTo(REF_X, REF_Y);
-            ctx.stroke();
-            drawArrowHead(srcX, srcY, REF_X, REF_Y, '#ffe566');
-
-            ctx.beginPath();
-            ctx.moveTo(REF_X, REF_Y);
-            ctx.lineTo(outX, outY);
-            ctx.stroke();
-            drawArrowHead(REF_X, REF_Y, outX, outY, '#ffe566');
-
-            ctx.shadowBlur = 0;
-
-            // Reflection point dot
-            ctx.fillStyle  = '#ffffff';
-            ctx.shadowColor = '#ffffff';
-            ctx.shadowBlur  = 8;
-            ctx.beginPath();
-            ctx.arc(REF_X, REF_Y, 4, 0, Math.PI * 2);
-            ctx.fill();
-            ctx.shadowBlur = 0;
-
-            // Angle arcs
-            const srcAngle = Math.atan2(srcY - REF_Y, srcX - REF_X); // toward source
-            const outAngle = Math.atan2(outY - REF_Y, outX - REF_X); // toward outgoing
-            const normAng  = -Math.PI / 2;
-            const arcR     = 52;
-
-            // Incidence arc (source → normal, clockwise = anticlockwise:false)
-            ctx.strokeStyle = 'rgba(255, 180, 50, 0.85)';
-            ctx.lineWidth   = 2;
-            ctx.beginPath();
-            ctx.arc(REF_X, REF_Y, arcR, srcAngle, normAng, false);
-            ctx.stroke();
-
-            // Reflection arc (normal → outgoing, clockwise)
-            ctx.strokeStyle = 'rgba(100, 200, 255, 0.75)';
-            ctx.beginPath();
-            ctx.arc(REF_X, REF_Y, arcR, normAng, outAngle, false);
-            ctx.stroke();
-
-            // If reveal: draw the angle value on the arc
-            if (reveal) {
-                const midIncAng  = srcAngle + (normAng - srcAngle) / 2;
-                const labelR     = arcR + 18;
-                ctx.fillStyle    = 'rgba(255, 200, 80, 0.95)';
-                ctx.font         = 'bold 16px Arial';
-                ctx.textAlign    = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText(correctAngle + '°',
-                    REF_X + labelR * Math.cos(midIncAng),
-                    REF_Y + labelR * Math.sin(midIncAng));
-                ctx.textBaseline = 'alphabetic';
-            } else {
-                // Show "?" prompt on the incidence arc
-                const midIncAng  = srcAngle + (normAng - srcAngle) / 2;
-                const labelR     = arcR + 18;
-                ctx.fillStyle    = 'rgba(255, 200, 80, 0.7)';
-                ctx.font         = 'bold 17px Arial';
-                ctx.textAlign    = 'center';
-                ctx.textBaseline = 'middle';
-                ctx.fillText('?', REF_X + labelR * Math.cos(midIncAng),
-                                  REF_Y + labelR * Math.sin(midIncAng));
-                ctx.textBaseline = 'alphabetic';
-            }
-
-            // Ray labels — near source / outgoing endpoints, clamped to canvas
-            ctx.font         = 'bold 13px Arial';
-            ctx.textBaseline = 'bottom';
-            ctx.fillStyle    = 'rgba(255, 230, 100, 0.75)';
-
-            // "incoming" label near source: right-align, just above the point
-            const inLX = Math.max(70, srcX - 4);
-            const inLY = Math.max(18, srcY - 4);
-            ctx.textAlign = 'right';
-            ctx.fillText('incoming', inLX, inLY);
-
-            // "reflected" label near outgoing: left-align, just above the point
-            const outLX = Math.min(W - 4, outX + 4);
-            const outLY = Math.max(18, outY - 4);
-            ctx.textAlign = 'left';
-            ctx.fillText('reflected', outLX, outLY);
-
+            // Angle label on incidence arc, colored by result
+            const midAng = (srcAng + normAng) / 2;
+            const lr = arcR + 17;
+            ctx.fillStyle = col; ctx.font = 'bold 15px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+            ctx.fillText(correct + '°',
+                REF_X + lr * Math.cos(midAng), REF_Y + lr * Math.sin(midAng));
             ctx.textBaseline = 'alphabetic';
         }
+    }
 
-        // ─── Game logic ────────────────────────────────────────────────────
+    // ── Submit handler ──────────────────────────────────────────────────────
+    function handleSubmit() {
+        if (guess !== null) { newRound(); return; }
 
-        function handleSubmit() {
-            if (submitted) {
-                // "Next round" mode
-                newRound();
-                return;
-            }
+        const raw = guessInput.value.trim();
+        const val = parseInt(raw, 10);
+        if (raw === '' || isNaN(val) || val < 0 || val > 90) {
+            feedbackEl.textContent = 'Enter a whole number 0–90.';
+            feedbackEl.className = 'toosmall'; return;
+        }
 
-            const raw   = guessInput.value.trim();
-            const guess = parseInt(raw, 10);
+        guess = val;
+        guessInput.disabled = true;
+        actionBtn.textContent = 'Next Round'; actionBtn.className = 'next';
 
-            if (raw === '' || isNaN(guess) || guess < 0 || guess > 90) {
-                feedbackEl.textContent = 'Enter a whole number between 0 and 90.';
-                feedbackEl.className   = 'wrong';
-                return;
-            }
+        const diff = guess - correct;
+        const ok   = Math.abs(diff) <= 10;
 
-            submitted = true;
-            guessInput.disabled   = true;
-            actionBtn.textContent = 'Next Round';
-            actionBtn.className   = 'next';
-
-            const diff    = Math.abs(guess - correctAngle);
-            const correct = diff <= 10;
-
-            if (correct) {
-                streak = Math.min(streak + 1, 10);
-                if (diff === 0) {
-                    feedbackEl.textContent = `Exact! The angle was ${correctAngle}°.`;
-                } else {
-                    feedbackEl.textContent = `Correct! The angle was ${correctAngle}°. (Your guess: ${guess}°, off by ${diff}°)`;
-                }
-                feedbackEl.className = 'correct';
+        if (ok) {
+            streak = Math.min(streak + 1, 10);
+            feedbackEl.className = 'correct';
+            if (diff === 0) {
+                feedbackEl.textContent = `Bullseye! Exactly ${correct}°.`;
+                startAnim('bullseye');
             } else {
-                streak = 0;
-                feedbackEl.textContent = `Not quite. The angle was ${correctAngle}°. (Your guess: ${guess}°, off by ${diff}°)`;
-                feedbackEl.className   = 'wrong';
+                feedbackEl.textContent =
+                    `Correct! Angle was ${correct}°. (Your guess: ${guess}°, off by ${Math.abs(diff)}°)`;
             }
-
-            streakNumEl.textContent = streak;
-            updatePips();
-            draw(true); // reveal angle on diagram
-
-            if (streak >= 10) {
-                passwordEl.style.display = 'block';
-                actionBtn.textContent    = 'Play Again';
+        } else {
+            streak = 0;
+            if (diff < 0) {
+                feedbackEl.className = 'toosmall';
+                feedbackEl.textContent =
+                    `Too small. Angle was ${correct}°. (Your guess: ${guess}°, off by ${Math.abs(diff)}°)`;
+            } else {
+                feedbackEl.className = 'toobig';
+                feedbackEl.textContent =
+                    `Too big. Angle was ${correct}°. (Your guess: ${guess}°, off by ${Math.abs(diff)}°)`;
             }
         }
 
-        actionBtn.addEventListener('click', handleSubmit);
+        updatePips(streak);
+        draw(true);
 
-        guessInput.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter') handleSubmit();
+        if (streak >= 10) {
+            passwordEl.style.display = 'block';
+            startAnim('confetti');
+        }
+    }
+
+    actionBtn.addEventListener('click', handleSubmit);
+    guessInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
+
+    // ── Animation system ────────────────────────────────────────────────────
+    function startAnim(type) {
+        if (rafId) { cancelAnimationFrame(rafId); rafId = null; }
+        anim = { type, t0: performance.now(),
+                 particles: type === 'confetti' ? makeConfetti() : null };
+        rafId = requestAnimationFrame(animLoop);
+    }
+
+    function animLoop(now) {
+        const elapsed = (now - anim.t0) / 1000;
+        const done = (anim.type === 'bullseye' && elapsed > 1.8) ||
+                     (anim.type === 'confetti' && elapsed > 3.6);
+
+        draw(true);
+        if (anim.type === 'bullseye') drawBullseye(elapsed);
+        else drawConfetti(elapsed);
+
+        if (!done) {
+            rafId = requestAnimationFrame(animLoop);
+        } else {
+            const wasType = anim.type;
+            anim = null; rafId = null;
+            draw(true);
+            // Bullseye on exact hit during a 10-streak win → chain into confetti
+            if (wasType === 'bullseye' && streak >= 10) startAnim('confetti');
+        }
+    }
+
+    // ── Bullseye animation ──────────────────────────────────────────────────
+    function drawBullseye(elapsed) {
+        const bx = W - 72, by = 60, maxR = 40;
+
+        // Target rings
+        const rings = ['#cc2222','#ffffff','#cc2222','#ffffff','#ffcc00'];
+        for (let i = rings.length - 1; i >= 0; i--) {
+            ctx.beginPath();
+            ctx.arc(bx, by, maxR * (i + 1) / rings.length, 0, Math.PI * 2);
+            ctx.fillStyle = rings[i]; ctx.fill();
+        }
+        ctx.strokeStyle = 'rgba(0,0,0,0.25)'; ctx.lineWidth = 0.5;
+        for (let i = 0; i < rings.length; i++) {
+            ctx.beginPath();
+            ctx.arc(bx, by, maxR * (i + 1) / rings.length, 0, Math.PI * 2);
+            ctx.stroke();
+        }
+
+        // Arrow tip position (eases from bx-200 to bx)
+        const p   = Math.min(1, elapsed / 0.65);
+        const ep  = 1 - (1 - p) * (1 - p); // ease-out
+        const ax  = (bx - 200) + 200 * ep;
+        const ay  = by;
+
+        // Shaft
+        ctx.strokeStyle = '#8B5E3C'; ctx.lineWidth = 4; ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(ax - 54, ay); ctx.lineTo(ax - 1, ay);
+        ctx.stroke(); ctx.lineCap = 'butt';
+
+        // Head
+        ctx.fillStyle = '#444';
+        ctx.beginPath(); ctx.moveTo(ax, ay);
+        ctx.lineTo(ax - 14, ay - 6); ctx.lineTo(ax - 14, ay + 6);
+        ctx.closePath(); ctx.fill();
+
+        // Fletching
+        ctx.strokeStyle = '#cccc44'; ctx.lineWidth = 1.5;
+        for (let f = 0; f < 3; f++) {
+            const fx = ax - 54 + f * 10;
+            ctx.beginPath(); ctx.moveTo(fx, ay); ctx.lineTo(fx - 6, ay - 9); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(fx, ay); ctx.lineTo(fx - 6, ay + 9); ctx.stroke();
+        }
+
+        // "Bullseye!" text (fades in after arrow hits)
+        if (elapsed > 0.65) {
+            const ta = Math.min(1, (elapsed - 0.65) / 0.28);
+            ctx.globalAlpha = ta;
+            ctx.fillStyle = '#ffee44';
+            ctx.font = 'bold 25px Arial';
+            ctx.textAlign = 'center'; ctx.textBaseline = 'bottom';
+            ctx.fillText('Bullseye!', bx, by - maxR - 5);
+            ctx.textBaseline = 'alphabetic'; ctx.globalAlpha = 1;
+        }
+    }
+
+    // ── Confetti ─────────────────────────────────────────────────────────────
+    function makeConfetti() {
+        const cols = ['#ff4466','#44ff88','#4488ff','#ffee44','#ff88ff','#44eeff','#ff8844'];
+        return Array.from({ length: 90 }, () => ({
+            x: Math.random() * W, y: -Math.random() * 50,
+            vx: (Math.random() - 0.5) * 3.5,
+            vy: Math.random() * 2.5 + 1.5,
+            col: cols[Math.floor(Math.random() * cols.length)],
+            w: Math.random() * 9 + 4, h: Math.random() * 5 + 3,
+            ang: Math.random() * Math.PI * 2,
+            rot: (Math.random() - 0.5) * 0.18
+        }));
+    }
+
+    function drawConfetti(elapsed) {
+        const fadeStart = 2.6, fadeEnd = 3.6;
+        const alpha = elapsed > fadeStart
+            ? Math.max(0, 1 - (elapsed - fadeStart) / (fadeEnd - fadeStart)) : 1;
+        anim.particles.forEach(p => {
+            p.x += p.vx; p.y += p.vy; p.vy += 0.07; p.ang += p.rot;
+            if (p.y < H + 20) {
+                ctx.save();
+                ctx.globalAlpha = alpha;
+                ctx.translate(p.x, p.y); ctx.rotate(p.ang);
+                ctx.fillStyle = p.col;
+                ctx.fillRect(-p.w / 2, -p.h / 2, p.w, p.h);
+                ctx.restore();
+            }
         });
+        ctx.globalAlpha = 1;
+    }
 
-        // Initialize
-        updatePips();
-        newRound();
+    // ── Init ─────────────────────────────────────────────────────────────────
+    updatePips(0);
+    newRound();
     </script>
 </body>
 </html>
