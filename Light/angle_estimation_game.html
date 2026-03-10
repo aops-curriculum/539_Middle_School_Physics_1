@@ -221,7 +221,7 @@
             let px = -dirY, py = dirX;
             if (py > 0) { px = -px; py = -py; }
             const mx2 = (src.x + REF_X) / 2, my2 = (src.y + REF_Y) / 2;
-            ctx.fillText('incoming', mx2 + px * 18, my2 + py * 18);
+            ctx.fillText('incident', mx2 + px * 18, my2 + py * 18);
         }
         // "reflected": same but for outgoing ray
         {
@@ -243,11 +243,23 @@
             const gex = REF_X + RAY_LEN * Math.sin(a - g);
             const gey = REF_Y - RAY_LEN * Math.cos(a - g);
 
-            // Dashed guess line
+            // Dashed guess line (arrow points at origin, like incident ray)
             ctx.strokeStyle = col; ctx.lineWidth = 2; ctx.setLineDash([6, 5]);
-            ctx.beginPath(); ctx.moveTo(REF_X, REF_Y); ctx.lineTo(gex, gey);
+            ctx.beginPath(); ctx.moveTo(gex, gey); ctx.lineTo(REF_X, REF_Y);
             ctx.stroke(); ctx.setLineDash([]);
-            arrowHead(REF_X, REF_Y, gex, gey, col);
+            arrowHead(gex, gey, REF_X, REF_Y, col);
+
+            // "your guess" label on dashed ray
+            {
+                const gdirX = (REF_X - gex) / RAY_LEN, gdirY = (REF_Y - gey) / RAY_LEN;
+                let gpx = -gdirY, gpy = gdirX;
+                if (gpy > 0) { gpx = -gpx; gpy = -gpy; }
+                const gmx = (gex + REF_X) / 2, gmy = (gey + REF_Y) / 2;
+                ctx.fillStyle = col; ctx.font = 'bold 12px Arial';
+                ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+                ctx.fillText('your guess', gmx + gpx * 18, gmy + gpy * 18);
+                ctx.textBaseline = 'alphabetic';
+            }
 
             // Angle arcs (drawn after guess)
             const srcAng  = Math.atan2(src.y - REF_Y, src.x - REF_X);
@@ -263,10 +275,10 @@
             ctx.strokeStyle = 'rgba(100,195,255,0.75)';
             ctx.beginPath(); ctx.arc(REF_X, REF_Y, arcR, normAng, outAng, false); ctx.stroke();
 
-            // Angle label on incidence arc, colored by result
-            const midAng = (srcAng + normAng) / 2;
+            // Angle label on reflection arc, colored like the rays
+            const midAng = (normAng + outAng) / 2;
             const lr = arcR + 17;
-            ctx.fillStyle = col; ctx.font = 'bold 15px Arial';
+            ctx.fillStyle = '#ffe566'; ctx.font = 'bold 15px Arial';
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText(correct + '°',
                 REF_X + lr * Math.cos(midAng), REF_Y + lr * Math.sin(midAng));
