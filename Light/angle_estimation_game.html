@@ -171,6 +171,12 @@
         ctx.beginPath(); ctx.moveTo(mAx, mAy); ctx.lineTo(mBx, mBy); ctx.stroke();
         ctx.lineCap = 'butt';
 
+        // "mirror" label
+        ctx.fillStyle = 'rgba(184,200,224,0.65)';
+        ctx.font = 'italic 12px Arial';
+        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText('mirror', mBx + n.x * -14 + mx * 14, mBy + n.y * -14 + my * 14);
+
         // Hatching (back side of mirror)
         const hdx = -n.x + mx * 0.5, hdy = -n.y + my * 0.5;
         const hlen = 14 / Math.hypot(hdx, hdy);
