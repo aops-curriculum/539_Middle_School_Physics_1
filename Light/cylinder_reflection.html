@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cylindrical Anamorphic Art Generator</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #1a1a2e; --panel: #16213e; --card: #0f3460;
+      --accent: #e94560; --accent2: #4a90d9;
+      --text: #eaeaea; --text-muted: #8899aa;
+      --border: #2a3a5a; --slider-track: #2a3a5a;
+    }
+
+    html, body {
+      height: 100%; overflow: hidden;
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+      background: var(--bg); color: var(--text); font-size: 14px;
+    }
+    body { display: flex; flex-direction: column; }
+
+    header {
+      background: var(--panel); border-bottom: 1px solid var(--border);
+      padding: 10px 20px; display: flex; align-items: center; gap: 12px; flex-shrink: 0;
+    }
+    header h1 { font-size: 17px; font-weight: 600; }
+    header .subtitle { font-size: 12px; color: var(--text-muted); }
+    .icon-mirror {
+      width: 32px; height: 32px; background: var(--accent2); border-radius: 50%;
+      display: flex; align-items: center; justify-content: center; font-size: 18px; flex-shrink: 0;
+    }
+
+    .layout { display: flex; flex: 1; overflow: hidden; }
+
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 272px; flex-shrink: 0; background: var(--panel);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow-y: auto; padding: 14px; gap: 16px;
+    }
+    .section-title {
+      font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
+      text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
+    }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed var(--border); border-radius: 10px; padding: 18px 14px;
+      text-align: center; cursor: pointer;
+      transition: border-color 0.2s, background 0.2s; color: var(--text-muted);
+      font-size: 13px; line-height: 1.6;
+    }
+    .drop-zone:hover, .drop-zone.drag-over {
+      border-color: var(--accent2); background: rgba(74,144,217,0.08); color: var(--text);
+    }
+    .drop-zone .dz-icon { font-size: 26px; margin-bottom: 4px; }
+    .drop-zone input[type="file"] { display: none; }
+
+    .url-row { display: flex; gap: 6px; margin-top: 8px; }
+    .url-row input {
+      flex: 1; background: var(--card); border: 1px solid var(--border); border-radius: 6px;
+      padding: 6px 10px; color: var(--text); font-size: 12px; outline: none;
+      transition: border-color 0.2s;
+    }
+    .url-row input:focus { border-color: var(--accent2); }
+    .url-row button {
+      background: var(--accent2); border: none; border-radius: 6px; padding: 6px 10px;
+      color: white; font-size: 12px; cursor: pointer; transition: filter 0.15s;
+    }
+    .url-row button:hover { filter: brightness(1.15); }
+
+    .thumb-preview {
+      width: 100%; height: 72px; border-radius: 8px; overflow: hidden; background: var(--card);
+      display: flex; align-items: center; justify-content: center;
+      color: var(--text-muted); font-size: 12px; margin-top: 8px;
+    }
+    .thumb-preview img { width: 100%; height: 100%; object-fit: contain; }
+
+    /* Sliders */
+    .slider-row { display: flex; flex-direction: column; gap: 4px; }
+    .slider-label { display: flex; justify-content: space-between; align-items: baseline; }
+    .slider-label span { font-size: 13px; }
+    .slider-label .val {
+      font-size: 13px; font-weight: 600; color: var(--accent2); min-width: 52px; text-align: right;
+    }
+    input[type="range"] {
+      -webkit-appearance: none; width: 100%; height: 5px;
+      background: var(--slider-track); border-radius: 3px; outline: none; cursor: pointer;
+    }
+    input[type="range"]::-webkit-slider-thumb {
+      -webkit-appearance: none; width: 16px; height: 16px; background: var(--accent2);
+      border-radius: 50%; border: 2px solid var(--panel); cursor: pointer;
+      box-shadow: 0 0 4px rgba(74,144,217,0.5);
+    }
+    input[type="range"]::-webkit-slider-thumb:hover { background: #60aaff; }
+
+    /* Toggle switch */
+    .toggle-row { display: flex; align-items: center; gap: 10px; }
+    .toggle-row label { font-size: 13px; cursor: pointer; user-select: none; }
+    input.toggle {
+      -webkit-appearance: none; appearance: none;
+      width: 38px; height: 21px; flex-shrink: 0;
+      background: var(--slider-track); border-radius: 11px; cursor: pointer;
+      position: relative; transition: background 0.2s;
+    }
+    input.toggle:checked { background: var(--accent2); }
+    input.toggle::after {
+      content: ''; position: absolute; width: 17px; height: 17px;
+      background: white; border-radius: 50%; top: 2px; left: 2px;
+      transition: left 0.18s;
+    }
+    input.toggle:checked::after { left: 19px; }
+
+    .hint {
+      font-size: 11px; color: var(--text-muted); line-height: 1.55;
+      background: rgba(255,255,255,0.03); border-left: 2px solid var(--accent2);
+      padding: 6px 8px; border-radius: 0 4px 4px 0;
+    }
+
+    .btn {
+      display: block; width: 100%; padding: 10px; border-radius: 8px; border: none;
+      font-size: 14px; font-weight: 600; cursor: pointer; transition: filter 0.15s, opacity 0.2s;
+    }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-secondary { background: var(--accent); color: white; }
+    .btn-secondary:hover:not(:disabled) { filter: brightness(1.15); }
+    .btn-small {
+      width: 100%; padding: 7px 10px; background: var(--card); border: 1px solid var(--border);
+      border-radius: 6px; color: var(--text-muted); font-size: 12px; cursor: pointer;
+      text-align: center; transition: background 0.15s, color 0.15s;
+    }
+    .btn-small:hover { background: var(--border); color: var(--text); }
+
+    .offset-display {
+      font-size: 11px; color: var(--text-muted);
+      font-variant-numeric: tabular-nums; letter-spacing: 0.02em;
+    }
+
+    /* ── Canvas area ── */
+    .canvas-area {
+      flex: 1; display: flex; flex-direction: column; overflow: hidden; background: #111122;
+    }
+    .canvas-toolbar {
+      display: flex; align-items: center; gap: 10px; padding: 7px 14px;
+      background: var(--panel); border-bottom: 1px solid var(--border); flex-shrink: 0;
+    }
+    .canvas-toolbar .info { font-size: 12px; color: var(--text-muted); flex: 1; }
+    .rendering-dot {
+      display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+      background: var(--accent2); margin-right: 6px;
+      animation: pulse 0.9s ease-in-out infinite; vertical-align: middle;
+    }
+    @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:0.4;transform:scale(0.7)} }
+
+    .zoom-controls { display: flex; align-items: center; gap: 4px; }
+    .zoom-btn {
+      background: var(--card); border: 1px solid var(--border); color: var(--text);
+      width: 26px; height: 26px; border-radius: 5px; cursor: pointer; font-size: 14px;
+      display: flex; align-items: center; justify-content: center; transition: background 0.15s;
+    }
+    .zoom-btn:hover { background: var(--accent2); }
+    .zoom-label { font-size: 12px; color: var(--text-muted); min-width: 38px; text-align: center; }
+
+    .canvas-scroll {
+      flex: 1; overflow: auto; display: flex;
+      align-items: flex-start; justify-content: flex-start; padding: 20px;
+    }
+    #output-canvas {
+      display: block; box-shadow: 0 4px 32px rgba(0,0,0,0.5); transform-origin: top left;
+      cursor: crosshair;
+    }
+    #output-canvas.can-drag  { cursor: grab; }
+    #output-canvas.is-dragging { cursor: grabbing; }
+
+    .placeholder {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      width: 100%; height: 100%; color: var(--text-muted); gap: 10px; font-size: 14px;
+    }
+    .placeholder .ph-icon { font-size: 52px; opacity: 0.3; }
+
+    @media print {
+      body { background: white !important; }
+      header, .sidebar, .canvas-toolbar { display: none !important; }
+      .layout { display: block !important; }
+      .canvas-area { background: white !important; }
+      .canvas-scroll { padding: 0 !important; overflow: visible !important; display: block !important; }
+      #output-canvas {
+        transform: none !important; box-shadow: none !important;
+        width: var(--print-width) !important; height: var(--print-height) !important;
+      }
+      .placeholder { display: none !important; }
+    }
+
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div class="icon-mirror">🪞</div>
+  <div>
+    <h1>Cylindrical Anamorphic Art Generator</h1>
+    <div class="subtitle">Place a cylindrical mirror on the printed output — the reflection shows the original image</div>
+  </div>
+</header>
+
+<div class="layout">
+  <div class="sidebar">
+
+    <div>
+      <div class="section-title">Source Image</div>
+      <div class="drop-zone" id="drop-zone">
+        <div class="dz-icon">🖼️</div>
+        <div>Drop an image here<br>or click to browse</div>
+        <input type="file" id="file-input" accept="image/*">
+      </div>
+      <div class="url-row">
+        <input type="text" id="url-input" placeholder="Paste image URL…">
+        <button id="url-load-btn">Load</button>
+      </div>
+      <button class="btn-small" id="paste-btn" style="margin-top:6px;">📋 Paste from clipboard</button>
+      <div class="thumb-preview" id="thumb-preview" style="display:none;">
+        <img id="thumb-img" alt="preview">
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Parameters</div>
+      <div style="display:flex;flex-direction:column;gap:12px;">
+        <div class="slider-row">
+          <div class="slider-label">
+            <span>Cylinder Radius <em>R</em></span>
+            <span class="val" id="r-val">4.0 cm</span>
+          </div>
+          <input type="range" id="radius-slider" min="1" max="12" step="0.1" value="4.0">
+        </div>
+        <div class="slider-row">
+          <div class="slider-label">
+            <span>Observer Distance <em>E</em></span>
+            <span class="val" id="e-val">20.0 cm</span>
+          </div>
+          <input type="range" id="observer-slider" min="5" max="60" step="0.5" value="20.0">
+        </div>
+      </div>
+      <div class="hint" style="margin-top:10px;">
+        <strong>R</strong> = cylinder radius · <strong>E</strong> = eye-to-front-edge distance.
+        Scale: 38 px/cm (~96 DPI).
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Image Positioning</div>
+      <div class="toggle-row">
+        <input type="checkbox" class="toggle" id="show-source-toggle">
+        <label for="show-source-toggle">Show source under cylinder</label>
+      </div>
+
+      <div id="overlay-controls" style="display:none; margin-top:12px;">
+        <div style="display:flex;flex-direction:column;gap:10px;">
+          <div class="slider-row">
+            <div class="slider-label">
+              <span>Image Scale</span>
+              <span class="val" id="img-scale-val">1.00×</span>
+            </div>
+            <input type="range" id="img-scale-slider" min="0.2" max="5" step="0.05" value="1.0">
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;">
+            <span class="offset-display">Offset: <span id="offset-display">(0.0, 0.0) cm</span></span>
+            <button class="btn-small" id="reset-pos-btn" style="width:auto;padding:4px 10px;">↺ Reset</button>
+          </div>
+        </div>
+        <div class="hint" style="margin-top:8px;">Drag the canvas to reposition the image.</div>
+      </div>
+      <div class="toggle-row" style="margin-top:10px;">
+        <input type="checkbox" class="toggle" id="show-grid-toggle">
+        <label for="show-grid-toggle">Show grid</label>
+      </div>
+    </div>
+
+    <div>
+      <div class="section-title">Export</div>
+      <button class="btn btn-secondary" id="pdf-btn" disabled>🖨 Print to PDF</button>
+    </div>
+
+    <div>
+      <div class="section-title">How to Use</div>
+      <div class="hint" style="line-height:1.7;">
+        1. Load a source image — it renders automatically.<br>
+        2. Adjust <em>R</em> and <em>E</em> to match your setup.<br>
+        3. Use <em>Image Positioning</em> to frame the subject under the circle.<br>
+        4. Print at 100% scale. Place the cylinder on the dotted circle.<br>
+        5. Look from the front — the image appears undistorted in the reflection!
+      </div>
+    </div>
+
+  </div><div class="canvas-area">
+    <div class="canvas-toolbar">
+      <div class="info" id="canvas-info">Load an image to begin.</div>
+      <div class="zoom-controls">
+        <button class="zoom-btn" id="zoom-out">−</button>
+        <div class="zoom-label" id="zoom-label">100%</div>
+        <button class="zoom-btn" id="zoom-in">+</button>
+        <button class="zoom-btn" id="zoom-fit" title="Fit to window">⊡</button>
+      </div>
+    </div>
+    <div class="canvas-scroll" id="canvas-scroll">
+      <div class="placeholder" id="placeholder">
+        <div class="ph-icon">🪞</div>
+        <div>Load an image to generate the anamorphic warp.</div>
+      </div>
+      <canvas id="output-canvas" style="display:none;"></canvas>
+    </div>
+  </div>
+</div><script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants & state
+// ─────────────────────────────────────────────────────────────────────────────
+const PX_PER_CM = 38;
+
+let sourceImage  = null;
+let zoomFactor   = 1.0;
+let renderTimer  = null;
+
+// Image overlay positioning
+let showSource   = false;
+let srcOffsetX   = 0.0;   // physical cm, positive = right
+let srcOffsetY   = 0.0;   // physical cm, positive = up
+let srcScaleMult = 1.0;   // multiplier on top of the default "max dim = 2R" scaling
+
+// Warp cache for instant overlay repaints without re-running the heavy math
+let warpCacheData = null; // Uint8ClampedArray, warpSizePx × warpSizePx × 4
+let warpSizePx    = 0;
+
+// Grid overlay
+let showGrid = false;
+
+// Canvas drag state
+let isDraggingCanvas = false;
+let dragLastX = 0, dragLastY = 0;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM refs
+// ─────────────────────────────────────────────────────────────────────────────
+const dropZone         = document.getElementById('drop-zone');
+const fileInput        = document.getElementById('file-input');
+const urlInput         = document.getElementById('url-input');
+const urlLoadBtn       = document.getElementById('url-load-btn');
+const thumbPreview     = document.getElementById('thumb-preview');
+const thumbImg         = document.getElementById('thumb-img');
+const radiusSlider     = document.getElementById('radius-slider');
+const observerSlider   = document.getElementById('observer-slider');
+const rVal             = document.getElementById('r-val');
+const eVal             = document.getElementById('e-val');
+const pdfBtn           = document.getElementById('pdf-btn');
+const outputCanvas     = document.getElementById('output-canvas');
+const placeholder      = document.getElementById('placeholder');
+const canvasInfo       = document.getElementById('canvas-info');
+const zoomLabel        = document.getElementById('zoom-label');
+const canvasScroll     = document.getElementById('canvas-scroll');
+const showSourceToggle = document.getElementById('show-source-toggle');
+const overlayControls  = document.getElementById('overlay-controls');
+const imgScaleSlider   = document.getElementById('img-scale-slider');
+const imgScaleVal      = document.getElementById('img-scale-val');
+const offsetDisplay    = document.getElementById('offset-display');
+const resetPosBtn      = document.getElementById('reset-pos-btn');
+const pasteBtn         = document.getElementById('paste-btn');
+const showGridToggle   = document.getElementById('show-grid-toggle');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image loading
+// ─────────────────────────────────────────────────────────────────────────────
+function setSourceImage(img) {
+  sourceImage = img;
+  thumbImg.src = img.src;
+  thumbPreview.style.display = 'flex';
+  scheduleRender();
+}
+
+function loadFromFile(file) {
+  if (!file || !file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => setSourceImage(img);
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadFromURL(url) {
+  if (!url.trim()) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => setSourceImage(img);
+  img.onerror = () => alert('Could not load image from that URL.\n(CORS restrictions may apply.)');
+  img.src = url.trim();
+}
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => loadFromFile(e.target.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) { loadFromFile(file); return; }
+  const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+  if (url) loadFromURL(url);
+});
+document.body.addEventListener('dragover', e => e.preventDefault());
+document.body.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) { loadFromFile(file); return; }
+  const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+  if (url) loadFromURL(url);
+});
+urlLoadBtn.addEventListener('click', () => loadFromURL(urlInput.value));
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadFromURL(urlInput.value); });
+
+pasteBtn.addEventListener('click', async () => {
+  try {
+    const items = await navigator.clipboard.read();
+    let found = false;
+    for (const item of items) {
+      const imageType = item.types.find(t => t.startsWith('image/'));
+      if (imageType) {
+        const blob = await item.getType(imageType);
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => setSourceImage(img);
+        img.src = url;
+        found = true;
+        break;
+      }
+    }
+    if (!found) alert('No image found on the clipboard.');
+  } catch (err) {
+    alert('Could not read clipboard.\n' + err.message);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slider display & scheduling
+// ─────────────────────────────────────────────────────────────────────────────
+radiusSlider.addEventListener('input', () => {
+  rVal.textContent = parseFloat(radiusSlider.value).toFixed(1) + ' cm';
+});
+observerSlider.addEventListener('input', () => {
+  eVal.textContent = parseFloat(observerSlider.value).toFixed(1) + ' cm';
+});
+
+// Use 'change' or debounced inputs for full redraw to keep UI responsive
+radiusSlider.addEventListener('change', scheduleRender);
+observerSlider.addEventListener('change', scheduleRender);
+
+function scheduleRender() {
+  if (!sourceImage) return;
+  clearTimeout(renderTimer);
+  canvasInfo.innerHTML = '<span class="rendering-dot"></span>Rendering…';
+  renderTimer = setTimeout(doRender, 40);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image positioning
+// ─────────────────────────────────────────────────────────────────────────────
+showSourceToggle.addEventListener('change', () => {
+  showSource = showSourceToggle.checked;
+  overlayControls.style.display = showSource ? 'block' : 'none';
+  outputCanvas.classList.toggle('can-drag', showSource);
+  repaintFromCache();
+});
+
+showGridToggle.addEventListener('change', () => {
+  showGrid = showGridToggle.checked;
+  repaintFromCache();
+});
+
+imgScaleSlider.addEventListener('input', () => {
+  srcScaleMult = parseFloat(imgScaleSlider.value);
+  imgScaleVal.textContent = srcScaleMult.toFixed(2) + '×';
+  repaintFromCache();  // instant overlay preview; no warp recalc while sliding
+});
+imgScaleSlider.addEventListener('change', scheduleRender);  // full recalc on release
+
+resetPosBtn.addEventListener('click', () => {
+  srcOffsetX = 0; srcOffsetY = 0; srcScaleMult = 1.0;
+  imgScaleSlider.value = 1.0;
+  imgScaleVal.textContent = '1.00×';
+  updateOffsetDisplay();
+  scheduleRender();
+});
+
+function updateOffsetDisplay() {
+  offsetDisplay.textContent =
+    `(${srcOffsetX >= 0 ? '+' : ''}${srcOffsetX.toFixed(1)}, ${srcOffsetY >= 0 ? '+' : ''}${srcOffsetY.toFixed(1)}) cm`;
+}
+
+// Canvas drag
+outputCanvas.addEventListener('pointerdown', e => {
+  if (!showSource) return;
+  isDraggingCanvas = true;
+  outputCanvas.setPointerCapture(e.pointerId);
+  dragLastX = e.clientX;
+  dragLastY = e.clientY;
+  outputCanvas.classList.add('is-dragging');
+  e.preventDefault();
+});
+
+outputCanvas.addEventListener('pointermove', e => {
+  if (!isDraggingCanvas) return;
+  const dx = (e.clientX - dragLastX) / zoomFactor;
+  const dy = (e.clientY - dragLastY) / zoomFactor;
+  dragLastX = e.clientX;
+  dragLastY = e.clientY;
+  srcOffsetX += dx / PX_PER_CM;
+  srcOffsetY -= dy / PX_PER_CM;  // canvas y is inverted vs physical y
+  updateOffsetDisplay();
+  repaintFromCache();  // instant: restore warp pixels + redraw overlay at new position
+});
+
+outputCanvas.addEventListener('pointerup', e => {
+  if (!isDraggingCanvas) return;
+  isDraggingCanvas = false;
+  outputCanvas.classList.remove('is-dragging');
+  scheduleRender();  // full warp recalc now that drag is done
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Backward Mapping Math
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Solves Alhazen's problem per-pixel using a 20-step binary search
+function findReflectionPhi(dx, dy, R, E) {
+    const sign = dx < 0 ? -1 : 1;
+    const ax = Math.abs(dx);
+    let low = 0;
+    let high = Math.PI / 2;
+
+    const evalPhi = (phi) => {
+        const Px = R * Math.sin(phi);
+        const Py = -R * Math.cos(phi);
+        const Tx = Math.cos(phi);
+        const Ty = Math.sin(phi);
+        
+        // Vector from Point to Observer O=(0, -E-R)
+        const vOx = -Px, vOy = -E - R - Py;
+        const lenO = Math.hypot(vOx, vOy);
+        
+        // Vector from Point to Canvas Destination D=(ax, dy)
+        const vDx = ax - Px, vDy = dy - Py;
+        const lenD = Math.hypot(vDx, vDy);
+        
+        // Sum of normalized vectors projected onto the tangent
+        return (vOx / lenO + vDx / lenD) * Tx + (vOy / lenO + vDy / lenD) * Ty;
+    };
+
+    let fLow = evalPhi(low);
+    if (fLow * evalPhi(high) > 0) return null; // Ray misses the cylinder
+
+    let mid;
+    for (let i = 0; i < 20; i++) {
+        mid = (low + high) / 2;
+        let fMid = evalPhi(mid);
+        if ((fLow > 0 && fMid > 0) || (fLow < 0 && fMid < 0)) {
+            low = mid;
+            fLow = fMid;
+        } else {
+            high = mid;
+        }
+    }
+    return mid * sign;
+}
+
+function renderBackwardMapping(srcPx, srcW, srcH, R, E, outPx, outW, outH, scaleMult, offsetX, offsetY) {
+    const effectiveScale = ((2 * R) / Math.max(srcW, srcH)) * scaleMult;
+    const cx = outW / 2;
+    const cy = outH / 2;
+
+    // Loop over every pixel on the physical output canvas
+    for (let py = 0; py < outH; py++) {
+        for (let px = 0; px < outW; px++) {
+            const dx = (px - cx) / PX_PER_CM;
+            const dy = -(py - cy) / PX_PER_CM;
+
+            if (dx * dx + dy * dy <= R * R) continue; // Skip physical interior
+
+            const phi = findReflectionPhi(dx, dy, R, E);
+            if (phi === null) continue; 
+
+            // Calculate exact intersection P
+            const Px = R * Math.sin(phi);
+            const Py = -R * Math.cos(phi);
+            
+            // Because reflection is symmetric, the math to find V is the same as D
+            const vx_D = dx - Px;
+            const vy_D = dy - Py;
+            const nx = Px / R;
+            const ny = Py / R;
+            
+            const vDotN = vx_D * nx + vy_D * ny;
+            
+            // Virtual point V on the table
+            const vx = Px + vx_D - 2 * vDotN * nx;
+            const vy = Py + vy_D - 2 * vDotN * ny;
+			
+			if (vx * vx + vy * vy > R * R) continue;
+
+            // Map physical table coordinates back to source image pixels
+            const upx = (vx - offsetX) / effectiveScale + srcW * 0.5;
+            const vpx = srcH * 0.5 - (vy - offsetY) / effectiveScale;
+
+            if (upx >= 0 && upx < srcW - 1 && vpx >= 0 && vpx < srcH - 1) {
+                // Bilinear interpolation for perfectly crisp images
+                const x0 = Math.floor(upx), y0 = Math.floor(vpx);
+                const fx = upx - x0, fy = vpx - y0;
+                
+                const idx00 = (y0 * srcW + x0) * 4;
+                const idx10 = (y0 * srcW + x0 + 1) * 4;
+                const idx01 = ((y0 + 1) * srcW + x0) * 4;
+                const idx11 = ((y0 + 1) * srcW + x0 + 1) * 4;
+
+                const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy);
+                const w01 = (1 - fx) * fy,       w11 = fx * fy;
+
+                const idx = (py * outW + px) * 4;
+                outPx[idx]   = srcPx[idx00]*w00 + srcPx[idx10]*w10 + srcPx[idx01]*w01 + srcPx[idx11]*w11;
+                outPx[idx+1] = srcPx[idx00+1]*w00 + srcPx[idx10+1]*w10 + srcPx[idx01+1]*w01 + srcPx[idx11+1]*w11;
+                outPx[idx+2] = srcPx[idx00+2]*w00 + srcPx[idx10+2]*w10 + srcPx[idx01+2]*w01 + srcPx[idx11+2]*w11;
+                // Leave Alpha as 255 (Background is pre-filled white)
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forward mapping (used for grid warp visualization)
+// ─────────────────────────────────────────────────────────────────────────────
+function findMirrorPoint(vx, vy, R, E) {
+  if (Math.abs(vx) < 1e-9) return { Px: 0.0, Py: -R };
+  const b = -(E + R);
+  const m = (E + R + vy) / vx;
+  const A = 1 + m * m, B = 2 * m * b, C = b * b - R * R;
+  const disc = B * B - 4 * A * C;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const Px1 = (-B + sq) / (2*A), Py1 = m*Px1 + b;
+  const Px2 = (-B - sq) / (2*A), Py2 = m*Px2 + b;
+  const t1 = Px1/vx, t2 = Px2/vx;
+  let best = null, bestT = Infinity;
+  if (Py1 <= 0 && t1 > 1e-9 && t1 < bestT) { best = {Px:Px1,Py:Py1}; bestT=t1; }
+  if (Py2 <= 0 && t2 > 1e-9 && t2 < bestT) { best = {Px:Px2,Py:Py2}; }
+  return best;
+}
+
+function forwardMap(vx, vy, R, E) {
+  const P = findMirrorPoint(vx, vy, R, E);
+  if (!P) return null;
+  const {Px, Py} = P;
+  const nx=Px/R, ny=Py/R, tx=-Py/R, ty=Px/R;
+  const wx=vx-Px, wy=vy-Py;
+  const wDotT=wx*tx+wy*ty, wDotN=wx*nx+wy*ny;
+  return { dx: Px+wDotT*tx-wDotN*nx, dy: Py+wDotT*ty-wDotN*ny };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Drawing helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function drawCylinderRing(ctx, cx, cy, R) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(20,50,180,0.95)';
+  ctx.lineWidth   = 2.5;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * PX_PER_CM, 0, 2 * Math.PI);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(50,100,220,0.7)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGrid(ctx, cx, cy, R, E) {
+  const step    = R / 4;   // grid spacing in cm (~8 cells across diameter)
+  const SAMPLES = 80;      // polyline samples per warped grid line
+  const rPx     = R * PX_PER_CM;
+  const outW    = outputCanvas.width, outH = outputCanvas.height;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 110, 220, 0.80)';
+  ctx.lineWidth   = 1;
+
+  // ── Inside circle: regular rectangular grid, clipped to circle ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);
+  ctx.clip();
+  for (let vx = -R; vx <= R + 1e-9; vx += step) {
+    const canX = cx + vx * PX_PER_CM;
+    ctx.beginPath(); ctx.moveTo(canX, cy - rPx); ctx.lineTo(canX, cy + rPx); ctx.stroke();
+  }
+  for (let vy = -R; vy <= R + 1e-9; vy += step) {
+    const canY = cy - vy * PX_PER_CM;
+    ctx.beginPath(); ctx.moveTo(cx - rPx, canY); ctx.lineTo(cx + rPx, canY); ctx.stroke();
+  }
+  ctx.restore();
+
+  // ── Outside circle: forward-mapped (warped) grid, clipped to outside ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, outW, outH);
+  ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);  // hole
+  ctx.clip('evenodd');
+
+  // Vertical grid lines (constant vx, varying vy)
+  for (let vx = -R; vx <= R + 1e-9; vx += step) {
+    ctx.beginPath();
+    let pen = false;
+    for (let t = 0; t <= SAMPLES; t++) {
+      const vy = -R + 2 * R * t / SAMPLES;
+      const m = forwardMap(vx, vy, R, E);
+      if (!m) { pen = false; continue; }
+      const px = cx + m.dx * PX_PER_CM, py = cy - m.dy * PX_PER_CM;
+      if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  // Horizontal grid lines (constant vy, varying vx)
+  for (let vy = -R; vy <= R + 1e-9; vy += step) {
+    ctx.beginPath();
+    let pen = false;
+    for (let t = 0; t <= SAMPLES; t++) {
+      const vx = -R + 2 * R * t / SAMPLES;
+      const m = forwardMap(vx, vy, R, E);
+      if (!m) { pen = false; continue; }
+      const px = cx + m.dx * PX_PER_CM, py = cy - m.dy * PX_PER_CM;
+      if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawSourceOverlay(ctx, cx, cy, R) {
+  if (!sourceImage) return;
+  const origW = sourceImage.width, origH = sourceImage.height;
+  const effectiveScale = (2 * R / Math.max(origW, origH)) * srcScaleMult;
+  const imgW = origW * effectiveScale * PX_PER_CM;
+  const imgH = origH * effectiveScale * PX_PER_CM;
+  const imgX = cx + srcOffsetX * PX_PER_CM - imgW * 0.5;
+  const imgY = cy - srcOffsetY * PX_PER_CM - imgH * 0.5;
+
+  ctx.save();
+  ctx.globalAlpha = 0.28;
+  ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
+  ctx.restore();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * PX_PER_CM, 0, 2 * Math.PI);
+  ctx.clip();
+  ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
+  ctx.restore();
+}
+
+function repaintFromCache() {
+  if (!warpCacheData || !warpSizePx) return;
+  const ctx = outputCanvas.getContext('2d');
+  ctx.putImageData(new ImageData(warpCacheData, warpSizePx, warpSizePx), 0, 0);
+  const cx = warpSizePx / 2, cy = warpSizePx / 2;
+  const R  = parseFloat(radiusSlider.value);
+  const E  = parseFloat(observerSlider.value);
+  drawCylinderRing(ctx, cx, cy, R);
+  if (showSource) drawSourceOverlay(ctx, cx, cy, R);
+  if (showGrid)   drawGrid(ctx, cx, cy, R, E);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main render
+// ─────────────────────────────────────────────────────────────────────────────
+function doRender() {
+  if (!sourceImage) return;
+
+  const R = parseFloat(radiusSlider.value);
+  const E = parseFloat(observerSlider.value);
+
+  // Downscale source for pixel-level work
+  const MAX_SRC = 600;
+  const ratio = Math.min(1, MAX_SRC / Math.max(sourceImage.width, sourceImage.height));
+  const srcW  = Math.round(sourceImage.width  * ratio);
+  const srcH  = Math.round(sourceImage.height * ratio);
+  const tmp   = document.createElement('canvas');
+  tmp.width = srcW; tmp.height = srcH;
+  
+  const tmpCtx = tmp.getContext('2d');
+  // FIX: Pre-fill with white to prevent transparent PNGs from rendering black
+  tmpCtx.fillStyle = '#ffffff';
+  tmpCtx.fillRect(0, 0, srcW, srcH);
+  tmpCtx.drawImage(sourceImage, 0, 0, srcW, srcH);
+  const srcPx = tmpCtx.getImageData(0, 0, srcW, srcH).data;
+
+  // Output canvas dimensions
+  const halfCm = Math.max(3.5 * R + 4, 14);
+  const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 1800);
+  outputCanvas.width  = sizePx;
+  outputCanvas.height = sizePx;
+  warpSizePx = sizePx;
+
+  const ctx = outputCanvas.getContext('2d');
+
+  // White background pixel buffer
+  const outImg = new ImageData(sizePx, sizePx);
+  outImg.data.fill(255);
+
+  const t0 = performance.now();
+  renderBackwardMapping(srcPx, srcW, srcH, R, E, outImg.data, sizePx, sizePx,
+                        srcScaleMult, srcOffsetX, srcOffsetY);
+
+  warpCacheData = new Uint8ClampedArray(outImg.data);
+  ctx.putImageData(outImg, 0, 0);
+
+  const cx = sizePx / 2, cy = sizePx / 2;
+  drawCylinderRing(ctx, cx, cy, R);
+  if (showSource) drawSourceOverlay(ctx, cx, cy, R);
+  if (showGrid)   drawGrid(ctx, cx, cy, R, E);
+
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+  const cmSize  = (sizePx / PX_PER_CM).toFixed(1);
+  canvasInfo.textContent =
+    `${sizePx}×${sizePx} px · ${cmSize}×${cmSize} cm · R=${R} cm · E=${E} cm · ${elapsed}s`;
+
+  placeholder.style.display = 'none';
+  outputCanvas.style.display = 'block';
+  pdfBtn.disabled = false;
+  outputCanvas.style.setProperty('--print-width',  cmSize + 'cm');
+  outputCanvas.style.setProperty('--print-height', cmSize + 'cm');
+
+  // Run initial fit zoom when rendering is successful
+  if (!outputCanvas.dataset.zoomed) {
+      fitZoom();
+      outputCanvas.dataset.zoomed = true;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Print to PDF
+// ─────────────────────────────────────────────────────────────────────────────
+function getContentSizeCm() {
+  if (!warpCacheData || !warpSizePx) return null;
+  const data = warpCacheData, w = warpSizePx;
+  let minX = w - 1, maxX = 0, minY = w - 1, maxY = 0, found = false;
+  for (let y = 0; y < w; y++) {
+    for (let x = 0; x < w; x++) {
+      const i = (y * w + x) * 4;
+      if (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+        found = true;
+      }
+    }
+  }
+  if (!found) return null;
+  return { w: (maxX - minX) / PX_PER_CM, h: (maxY - minY) / PX_PER_CM };
+}
+
+pdfBtn.addEventListener('click', () => {
+  const dataUrl  = outputCanvas.toDataURL('image/png');
+  const imgCm    = outputCanvas.width / PX_PER_CM;
+  const imgCmStr = imgCm.toFixed(2);
+
+  // US Letter in cm
+  const pageWcm = 21.59, pageHcm = 27.94;
+
+  const content = getContentSizeCm();
+  const contentTooBig = content && (content.w > pageWcm || content.h > pageHcm);
+  if (contentTooBig) {
+    const ok = confirm(
+      `The warped image content is ${content.w.toFixed(1)}×${content.h.toFixed(1)} cm, ` +
+      `which is larger than US Letter paper (${pageWcm.toFixed(1)}×${pageHcm.toFixed(1)} cm).\n\n` +
+      `Parts of the image will be clipped when printed on letter-size paper. ` +
+      `Reduce Cylinder Radius R to shrink the output, or use larger paper.\n\nContinue anyway?`
+    );
+    if (!ok) return;
+  }
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Allow pop-ups to use Print to PDF.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+@page{size:8.5in 11in;margin:0}
+html,body{width:8.5in;height:11in;background:white;overflow:hidden}
+body{display:flex;align-items:center;justify-content:center}
+img{width:${imgCmStr}cm;height:${imgCmStr}cm;display:block}
+.note{position:fixed;bottom:6px;left:0;right:0;text-align:center;
+      font-family:sans-serif;font-size:11px;color:#999;display:none}
+@media screen{.note{display:block}}
+</style></head>
+<body>
+<img src="${dataUrl}" alt="anamorphic art">
+<div class="note">⚠ Print at exactly 100% scale — do NOT scale to fit page</div>
+<script>window.onload=function(){window.print()}<\/script>
+</body></html>`);
+  win.document.close();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zoom controls
+// ─────────────────────────────────────────────────────────────────────────────
+function applyZoom() {
+  outputCanvas.style.transform = `scale(${zoomFactor})`;
+  outputCanvas.style.transformOrigin = 'top left';
+  zoomLabel.textContent = Math.round(zoomFactor * 100) + '%';
+}
+function fitZoom() {
+  const area = canvasScroll.getBoundingClientRect();
+  const pad  = 40;
+  zoomFactor = Math.min((area.width - pad) / outputCanvas.width,
+                        (area.height - pad) / outputCanvas.height, 1);
+  applyZoom();
+}
+document.getElementById('zoom-in').addEventListener('click', () => {
+  zoomFactor = Math.min(4, zoomFactor * 1.25); applyZoom();
+});
+document.getElementById('zoom-out').addEventListener('click', () => {
+  zoomFactor = Math.max(0.05, zoomFactor / 1.25); applyZoom();
+});
+document.getElementById('zoom-fit').addEventListener('click', fitZoom);
+new ResizeObserver(() => {
+  if (outputCanvas.style.display !== 'none') fitZoom();
+}).observe(canvasScroll);
+</script>
+</body>
+</html>
