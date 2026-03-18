@@ -403,6 +403,13 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Light/cylinder_reflection.html",
+      "title": "Cylindrical Anamorphic Art Generator",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
