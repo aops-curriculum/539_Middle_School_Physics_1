@@ -222,7 +222,6 @@
         <input type="text" id="url-input" placeholder="Paste image URL…">
         <button id="url-load-btn">Load</button>
       </div>
-      <button class="btn-small" id="paste-btn" style="margin-top:6px;">📋 Paste from clipboard</button>
       <div class="thumb-preview" id="thumb-preview" style="display:none;">
         <img id="thumb-img" alt="preview">
       </div>
@@ -255,12 +254,8 @@
     <div>
       <div class="section-title">Image Positioning</div>
       <div class="toggle-row">
-        <input type="checkbox" class="toggle" id="show-morph-toggle" checked>
-        <label for="show-morph-toggle">Show morph</label>
-      </div>
-      <div class="toggle-row" style="margin-top:8px;">
         <input type="checkbox" class="toggle" id="show-source-toggle">
-        <label for="show-source-toggle">Show source</label>
+        <label for="show-source-toggle">Show source under cylinder</label>
       </div>
 
       <div id="overlay-controls" style="display:none; margin-top:12px;">
@@ -278,10 +273,6 @@
           </div>
         </div>
         <div class="hint" style="margin-top:8px;">Drag the canvas to reposition the image.</div>
-      </div>
-      <div class="toggle-row" style="margin-top:10px;">
-        <input type="checkbox" class="toggle" id="show-grid-toggle">
-        <label for="show-grid-toggle">Show grid</label>
       </div>
     </div>
 
@@ -341,12 +332,6 @@ let srcScaleMult = 1.0;   // multiplier on top of the default "max dim = 2R" sca
 let warpCacheData = null; // Uint8ClampedArray, warpSizePx × warpSizePx × 4
 let warpSizePx    = 0;
 
-// Grid overlay
-let showGrid = false;
-
-// Morph display toggle
-let showMorph = true;
-
 // Canvas drag state
 let isDraggingCanvas = false;
 let dragLastX = 0, dragLastY = 0;
@@ -370,15 +355,12 @@ const placeholder      = document.getElementById('placeholder');
 const canvasInfo       = document.getElementById('canvas-info');
 const zoomLabel        = document.getElementById('zoom-label');
 const canvasScroll     = document.getElementById('canvas-scroll');
-const showMorphToggle  = document.getElementById('show-morph-toggle');
 const showSourceToggle = document.getElementById('show-source-toggle');
 const overlayControls  = document.getElementById('overlay-controls');
 const imgScaleSlider   = document.getElementById('img-scale-slider');
 const imgScaleVal      = document.getElementById('img-scale-val');
 const offsetDisplay    = document.getElementById('offset-display');
 const resetPosBtn      = document.getElementById('reset-pos-btn');
-const pasteBtn         = document.getElementById('paste-btn');
-const showGridToggle   = document.getElementById('show-grid-toggle');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Image loading
@@ -432,28 +414,6 @@ document.body.addEventListener('drop', e => {
 urlLoadBtn.addEventListener('click', () => loadFromURL(urlInput.value));
 urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadFromURL(urlInput.value); });
 
-pasteBtn.addEventListener('click', async () => {
-  try {
-    const items = await navigator.clipboard.read();
-    let found = false;
-    for (const item of items) {
-      const imageType = item.types.find(t => t.startsWith('image/'));
-      if (imageType) {
-        const blob = await item.getType(imageType);
-        const url = URL.createObjectURL(blob);
-        const img = new Image();
-        img.onload = () => setSourceImage(img);
-        img.src = url;
-        found = true;
-        break;
-      }
-    }
-    if (!found) alert('No image found on the clipboard.');
-  } catch (err) {
-    alert('Could not read clipboard.\n' + err.message);
-  }
-});
-
 // ─────────────────────────────────────────────────────────────────────────────
 // Slider display & scheduling
 // ─────────────────────────────────────────────────────────────────────────────
@@ -478,33 +438,18 @@ function scheduleRender() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Image positioning
 // ─────────────────────────────────────────────────────────────────────────────
-showMorphToggle.addEventListener('change', () => {
-  showMorph = showMorphToggle.checked;
-  if (showMorph) {
-    scheduleRender();   // warp was not computed while morph was off
-  } else {
-    repaintFromCache(); // instant — just swap to white background
-  }
-});
-
 showSourceToggle.addEventListener('change', () => {
   showSource = showSourceToggle.checked;
   overlayControls.style.display = showSource ? 'block' : 'none';
   outputCanvas.classList.toggle('can-drag', showSource);
-  repaintFromCache();
-});
-
-showGridToggle.addEventListener('change', () => {
-  showGrid = showGridToggle.checked;
-  repaintFromCache();
+  repaintFromCache();  
 });
 
 imgScaleSlider.addEventListener('input', () => {
   srcScaleMult = parseFloat(imgScaleSlider.value);
   imgScaleVal.textContent = srcScaleMult.toFixed(2) + '×';
-  repaintFromCache();  // instant overlay preview; no warp recalc while sliding
+  scheduleRender();
 });
-imgScaleSlider.addEventListener('change', scheduleRender);  // full recalc on release
 
 resetPosBtn.addEventListener('click', () => {
   srcOffsetX = 0; srcOffsetY = 0; srcScaleMult = 1.0;
@@ -539,14 +484,15 @@ outputCanvas.addEventListener('pointermove', e => {
   srcOffsetX += dx / PX_PER_CM;
   srcOffsetY -= dy / PX_PER_CM;  // canvas y is inverted vs physical y
   updateOffsetDisplay();
-  repaintFromCache();  // instant: restore warp pixels + redraw overlay at new position
+  
+  clearTimeout(renderTimer);
+  renderTimer = setTimeout(doRender, 15); // Fast re-render for drag
 });
 
 outputCanvas.addEventListener('pointerup', e => {
   if (!isDraggingCanvas) return;
   isDraggingCanvas = false;
   outputCanvas.classList.remove('is-dragging');
-  scheduleRender();  // full warp recalc now that drag is done
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -557,27 +503,22 @@ outputCanvas.addEventListener('pointerup', e => {
 // at O=(0,-(E+R)), i.e. the line segment OV does NOT pass through the cylinder.
 // Points that are directly visible should NOT be projected into the anamorphic warp.
 function isDirectlyVisible(vx, vy, R, E) {
-    // If V is inside or on the cylinder, it's always blocked
     if (vx * vx + vy * vy <= R * R) return false;
 
-    // Parameterise segment O→V as P(t) = O + t*(V-O), t∈[0,1]
-    // |P(t)|² = R²  →  a·t² + b·t + c = 0
     const Oy = -(E + R);
-    const dx = vx;           // vx - 0
-    const dy = vy - Oy;      // vy + E + R
+    const dx = vx;
+    const dy = vy - Oy;
     const a  = dx*dx + dy*dy;
-    const b  = 2 * Oy * dy;  // 2*(0·dx + Oy·dy)
-    const c  = Oy*Oy - R*R;  // |O|² - R²  (always > 0 since E>0)
+    const b  = 2 * Oy * dy;
+    const c  = Oy*Oy - R*R;
 
     const disc = b*b - 4*a*c;
-    if (disc <= 0) return true;  // No real intersections → visible
+    if (disc <= 0) return true;
 
     const sq = Math.sqrt(disc);
     const t1 = (-b - sq) / (2*a);
     const t2 = (-b + sq) / (2*a);
 
-    // Both O and V are outside the cylinder, so if the segment crosses the
-    // cylinder it enters at t1 and exits at t2 with 0 < t1 < t2 < 1.
     return !(t1 > 0 && t2 < 1);
 }
 
@@ -655,9 +596,7 @@ function renderBackwardMapping(srcPx, srcW, srcH, R, E, outPx, outW, outH, scale
             const vx = Px + vx_D - 2 * vDotN * nx;
             const vy = Py + vy_D - 2 * vDotN * ny;
 
-            // Skip virtual points the observer can see directly — those regions
-            // of the source image are visible without the mirror and should not
-            // be warped into the anamorphic print.
+            // Skip virtual points the observer can see directly
             if (isDirectlyVisible(vx, vy, R, E)) continue;
 
             // Map physical table coordinates back to source image pixels
@@ -688,42 +627,12 @@ function renderBackwardMapping(srcPx, srcW, srcH, R, E, outPx, outW, outH, scale
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Forward mapping (used for grid warp visualization)
-// ─────────────────────────────────────────────────────────────────────────────
-function findMirrorPoint(vx, vy, R, E) {
-  if (Math.abs(vx) < 1e-9) return { Px: 0.0, Py: -R };
-  const b = -(E + R);
-  const m = (E + R + vy) / vx;
-  const A = 1 + m * m, B = 2 * m * b, C = b * b - R * R;
-  const disc = B * B - 4 * A * C;
-  if (disc < 0) return null;
-  const sq = Math.sqrt(disc);
-  const Px1 = (-B + sq) / (2*A), Py1 = m*Px1 + b;
-  const Px2 = (-B - sq) / (2*A), Py2 = m*Px2 + b;
-  const t1 = Px1/vx, t2 = Px2/vx;
-  let best = null, bestT = Infinity;
-  if (Py1 <= 0 && t1 > 1e-9 && t1 < bestT) { best = {Px:Px1,Py:Py1}; bestT=t1; }
-  if (Py2 <= 0 && t2 > 1e-9 && t2 < bestT) { best = {Px:Px2,Py:Py2}; }
-  return best;
-}
-
-function forwardMap(vx, vy, R, E) {
-  const P = findMirrorPoint(vx, vy, R, E);
-  if (!P) return null;
-  const {Px, Py} = P;
-  const nx=Px/R, ny=Py/R, tx=-Py/R, ty=Px/R;
-  const wx=vx-Px, wy=vy-Py;
-  const wDotT=wx*tx+wy*ty, wDotN=wx*nx+wy*ny;
-  return { dx: Px+wDotT*tx-wDotN*nx, dy: Py+wDotT*ty-wDotN*ny };
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
 // Drawing helpers
 // ─────────────────────────────────────────────────────────────────────────────
 function drawCylinderRing(ctx, cx, cy, R) {
   ctx.save();
-  ctx.strokeStyle = 'rgba(20,50,180,0.95)';
-  ctx.lineWidth   = 2.5;
+  ctx.strokeStyle = 'rgba(50,100,220,0.65)';
+  ctx.lineWidth   = 1.5;
   ctx.setLineDash([6, 5]);
   ctx.beginPath();
   ctx.arc(cx, cy, R * PX_PER_CM, 0, 2 * Math.PI);
@@ -736,70 +645,7 @@ function drawCylinderRing(ctx, cx, cy, R) {
   ctx.restore();
 }
 
-function drawGrid(ctx, cx, cy, R, E) {
-  const step    = R / 4;   // grid spacing in cm (~8 cells across diameter)
-  const SAMPLES = 80;      // polyline samples per warped grid line
-  const rPx     = R * PX_PER_CM;
-  const outW    = outputCanvas.width, outH = outputCanvas.height;
-
-  ctx.save();
-  ctx.strokeStyle = 'rgba(0, 110, 220, 0.80)';
-  ctx.lineWidth   = 1;
-
-  // ── Inside circle: regular rectangular grid, clipped to circle ──
-  ctx.save();
-  ctx.beginPath();
-  ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);
-  ctx.clip();
-  for (let vx = -R; vx <= R + 1e-9; vx += step) {
-    const canX = cx + vx * PX_PER_CM;
-    ctx.beginPath(); ctx.moveTo(canX, cy - rPx); ctx.lineTo(canX, cy + rPx); ctx.stroke();
-  }
-  for (let vy = -R; vy <= R + 1e-9; vy += step) {
-    const canY = cy - vy * PX_PER_CM;
-    ctx.beginPath(); ctx.moveTo(cx - rPx, canY); ctx.lineTo(cx + rPx, canY); ctx.stroke();
-  }
-  ctx.restore();
-
-  // ── Outside circle: forward-mapped (warped) grid, clipped to outside ──
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, outW, outH);
-  ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);  // hole
-  ctx.clip('evenodd');
-
-  // Vertical grid lines (constant vx, varying vy)
-  for (let vx = -R; vx <= R + 1e-9; vx += step) {
-    ctx.beginPath();
-    let pen = false;
-    for (let t = 0; t <= SAMPLES; t++) {
-      const vy = -R + 2 * R * t / SAMPLES;
-      const m = forwardMap(vx, vy, R, E);
-      if (!m) { pen = false; continue; }
-      const px = cx + m.dx * PX_PER_CM, py = cy - m.dy * PX_PER_CM;
-      if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-  }
-  // Horizontal grid lines (constant vy, varying vx)
-  for (let vy = -R; vy <= R + 1e-9; vy += step) {
-    ctx.beginPath();
-    let pen = false;
-    for (let t = 0; t <= SAMPLES; t++) {
-      const vx = -R + 2 * R * t / SAMPLES;
-      const m = forwardMap(vx, vy, R, E);
-      if (!m) { pen = false; continue; }
-      const px = cx + m.dx * PX_PER_CM, py = cy - m.dy * PX_PER_CM;
-      if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
-    }
-    ctx.stroke();
-  }
-  ctx.restore();
-
-  ctx.restore();
-}
-
-function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
+function drawSourceOverlay(ctx, cx, cy, R) {
   if (!sourceImage) return;
   const origW = sourceImage.width, origH = sourceImage.height;
   const effectiveScale = (2 * R / Math.max(origW, origH)) * srcScaleMult;
@@ -808,66 +654,11 @@ function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
   const imgX = cx + srcOffsetX * PX_PER_CM - imgW * 0.5;
   const imgY = cy - srcOffsetY * PX_PER_CM - imgH * 0.5;
 
-  // ── Shadow-cone geometry ──
-  // Observer at O=(0,-(E+R)). Tangent angle: cos(phi_t) = R/(E+R).
-  // The shadow cone is the region behind the cylinder the observer cannot see directly.
-  const phi_t = Math.acos(R / (E + R));
-  const sinPt = Math.sin(phi_t), cosPt = Math.cos(phi_t);
-
-  // Tangent points in canvas coords  (canvas y = cy − phys_y × PX_PER_CM)
-  const T_R_cx = cx + R * sinPt * PX_PER_CM;
-  const T_R_cy = cy + R * cosPt * PX_PER_CM;   // cy − (−R·cosPt)·PX
-  const T_L_cx = cx - R * sinPt * PX_PER_CM;
-  const T_L_cy = cy + R * cosPt * PX_PER_CM;
-
-  // Direction of the right tangent line extended beyond T_R (in canvas coords).
-  // Physical direction: T_R − O = (R·sinPt,  E + R·(1−cosPt)).  Canvas y is negated.
-  const tDirX = R * sinPt;
-  const tDirY = -(E + R * (1 - cosPt));    // upward in canvas (negative y)
-  const tLen  = Math.hypot(tDirX, tDirY);
-  const tUx = tDirX / tLen, tUy = tDirY / tLen;
-
-  const far = canvasSize * 4;               // safely beyond any canvas edge
-  const FarR_cx = T_R_cx + far * tUx;
-  const FarR_cy = T_R_cy + far * tUy;
-  const FarL_cx = T_L_cx - far * tUx;      // mirror: negate x component
-  const FarL_cy = T_L_cy + far * tUy;
-
-  // Canvas angles of the tangent points (needed for the closing arc)
-  const angL = Math.atan2(T_L_cy - cy, T_L_cx - cx);   // ≈ π/2 + phi_t
-  const angR = Math.atan2(T_R_cy - cy, T_R_cx - cx);   // ≈ π/2 − phi_t
-
-  // Adds the shadow-cone sub-path to the current path.
-  // Shape: T_R → FarR → FarL → T_L → back arc to T_R (over the cylinder top).
-  const addShadowCone = () => {
-    ctx.moveTo(T_R_cx, T_R_cy);
-    ctx.lineTo(FarR_cx, FarR_cy);
-    ctx.lineTo(FarL_cx, FarL_cy);
-    ctx.lineTo(T_L_cx, T_L_cy);
-    // anticlockwise=false → increasing canvas angle, sweeps through 270° (top of canvas).
-    ctx.arc(cx, cy, R * PX_PER_CM, angL, angR, false);
-    ctx.closePath();
-  };
-
-  // ── Semi-transparent: directly-visible region (canvas MINUS shadow cone) ──
   ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, canvasSize, canvasSize);
-  addShadowCone();
-  ctx.clip('evenodd');
   ctx.globalAlpha = 0.28;
   ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
   ctx.restore();
 
-  // ── Full-opacity: shadow cone region (projected into mirror — show clearly) ──
-  ctx.save();
-  ctx.beginPath();
-  addShadowCone();
-  ctx.clip();
-  ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
-  ctx.restore();
-
-  // ── Full-opacity: cylinder interior (positioning guide) ──
   ctx.save();
   ctx.beginPath();
   ctx.arc(cx, cy, R * PX_PER_CM, 0, 2 * Math.PI);
@@ -877,21 +668,13 @@ function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
 }
 
 function repaintFromCache() {
-  if (!warpSizePx) return;
-  if (showMorph && !warpCacheData) return;
+  if (!warpCacheData || !warpSizePx) return;
   const ctx = outputCanvas.getContext('2d');
-  if (showMorph) {
-    ctx.putImageData(new ImageData(warpCacheData, warpSizePx, warpSizePx), 0, 0);
-  } else {
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, warpSizePx, warpSizePx);
-  }
+  ctx.putImageData(new ImageData(warpCacheData, warpSizePx, warpSizePx), 0, 0);
   const cx = warpSizePx / 2, cy = warpSizePx / 2;
   const R  = parseFloat(radiusSlider.value);
-  const E  = parseFloat(observerSlider.value);
   drawCylinderRing(ctx, cx, cy, R);
-  if (showSource) drawSourceOverlay(ctx, cx, cy, R, E, warpSizePx);
-  if (showGrid)   drawGrid(ctx, cx, cy, R, E);
+  if (showSource) drawSourceOverlay(ctx, cx, cy, R);
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -918,7 +701,7 @@ function doRender() {
   tmpCtx.drawImage(sourceImage, 0, 0, srcW, srcH);
   const srcPx = tmpCtx.getImageData(0, 0, srcW, srcH).data;
 
-  // Output canvas dimensions — extra room for warp that extends behind the cylinder
+  // Output canvas dimensions — extra room for warp extending behind the cylinder
   const halfCm = Math.max(5 * R + 4, 16);
   const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
   outputCanvas.width  = sizePx;
@@ -932,21 +715,15 @@ function doRender() {
   outImg.data.fill(255);
 
   const t0 = performance.now();
-  if (showMorph) {
-    renderBackwardMapping(srcPx, srcW, srcH, R, E, outImg.data, sizePx, sizePx,
-                          srcScaleMult, srcOffsetX, srcOffsetY);
-    warpCacheData = new Uint8ClampedArray(outImg.data);
-    ctx.putImageData(outImg, 0, 0);
-  } else {
-    warpCacheData = null;   // mark stale so toggling morph on forces a real render
-    ctx.fillStyle = '#ffffff';
-    ctx.fillRect(0, 0, sizePx, sizePx);
-  }
+  renderBackwardMapping(srcPx, srcW, srcH, R, E, outImg.data, sizePx, sizePx,
+                        srcScaleMult, srcOffsetX, srcOffsetY);
+
+  warpCacheData = new Uint8ClampedArray(outImg.data);
+  ctx.putImageData(outImg, 0, 0);
 
   const cx = sizePx / 2, cy = sizePx / 2;
   drawCylinderRing(ctx, cx, cy, R);
-  if (showSource) drawSourceOverlay(ctx, cx, cy, R, E, sizePx);
-  if (showGrid)   drawGrid(ctx, cx, cy, R, E);
+  if (showSource) drawSourceOverlay(ctx, cx, cy, R);
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
   const cmSize  = (sizePx / PX_PER_CM).toFixed(1);
@@ -969,64 +746,18 @@ function doRender() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Print to PDF
 // ─────────────────────────────────────────────────────────────────────────────
-function getContentSizeCm() {
-  if (!warpCacheData || !warpSizePx) return null;
-  const data = warpCacheData, w = warpSizePx;
-  let minX = w - 1, maxX = 0, minY = w - 1, maxY = 0, found = false;
-  for (let y = 0; y < w; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      if (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        found = true;
-      }
-    }
-  }
-  if (!found) return null;
-  return { w: (maxX - minX) / PX_PER_CM, h: (maxY - minY) / PX_PER_CM };
-}
-
 pdfBtn.addEventListener('click', () => {
-  const dataUrl  = outputCanvas.toDataURL('image/png');
-  const imgCm    = outputCanvas.width / PX_PER_CM;
-  const imgCmStr = imgCm.toFixed(2);
-
-  // US Letter in cm
-  const pageWcm = 21.59, pageHcm = 27.94;
-
-  const content = getContentSizeCm();
-  const contentTooBig = content && (content.w > pageWcm || content.h > pageHcm);
-  if (contentTooBig) {
-    const ok = confirm(
-      `The warped image content is ${content.w.toFixed(1)}×${content.h.toFixed(1)} cm, ` +
-      `which is larger than US Letter paper (${pageWcm.toFixed(1)}×${pageHcm.toFixed(1)} cm).\n\n` +
-      `Parts of the image will be clipped when printed on letter-size paper. ` +
-      `Reduce Cylinder Radius R to shrink the output, or use larger paper.\n\nContinue anyway?`
-    );
-    if (!ok) return;
-  }
-
+  const dataUrl = outputCanvas.toDataURL('image/png');
+  const sizeCm  = (outputCanvas.width / PX_PER_CM).toFixed(2);
   const win = window.open('', '_blank');
-  if (!win) { alert('Allow pop-ups to use Print to PDF.'); return; }
+  if (!win) { alert('Allow pop-ups for Print to PDF.'); return; }
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
-<style>
-*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-@page{size:8.5in 11in;margin:0}
-html,body{width:8.5in;height:11in;background:white;overflow:hidden}
-body{display:flex;align-items:center;justify-content:center}
-img{width:${imgCmStr}cm;height:${imgCmStr}cm;display:block}
-.note{position:fixed;bottom:6px;left:0;right:0;text-align:center;
-      font-family:sans-serif;font-size:11px;color:#999;display:none}
-@media screen{.note{display:block}}
-</style></head>
-<body>
-<img src="${dataUrl}" alt="anamorphic art">
-<div class="note">⚠ Print at exactly 100% scale — do NOT scale to fit page</div>
-<script>window.onload=function(){window.print()}<\/script>
-</body></html>`);
+<style>*{margin:0;padding:0;box-sizing:border-box}
+@page{size:${sizeCm}cm ${sizeCm}cm;margin:0}
+body{width:${sizeCm}cm;height:${sizeCm}cm;overflow:hidden}
+img{width:${sizeCm}cm;height:${sizeCm}cm;display:block}</style></head>
+<body><img src="${dataUrl}">
+<script>window.onload=function(){window.print()}<\/script></body></html>`);
   win.document.close();
 });
 
