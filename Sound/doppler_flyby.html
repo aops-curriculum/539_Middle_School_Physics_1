@@ -1,0 +1,536 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doppler Effect – Flyby</title>
+<style>
+/* ── Reset & Container ────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 600px;
+  height: 600px;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: #333333;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Control Panel ────────────────────────────────────── */
+#controls {
+  padding: 8px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+button {
+  padding: 5px 9px;
+  border: 1px solid #b0b8c4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: #f0f2f5;
+  color: #444;
+  transition: all 0.15s;
+}
+button:hover { background: #dce1e8; border-color: #8894a2; }
+button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+button.action {
+  background: #2a9d8f;
+  border-color: #2a9d8f;
+  color: white;
+  font-weight: bold;
+  padding: 5px 14px;
+}
+button.action:hover { background: #38b2a3; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Slider Row ──────────────────────────────────────── */
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+.slider-row label {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+}
+input[type="range"] {
+  width: 180px;
+  accent-color: #2563eb;
+}
+.slider-value {
+  font-size: 12px;
+  color: #888;
+  min-width: 36px;
+}
+
+/* ── Info Row ─────────────────────────────────────────── */
+#info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+}
+#freq-display {
+  font-size: 18px;
+  font-weight: bold;
+  color: #d97706;
+  transition: color 0.15s;
+  min-width: 170px;
+}
+.row label {
+  font-size: 13px;
+  color: #666;
+  margin-right: 2px;
+}
+
+/* ── Canvas ───────────────────────────────────────────── */
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ─────────────────── CONTROL PANEL ─────────────────── -->
+<div id="controls">
+
+  <!-- Row 1: Source speed buttons -->
+  <div class="row">
+    <label>Source speed:</label>
+    <button class="vel-btn active" data-vel="60">Slow ➡</button>
+    <button class="vel-btn" data-vel="80">Medium ➡</button>
+    <button class="vel-btn" data-vel="100">Fast ➡</button>
+  </div>
+
+  <!-- Row 2: Observer distance slider -->
+  <div class="slider-row">
+    <label>Observer distance:</label>
+    <span class="slider-value">Close</span>
+    <input type="range" id="distSlider" min="0" max="100" value="40">
+    <span class="slider-value">Far</span>
+  </div>
+
+  <!-- Row 3: Frequency readout + action buttons -->
+  <div id="info-row">
+    <span id="freq-display">Observed f = 2.00 Hz</span>
+    <div class="row">
+      <button class="action" id="startBtn">▶ Start</button>
+      <button class="action" id="resetBtn">↺ Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── SIMULATION CANVAS ───────────────── -->
+<canvas id="sim"></canvas>
+
+<script>
+// ============================================================
+// PHYSICS CONSTANTS
+// ============================================================
+// The source moves horizontally across the top of the canvas.
+// The observer sits below, at horizontal center, with an
+// adjustable vertical distance.
+//
+// The observed frequency depends on the RADIAL component of
+// the source velocity — the component along the line from
+// source to observer:
+//
+//   v_radial = v_source × cos(θ)
+//
+// where θ is the angle between the velocity vector and the
+// source→observer vector. The Doppler formula is then:
+//
+//   f_obs = f_source × v_wave / (v_wave − v_radial)
+//
+// As the source approaches, v_radial > 0 → higher frequency.
+// As it recedes, v_radial < 0 → lower frequency.
+// When directly above the observer, v_radial ≈ 0 → f_source.
+
+const WAVE_SPEED    = 120;   // px/s
+const SOURCE_FREQ   = 2;     // Hz
+const SOURCE_PERIOD = 1 / SOURCE_FREQ;
+const MAX_WAVE_RADIUS = 900;
+
+const SOURCE_Y      = 30;    // source travels along this y-level
+const SOURCE_START_X = -60;  // start off-screen left
+const SOURCE_END_X   = 660;  // end off-screen right
+
+// Observer is always at x = 300 (horizontal center).
+// Observer y is controlled by the slider.
+const OBSERVER_X = 300;
+
+// ============================================================
+// DOM REFERENCES
+// ============================================================
+
+const canvas    = document.getElementById('sim');
+const ctx       = canvas.getContext('2d');
+const freqEl    = document.getElementById('freq-display');
+const startBtn  = document.getElementById('startBtn');
+const resetBtn  = document.getElementById('resetBtn');
+const velBtns   = document.querySelectorAll('.vel-btn');
+const distSlider = document.getElementById('distSlider');
+
+// ============================================================
+// CANVAS SIZING
+// ============================================================
+
+function resizeCanvas() {
+  const ctrlH = document.getElementById('controls').offsetHeight;
+  canvas.width  = 600;
+  canvas.height = 600 - ctrlH;
+}
+resizeCanvas();
+
+// ============================================================
+// OBSERVER Y RANGE
+// ============================================================
+// The slider maps 0–100 to a y-range in the canvas.
+// "Close" (slider=0) puts the observer near the source path.
+// "Far" (slider=100) puts the observer near the bottom.
+
+const OBS_Y_MIN = SOURCE_Y;                    // zero separation
+const OBS_Y_MAX = SOURCE_Y + (canvas.height - 30 - SOURCE_Y) / 2;  // half the old range
+
+function getObserverY() {
+  const t = distSlider.value / 100;
+  return OBS_Y_MIN + t * (OBS_Y_MAX - OBS_Y_MIN);
+}
+
+// ============================================================
+// SIMULATION STATE
+// ============================================================
+
+let simTime       = 0;
+let running       = false;
+let finished      = false;
+let lastTimestamp  = null;
+let sourceVx      = 60;     // px/s — always positive (moves right)
+let sourceX       = SOURCE_START_X;
+let observerY     = getObserverY();
+let nextEmitTime  = 0;
+let currentFreq   = SOURCE_FREQ;
+
+// Each wave: { emitTime, emitX, emitY }
+// All waves expand as full circles from their emission point.
+let waves = [];
+
+let emitFlashTimer  = 0;
+
+// ============================================================
+// PRE-POPULATE WAVES
+// ============================================================
+// Fill the space with concentric waves from the starting
+// position so there's no dead time before the first visual.
+
+function prePopulateWaves() {
+  waves = [];
+  const maxBackTime = MAX_WAVE_RADIUS / WAVE_SPEED;
+
+  for (let t = -SOURCE_PERIOD; t >= -maxBackTime; t -= SOURCE_PERIOD) {
+    const radius = WAVE_SPEED * (0 - t);
+    if (radius > MAX_WAVE_RADIUS) break;
+    waves.push({ emitTime: t, emitX: SOURCE_START_X, emitY: SOURCE_Y });
+  }
+
+  waves.push({ emitTime: 0, emitX: SOURCE_START_X, emitY: SOURCE_Y });
+  nextEmitTime = SOURCE_PERIOD;
+}
+
+// ============================================================
+// FREQUENCY CALCULATION
+// ============================================================
+// Computes the instantaneous observed frequency using the
+// radial-velocity form of the Doppler equation.
+
+function computeObservedFreq() {
+  const dx = OBSERVER_X - sourceX;
+  const dy = observerY - SOURCE_Y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < 1) return SOURCE_FREQ;  // avoid division issues
+
+  // Radial component of source velocity toward observer.
+  // Source velocity is (sourceVx, 0). Dot with unit vector
+  // from source to observer: (dx/dist, dy/dist).
+  const vRadial = sourceVx * (dx / dist);
+
+  // Guard against v_radial approaching wave speed
+  const denom = WAVE_SPEED - vRadial;
+  if (denom < 5) return SOURCE_FREQ * WAVE_SPEED / 5;
+
+  return SOURCE_FREQ * WAVE_SPEED / denom;
+}
+
+// ============================================================
+// VELOCITY BUTTON HANDLING
+// ============================================================
+
+velBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (running || finished) return;
+    velBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    sourceVx = parseFloat(btn.dataset.vel);
+    updateFreqDisplay();
+  });
+});
+
+// ============================================================
+// SLIDER HANDLING
+// ============================================================
+
+distSlider.addEventListener('input', () => {
+  if (running || finished) return;
+  observerY = getObserverY();
+  updateFreqDisplay();
+  draw();
+});
+
+// ============================================================
+// START / PAUSE / RESET
+// ============================================================
+
+startBtn.addEventListener('click', () => {
+  if (finished) return;
+
+  if (running) {
+    running = false;
+    lastTimestamp = null;
+    startBtn.textContent = '▶ Resume';
+  } else {
+    running = true;
+    startBtn.textContent = '⏸ Pause';
+    velBtns.forEach(b => b.disabled = true);
+    distSlider.disabled = true;
+    requestAnimationFrame(gameLoop);
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  running       = false;
+  finished      = false;
+  simTime       = 0;
+  lastTimestamp  = null;
+  sourceX       = SOURCE_START_X;
+  observerY     = getObserverY();
+  prePopulateWaves();
+  emitFlashTimer = 0;
+
+  startBtn.textContent = '▶ Start';
+  startBtn.disabled = false;
+  velBtns.forEach(b => b.disabled = false);
+  distSlider.disabled = false;
+
+  updateFreqDisplay();
+  draw();
+});
+
+// ============================================================
+// DISPLAY UPDATES
+// ============================================================
+
+function updateFreqDisplay() {
+  currentFreq = computeObservedFreq();
+  freqEl.textContent = `Observed f = ${currentFreq.toFixed(2)} Hz`;
+
+  // Color the readout: blue if above source freq, red if below
+  if (currentFreq > SOURCE_FREQ + 0.05) {
+    freqEl.style.color = '#2563eb';  // blue — approaching
+  } else if (currentFreq < SOURCE_FREQ - 0.05) {
+    freqEl.style.color = '#dc2626';  // red — receding
+  } else {
+    freqEl.style.color = '#d97706';  // amber — near source freq
+  }
+}
+
+// ============================================================
+// MAIN GAME LOOP
+// ============================================================
+
+function gameLoop(timestamp) {
+  if (!running) return;
+
+  if (lastTimestamp === null) lastTimestamp = timestamp;
+  let dt = (timestamp - lastTimestamp) / 1000;
+  dt = Math.min(dt, 0.05);
+  lastTimestamp = timestamp;
+
+  simTime += dt;
+
+  emitFlashTimer = Math.max(0, emitFlashTimer - dt);
+
+  // ── Move source ──
+  sourceX = SOURCE_START_X + sourceVx * simTime;
+
+  // ── Emit new wave fronts ──
+  while (nextEmitTime <= simTime) {
+    const ex = SOURCE_START_X + sourceVx * nextEmitTime;
+    waves.push({
+      emitTime: nextEmitTime,
+      emitX: ex,
+      emitY: SOURCE_Y
+    });
+    emitFlashTimer = 0.12;
+    nextEmitTime += SOURCE_PERIOD;
+  }
+
+  // ── Remove expired waves ──
+  waves = waves.filter(w => {
+    return WAVE_SPEED * (simTime - w.emitTime) < MAX_WAVE_RADIUS;
+  });
+
+  // ── Check for simulation end ──
+  if (sourceX > SOURCE_END_X) {
+    running  = false;
+    finished = true;
+    startBtn.textContent = '✓ Done';
+    startBtn.disabled = true;
+  }
+
+  updateFreqDisplay();
+  draw();
+
+  if (running) requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// DRAWING FUNCTIONS
+// ============================================================
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // ── Faint source path line ──
+  ctx.beginPath();
+  ctx.moveTo(0, SOURCE_Y);
+  ctx.lineTo(canvas.width, SOURCE_Y);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── Faint line from source to observer ──
+  if (sourceX > -30 && sourceX < canvas.width + 30) {
+    ctx.beginPath();
+    ctx.moveTo(sourceX, SOURCE_Y);
+    ctx.lineTo(OBSERVER_X, observerY);
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // ── Wave fronts ──
+  for (const w of waves) {
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    if (radius <= 0) continue;
+
+    const alpha = Math.max(0.04, 0.7 - radius / 650);
+
+    ctx.beginPath();
+    ctx.arc(w.emitX, w.emitY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(30, 120, 220, ${alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // ── Source (speaker icon) ──
+  if (sourceX > -30 && sourceX < canvas.width + 30) {
+    drawSource(sourceX, SOURCE_Y);
+  }
+
+  // ── Observer (smiley face) ──
+  drawSmiley(OBSERVER_X, observerY, 22);
+
+  // ── Labels ──
+  ctx.textAlign = 'center';
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#777';
+
+  if (sourceX > -10 && sourceX < canvas.width + 10) {
+    ctx.fillText('Source (2 Hz)', sourceX, SOURCE_Y - 18);
+  }
+  ctx.fillText('Observer', OBSERVER_X, observerY + 40);
+}
+
+// ── Draw the wave source as a speaker shape ──────────────
+function drawSource(x, y) {
+  const bright = emitFlashTimer > 0 ? 1 : 0;
+
+  ctx.fillStyle = bright ? '#ffaa44' : '#d06020';
+  ctx.fillRect(x - 10, y - 12, 12, 24);
+
+  ctx.beginPath();
+  ctx.moveTo(x + 2, y - 12);
+  ctx.lineTo(x + 16, y - 22);
+  ctx.lineTo(x + 16, y + 22);
+  ctx.lineTo(x + 2, y + 12);
+  ctx.closePath();
+  ctx.fillStyle = bright ? '#ffc877' : '#e08838';
+  ctx.fill();
+
+  if (bright) {
+    ctx.beginPath();
+    ctx.arc(x + 20, y, 8, -0.6, 0.6);
+    ctx.strokeStyle = 'rgba(255, 200, 120, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+// ── Draw the observer as a smiley face ───────────────────
+function drawSmiley(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4d35e';
+  ctx.fill();
+  ctx.strokeStyle = '#c9a227';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(x - 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y + 2, 10, 0.15, Math.PI - 0.15);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+}
+
+// ============================================================
+// INITIAL RENDER
+// ============================================================
+prePopulateWaves();
+updateFreqDisplay();
+draw();
+</script>
+</body>
+</html>

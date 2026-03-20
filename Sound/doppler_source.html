@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doppler Effect – Moving Source</title>
+<style>
+/* ── Reset & Container ────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 600px;
+  height: 600px;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: #333333;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Control Panel ────────────────────────────────────── */
+#controls {
+  padding: 8px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+button {
+  padding: 5px 9px;
+  border: 1px solid #b0b8c4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: #f0f2f5;
+  color: #444;
+  transition: all 0.15s;
+}
+button:hover { background: #dce1e8; border-color: #8894a2; }
+button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+button.action {
+  background: #2a9d8f;
+  border-color: #2a9d8f;
+  color: white;
+  font-weight: bold;
+  padding: 5px 14px;
+}
+button.action:hover { background: #38b2a3; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Info Row ─────────────────────────────────────────── */
+#info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+}
+#counter-display {
+  font-size: 18px;
+  font-weight: bold;
+  color: #d97706;
+  transition: color 0.3s;
+}
+#counter-display.flash {
+  color: #b91c1c;
+}
+#counter-display.done {
+  color: #16a34a;
+}
+.row label {
+  font-size: 13px;
+  color: #666;
+  margin-right: 2px;
+}
+
+/* ── Canvas ───────────────────────────────────────────── */
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ─────────────────── CONTROL PANEL ─────────────────── -->
+<div id="controls">
+
+  <!-- Row 1: Source velocity preset buttons -->
+  <div class="row">
+    <label>Source:</label>
+    <button class="vel-btn" data-vel="-40">⬅ Fast away</button>
+    <button class="vel-btn" data-vel="-20">⬅ Slow away</button>
+    <button class="vel-btn active" data-vel="0">Stationary</button>
+    <button class="vel-btn" data-vel="20">Slow toward ➡</button>
+    <button class="vel-btn" data-vel="40">Fast toward ➡</button>
+  </div>
+
+  <!-- Row 2: Counter and action buttons -->
+  <div id="info-row">
+    <span id="counter-display">Waves counted: 0</span>
+    <div class="row">
+      <button class="action" id="startBtn">▶ Start</button>
+      <button class="action" id="resetBtn">↺ Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── SIMULATION CANVAS ───────────────── -->
+<canvas id="sim"></canvas>
+
+<script>
+// ============================================================
+// PHYSICS CONSTANTS
+// ============================================================
+// Same wave speed and frequency as the moving-observer version.
+// Now the SOURCE moves and the observer is stationary.
+//
+// Key physics difference: each wave front is emitted from
+// wherever the source is at the moment of emission, then
+// expands outward from THAT point. Because successive
+// emission points shift with the source, the spacing between
+// wave fronts (the wavelength) compresses ahead of the source
+// and stretches behind it.
+
+const WAVE_SPEED    = 120;   // px/s — speed of expanding wave fronts
+const SOURCE_FREQ   = 2;     // Hz — wave fronts emitted per second
+const SOURCE_PERIOD = 1 / SOURCE_FREQ;  // 0.5 s between emissions
+const SIM_DURATION  = 6;     // seconds — total run time
+
+const SOURCE_START_X = 230;  // source starting x-position
+const OBSERVER_X     = 500;  // observer x-position (fixed, right side)
+const MAX_WAVE_RADIUS = 800; // remove waves that grow beyond this
+
+// ============================================================
+// DOM REFERENCES
+// ============================================================
+
+const canvas  = document.getElementById('sim');
+const ctx     = canvas.getContext('2d');
+const counterEl = document.getElementById('counter-display');
+const startBtn  = document.getElementById('startBtn');
+const resetBtn  = document.getElementById('resetBtn');
+const velBtns   = document.querySelectorAll('.vel-btn');
+
+// ============================================================
+// CANVAS SIZING
+// ============================================================
+
+function resizeCanvas() {
+  const ctrlH = document.getElementById('controls').offsetHeight;
+  canvas.width  = 600;
+  canvas.height = 600 - ctrlH;
+}
+resizeCanvas();
+
+const centerY = Math.round(canvas.height / 2);
+
+// ============================================================
+// SIMULATION STATE
+// ============================================================
+
+let simTime       = 0;
+let running       = false;
+let finished      = false;
+let lastTimestamp  = null;
+let sourceVx      = 0;       // source x-velocity (px/s); positive = toward observer
+let sourceX       = SOURCE_START_X;
+let waveCount     = 0;
+let nextEmitTime  = 0;
+
+// Each wave front now also stores emitX — the x-position of
+// the source at the moment of emission. The wave expands as
+// a circle centered on (emitX, centerY).
+//   { emitTime: number, emitX: number, counted: boolean }
+let waves = [];
+
+let emitFlashTimer  = 0;
+let countFlashTimer = 0;
+
+// ============================================================
+// PRE-POPULATE WAVES
+// ============================================================
+// Same idea as the observer version, but each past wave was
+// emitted from where the source WAS at that earlier time.
+// Source position at time t: SOURCE_START_X + sourceVx × t.
+// For t < 0, this correctly places past emission points.
+
+function prePopulateWaves() {
+  waves = [];
+  const maxBackTime = MAX_WAVE_RADIUS / WAVE_SPEED;
+
+  for (let t = -SOURCE_PERIOD; t >= -maxBackTime; t -= SOURCE_PERIOD) {
+    const emitX = SOURCE_START_X;  // source hasn't moved yet at t=0
+    const radius = WAVE_SPEED * (0 - t);
+    if (radius > MAX_WAVE_RADIUS) break;
+
+    // Has this wave already passed the observer at t = 0?
+    const distToObserver = OBSERVER_X - emitX;
+    const alreadyCrossed = radius > distToObserver;
+
+    waves.push({ emitTime: t, emitX: emitX, counted: alreadyCrossed });
+  }
+
+  // Emit the t = 0 wave from the starting position
+  waves.push({ emitTime: 0, emitX: SOURCE_START_X, counted: false });
+  nextEmitTime = SOURCE_PERIOD;
+}
+
+// ============================================================
+// VELOCITY BUTTON HANDLING
+// ============================================================
+
+velBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (running || finished) return;
+    velBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    sourceVx = parseFloat(btn.dataset.vel);
+  });
+});
+
+// ============================================================
+// START / PAUSE / RESET
+// ============================================================
+
+startBtn.addEventListener('click', () => {
+  if (finished) return;
+
+  if (running) {
+    running = false;
+    lastTimestamp = null;
+    startBtn.textContent = '▶ Resume';
+  } else {
+    running = true;
+    startBtn.textContent = '⏸ Pause';
+    velBtns.forEach(b => b.disabled = true);
+    requestAnimationFrame(gameLoop);
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  running       = false;
+  finished      = false;
+  simTime       = 0;
+  lastTimestamp  = null;
+  sourceX       = SOURCE_START_X;
+  waveCount     = 0;
+  prePopulateWaves();
+  emitFlashTimer  = 0;
+  countFlashTimer = 0;
+
+  startBtn.textContent = '▶ Start';
+  startBtn.disabled = false;
+  velBtns.forEach(b => b.disabled = false);
+  counterEl.classList.remove('done');
+
+  updateDisplays();
+  draw();
+});
+
+// ============================================================
+// DISPLAY UPDATES
+// ============================================================
+
+function updateDisplays() {
+  counterEl.textContent = `Waves counted: ${waveCount}`;
+}
+
+// ============================================================
+// MAIN GAME LOOP
+// ============================================================
+
+function gameLoop(timestamp) {
+  if (!running) return;
+
+  if (lastTimestamp === null) lastTimestamp = timestamp;
+  let dt = (timestamp - lastTimestamp) / 1000;
+  dt = Math.min(dt, 0.05);
+  lastTimestamp = timestamp;
+
+  simTime += dt;
+
+  emitFlashTimer  = Math.max(0, emitFlashTimer - dt);
+  countFlashTimer = Math.max(0, countFlashTimer - dt);
+
+  // ── Move source ──
+  sourceX = SOURCE_START_X + sourceVx * simTime;
+  // Clamp so the source doesn't go off-screen left or overlap observer
+  sourceX = Math.max(20, Math.min(OBSERVER_X - 35, sourceX));
+
+  // ── Emit new wave fronts ──
+  // Each wave is born at the source's CURRENT position.
+  while (nextEmitTime <= simTime && nextEmitTime < SIM_DURATION) {
+    const emitX = SOURCE_START_X + sourceVx * nextEmitTime;
+    waves.push({
+      emitTime: nextEmitTime,
+      emitX: Math.max(20, Math.min(OBSERVER_X - 35, emitX)),
+      counted: false
+    });
+    emitFlashTimer = 0.15;
+    nextEmitTime += SOURCE_PERIOD;
+  }
+
+  // ── Detect wave crossings ──
+  // Distance from each wave's emission point to the observer.
+  for (const w of waves) {
+    if (w.counted) continue;
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    const dist = OBSERVER_X - w.emitX;
+    if (dist > 0 && radius >= dist) {
+      w.counted = true;
+      waveCount++;
+      countFlashTimer = 0.2;
+    }
+  }
+
+  // ── Remove expired waves ──
+  waves = waves.filter(w => {
+    return WAVE_SPEED * (simTime - w.emitTime) < MAX_WAVE_RADIUS;
+  });
+
+  // ── Check for simulation end ──
+  if (simTime >= SIM_DURATION) {
+    simTime  = SIM_DURATION;
+    running  = false;
+    finished = true;
+    startBtn.textContent = '✓ Done';
+    startBtn.disabled = true;
+    counterEl.classList.add('done');
+  }
+
+  updateDisplays();
+
+  if (countFlashTimer > 0) {
+    counterEl.classList.add('flash');
+  } else {
+    counterEl.classList.remove('flash');
+  }
+
+  draw();
+
+  if (running) requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// DRAWING FUNCTIONS
+// ============================================================
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // ── Background ──
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // ── Faint horizontal reference line ──
+  ctx.beginPath();
+  ctx.moveTo(0, centerY);
+  ctx.lineTo(canvas.width, centerY);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ── Wave fronts ──
+  // Full circles centered on each wave's emission point.
+  // This is the key visual: students see the circles bunched
+  // ahead of the moving source and spread out behind it.
+  for (const w of waves) {
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    if (radius <= 0) continue;
+
+    const alpha = Math.max(0.05, 0.8 - radius / 550);
+
+    ctx.beginPath();
+    ctx.arc(w.emitX, centerY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = w.counted
+      ? `rgba(80, 180, 130, ${alpha * 0.45})`
+      : `rgba(30, 120, 220, ${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // ── Source (speaker icon) ──
+  drawSource(sourceX, centerY);
+
+  // ── Observer (smiley face) ──
+  drawSmiley(OBSERVER_X, centerY, 22);
+
+  // ── Labels ──
+  ctx.textAlign = 'center';
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#777';
+  ctx.fillText('Source (2 Hz)', sourceX, centerY + 52);
+  ctx.fillText('Observer', OBSERVER_X, centerY + 52);
+
+  // Velocity indicator near the source
+  if (sourceVx !== 0) {
+    ctx.font = '11px Arial';
+    ctx.fillStyle = '#5577aa';
+    const arrow = sourceVx > 0 ? 'toward ▶' : '◀ away';
+    ctx.fillText(arrow, sourceX, centerY + 66);
+  }
+}
+
+// ── Draw the wave source as a speaker shape ──────────────
+function drawSource(x, y) {
+  const bright = emitFlashTimer > 0 ? 1 : 0;
+
+  ctx.fillStyle = bright ? '#ffaa44' : '#d06020';
+  ctx.fillRect(x - 10, y - 12, 12, 24);
+
+  ctx.beginPath();
+  ctx.moveTo(x + 2, y - 12);
+  ctx.lineTo(x + 16, y - 22);
+  ctx.lineTo(x + 16, y + 22);
+  ctx.lineTo(x + 2, y + 12);
+  ctx.closePath();
+  ctx.fillStyle = bright ? '#ffc877' : '#e08838';
+  ctx.fill();
+
+  if (bright) {
+    ctx.beginPath();
+    ctx.arc(x + 20, y, 8, -0.6, 0.6);
+    ctx.strokeStyle = 'rgba(255, 200, 120, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+// ── Draw the observer as a smiley face ───────────────────
+function drawSmiley(x, y, r) {
+  if (countFlashTimer > 0) {
+    ctx.beginPath();
+    ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+    const glowAlpha = countFlashTimer / 0.2 * 0.35;
+    ctx.fillStyle = `rgba(34, 197, 94, ${glowAlpha})`;
+    ctx.fill();
+  }
+
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4d35e';
+  ctx.fill();
+  ctx.strokeStyle = '#c9a227';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(x - 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y + 2, 10, 0.15, Math.PI - 0.15);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+}
+
+// ============================================================
+// INITIAL RENDER
+// ============================================================
+prePopulateWaves();
+updateDisplays();
+draw();
+</script>
+</body>
+</html>

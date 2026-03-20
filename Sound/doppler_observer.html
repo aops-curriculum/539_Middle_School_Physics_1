@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doppler Effect Simulation</title>
+<style>
+/* ── Reset & Container ────────────────────────────────── */
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 600px;
+  height: 600px;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: #333333;
+  display: flex;
+  flex-direction: column;
+}
+
+/* ── Control Panel ────────────────────────────────────── */
+#controls {
+  padding: 8px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+
+/* ── Buttons ──────────────────────────────────────────── */
+button {
+  padding: 5px 9px;
+  border: 1px solid #b0b8c4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: #f0f2f5;
+  color: #444;
+  transition: all 0.15s;
+}
+button:hover { background: #dce1e8; border-color: #8894a2; }
+button.active {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: white;
+}
+button.action {
+  background: #2a9d8f;
+  border-color: #2a9d8f;
+  color: white;
+  font-weight: bold;
+  padding: 5px 14px;
+}
+button.action:hover { background: #38b2a3; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+/* ── Info Row ─────────────────────────────────────────── */
+#info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+}
+#counter-display {
+  font-size: 18px;
+  font-weight: bold;
+  color: #d97706;
+  transition: color 0.3s;
+}
+#counter-display.flash {
+  color: #b91c1c;
+}
+#counter-display.done {
+  color: #16a34a;
+}
+.row label {
+  font-size: 13px;
+  color: #666;
+  margin-right: 2px;
+}
+
+/* ── Canvas ───────────────────────────────────────────── */
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<!-- ─────────────────── CONTROL PANEL ─────────────────── -->
+<div id="controls">
+
+  <!-- Row 1: Velocity preset buttons -->
+  <div class="row">
+    <label>Observer:</label>
+    <button class="vel-btn" data-vel="-40">⬅ Fast toward</button>
+    <button class="vel-btn" data-vel="-20">⬅ Slow toward</button>
+    <button class="vel-btn active" data-vel="0">Stationary</button>
+    <button class="vel-btn" data-vel="20">Slow away ➡</button>
+    <button class="vel-btn" data-vel="40">Fast away ➡</button>
+  </div>
+
+  <!-- Row 2: Counter and action buttons -->
+  <div id="info-row">
+    <span id="counter-display">Waves counted: 0</span>
+    <div class="row">
+      <button class="action" id="startBtn">▶ Start</button>
+      <button class="action" id="resetBtn">↺ Reset</button>
+    </div>
+  </div>
+</div>
+
+<!-- ───────────────── SIMULATION CANVAS ───────────────── -->
+<canvas id="sim"></canvas>
+
+<script>
+// ============================================================
+// PHYSICS CONSTANTS
+// ============================================================
+// All distances are in pixels. All times are in seconds.
+// The wave speed, source frequency, and observer velocities
+// are chosen so that the final wave counts come out to
+// 12, 10, 8, 6, 4 — a clean arithmetic pattern that helps
+// students see the Doppler relationship.
+
+const WAVE_SPEED    = 120;   // px/s — speed of expanding wave fronts
+const SOURCE_FREQ   = 2;     // Hz — wave fronts emitted per second
+const SOURCE_PERIOD = 1 / SOURCE_FREQ;  // 0.5 s between emissions
+const SIM_DURATION  = 6;     // seconds — total run time
+const SOURCE_X      = 50;    // source x-position (left side)
+const OBSERVER_START_X = 350;// observer starting x-position
+const MAX_WAVE_RADIUS = 700; // remove waves that grow beyond this
+
+// ============================================================
+// DOM REFERENCES
+// ============================================================
+
+const canvas  = document.getElementById('sim');
+const ctx     = canvas.getContext('2d');
+const counterEl = document.getElementById('counter-display');
+const startBtn  = document.getElementById('startBtn');
+const resetBtn  = document.getElementById('resetBtn');
+const velBtns   = document.querySelectorAll('.vel-btn');
+
+// ============================================================
+// CANVAS SIZING
+// ============================================================
+// The canvas fills whatever vertical space remains below the
+// control panel, within the 600×600 iframe.
+
+function resizeCanvas() {
+  const ctrlH = document.getElementById('controls').offsetHeight;
+  canvas.width  = 600;
+  canvas.height = 600 - ctrlH;
+}
+resizeCanvas();
+
+// The vertical midline of the canvas — source and observer y-position
+const centerY = Math.round(canvas.height / 2);
+
+// ============================================================
+// SIMULATION STATE
+// ============================================================
+
+let simTime       = 0;       // seconds elapsed
+let running       = false;   // animation active?
+let finished      = false;   // simulation completed?
+let lastTimestamp  = null;    // previous frame timestamp (ms)
+let observerVx    = 0;       // observer x-velocity (px/s)
+let observerX     = OBSERVER_START_X;
+let waveCount     = 0;       // wave fronts that have crossed the observer
+let nextEmitTime  = 0;       // scheduled time for the next emission
+
+// Each entry in this array represents one wave front:
+//   { emitTime: number, counted: boolean }
+// At any moment, the wave's radius = WAVE_SPEED × (simTime − emitTime).
+let waves = [];
+
+// Visual feedback timers — these count down to zero.
+// They trigger brief flash effects when events occur.
+let emitFlashTimer  = 0;     // source flash when emitting
+let countFlashTimer = 0;     // counter flash when counting a wave
+
+// ============================================================
+// PRE-POPULATE WAVES
+// ============================================================
+// To avoid a long delay before the first wave reaches the
+// observer, we create wave fronts with negative emission times.
+// At simTime = 0 these already have expanding radii spread
+// between the source and the edge of the canvas. Any that
+// have already passed the observer's starting position are
+// marked as "counted" (but do NOT increment waveCount), so
+// the first uncounted wave is just about to arrive.
+
+function prePopulateWaves() {
+  waves = [];
+  const dist = observerX - SOURCE_X;
+  const maxBackTime = MAX_WAVE_RADIUS / WAVE_SPEED;
+
+  // Walk backward in time, placing one wave per period
+  for (let t = -SOURCE_PERIOD; t >= -maxBackTime; t -= SOURCE_PERIOD) {
+    const radiusAtStart = WAVE_SPEED * (0 - t);
+    if (radiusAtStart > MAX_WAVE_RADIUS) break;
+    // Mark waves that have already passed the observer
+    const alreadyCrossed = radiusAtStart > dist;
+    waves.push({ emitTime: t, counted: alreadyCrossed });
+  }
+
+  // Also emit the t = 0 wave, and schedule the next one
+  waves.push({ emitTime: 0, counted: false });
+  nextEmitTime = SOURCE_PERIOD;
+}
+
+// ============================================================
+// VELOCITY BUTTON HANDLING
+// ============================================================
+// Each button stores its velocity in a data-vel attribute.
+// Clicking one sets observerVx and highlights that button.
+// Buttons are disabled while the simulation is running.
+
+velBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    if (running || finished) return;
+
+    // Highlight only the clicked button
+    velBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+
+    // Read the velocity value from the HTML attribute
+    observerVx = parseFloat(btn.dataset.vel);
+  });
+});
+
+// ============================================================
+// START / PAUSE / RESET
+// ============================================================
+
+startBtn.addEventListener('click', () => {
+  if (finished) return;
+
+  if (running) {
+    // ── Pause ──
+    running = false;
+    lastTimestamp = null;           // reset so next resume is smooth
+    startBtn.textContent = '▶ Resume';
+  } else {
+    // ── Start or Resume ──
+    running = true;
+    startBtn.textContent = '⏸ Pause';
+    velBtns.forEach(b => b.disabled = true);  // lock velocity choice
+    requestAnimationFrame(gameLoop);
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  running       = false;
+  finished      = false;
+  simTime       = 0;
+  lastTimestamp  = null;
+  observerX     = OBSERVER_START_X;
+  waveCount     = 0;
+  prePopulateWaves();
+  emitFlashTimer  = 0;
+  countFlashTimer = 0;
+
+  startBtn.textContent = '▶ Start';
+  startBtn.disabled = false;
+  velBtns.forEach(b => b.disabled = false);
+  counterEl.classList.remove('done');
+
+  updateDisplays();
+  draw();
+});
+
+// ============================================================
+// DISPLAY UPDATES
+// ============================================================
+
+function updateDisplays() {
+  counterEl.textContent = `Waves counted: ${waveCount}`;
+}
+
+// ============================================================
+// MAIN GAME LOOP
+// ============================================================
+// Uses requestAnimationFrame for smooth rendering. Delta time
+// (dt) ensures physics advances correctly regardless of the
+// monitor's refresh rate.
+
+function gameLoop(timestamp) {
+  if (!running) return;
+
+  // ── Calculate delta time ──
+  if (lastTimestamp === null) lastTimestamp = timestamp;
+  let dt = (timestamp - lastTimestamp) / 1000;   // ms → seconds
+  dt = Math.min(dt, 0.05);   // cap to prevent huge jumps
+  lastTimestamp = timestamp;
+
+  // ── Advance simulation clock ──
+  simTime += dt;
+
+  // ── Decay visual flash timers ──
+  emitFlashTimer  = Math.max(0, emitFlashTimer - dt);
+  countFlashTimer = Math.max(0, countFlashTimer - dt);
+
+  // ── Emit new wave fronts ──
+  // We use a while-loop so that if multiple emissions were
+  // scheduled within one frame (unlikely but possible at low
+  // frame rates), they all get created.
+  while (nextEmitTime <= simTime && nextEmitTime < SIM_DURATION) {
+    waves.push({ emitTime: nextEmitTime, counted: false });
+    emitFlashTimer = 0.15;   // trigger source flash
+    nextEmitTime += SOURCE_PERIOD;
+  }
+
+  // ── Move observer ──
+  observerX += observerVx * dt;
+  // Clamp: don't let the observer overlap the source or exit right
+  observerX = Math.max(SOURCE_X + 35, Math.min(canvas.width - 20, observerX));
+
+  // ── Detect wave crossings ──
+  // A wave front crosses the observer when its radius reaches
+  // the horizontal distance from source to observer.
+  const dist = observerX - SOURCE_X;
+
+  for (const w of waves) {
+    if (w.counted) continue;
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    if (radius >= dist) {
+      w.counted = true;
+      waveCount++;
+      countFlashTimer = 0.2;  // trigger counter flash
+    }
+  }
+
+  // ── Remove waves that have expanded off-screen ──
+  waves = waves.filter(w => {
+    return WAVE_SPEED * (simTime - w.emitTime) < MAX_WAVE_RADIUS;
+  });
+
+  // ── Check for simulation end ──
+  if (simTime >= SIM_DURATION) {
+    simTime  = SIM_DURATION;
+    running  = false;
+    finished = true;
+    startBtn.textContent = '✓ Done';
+    startBtn.disabled = true;
+    counterEl.classList.add('done');
+  }
+
+  // ── Render ──
+  updateDisplays();
+
+  // Apply counter flash via CSS class
+  if (countFlashTimer > 0) {
+    counterEl.classList.add('flash');
+  } else {
+    counterEl.classList.remove('flash');
+  }
+
+  draw();
+
+  if (running) requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// DRAWING FUNCTIONS
+// ============================================================
+
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // ── Background ──
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // ── Faint horizontal reference line ──
+  ctx.beginPath();
+  ctx.moveTo(0, centerY);
+  ctx.lineTo(canvas.width, centerY);
+  ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // ── Wave fronts ──
+  // Each wave is drawn as a rightward-opening semicircular arc.
+  // The arc spans from −90° to +90° (i.e., −π/2 to +π/2).
+  // Opacity fades as the radius grows, simulating energy spreading.
+  for (const w of waves) {
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    if (radius <= 0) continue;
+
+    // Fade: full brightness at radius 0, nearly invisible at 600 px
+    const alpha = Math.max(0.05, 0.8 - radius / 550);
+
+    ctx.beginPath();
+    ctx.arc(SOURCE_X, centerY, radius, -Math.PI / 2, Math.PI / 2);
+    ctx.strokeStyle = w.counted
+      ? `rgba(80, 180, 130, ${alpha * 0.45})`    // green tint once counted
+      : `rgba(30, 120, 220, ${alpha})`;            // blue while uncounted
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // ── Source (speaker icon) ──
+  drawSource(SOURCE_X, centerY);
+
+  // ── Observer (smiley face) ──
+  drawSmiley(observerX, centerY, 22);
+
+  // ── Labels ──
+  ctx.textAlign = 'center';
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#777';
+  ctx.fillText('Source (2 Hz)', SOURCE_X + 4, centerY + 52);
+  ctx.fillText('Observer', observerX, centerY + 52);
+
+  // Show a small velocity indicator near the observer
+  if (observerVx !== 0) {
+    ctx.font = '11px Arial';
+    ctx.fillStyle = '#5577aa';
+    const arrow = observerVx < 0 ? '◀ toward' : 'away ▶';
+    ctx.fillText(arrow, observerX, centerY + 66);
+  }
+}
+
+// ── Draw the wave source as a speaker shape ──────────────
+function drawSource(x, y) {
+  // Emit flash: briefly brighten when a wave is emitted
+  const bright = emitFlashTimer > 0 ? 1 : 0;
+
+  // Speaker body (small rectangle)
+  ctx.fillStyle = bright ? '#ffaa44' : '#d06020';
+  ctx.fillRect(x - 10, y - 12, 12, 24);
+
+  // Speaker cone (trapezoid flaring rightward)
+  ctx.beginPath();
+  ctx.moveTo(x + 2, y - 12);
+  ctx.lineTo(x + 16, y - 22);
+  ctx.lineTo(x + 16, y + 22);
+  ctx.lineTo(x + 2, y + 12);
+  ctx.closePath();
+  ctx.fillStyle = bright ? '#ffc877' : '#e08838';
+  ctx.fill();
+
+  // Small sound-wave arcs near the speaker (decorative)
+  if (bright) {
+    ctx.beginPath();
+    ctx.arc(x + 20, y, 8, -0.6, 0.6);
+    ctx.strokeStyle = 'rgba(255, 200, 120, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+// ── Draw the observer as a smiley face ───────────────────
+function drawSmiley(x, y, r) {
+  // Glow when a wave is just counted
+  if (countFlashTimer > 0) {
+    ctx.beginPath();
+    ctx.arc(x, y, r + 6, 0, Math.PI * 2);
+    const glowAlpha = countFlashTimer / 0.2 * 0.35;
+    ctx.fillStyle = `rgba(34, 197, 94, ${glowAlpha})`;
+    ctx.fill();
+  }
+
+  // Face
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4d35e';
+  ctx.fill();
+  ctx.strokeStyle = '#c9a227';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Eyes
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(x - 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Smile
+  ctx.beginPath();
+  ctx.arc(x, y + 2, 10, 0.15, Math.PI - 0.15);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2.5;
+  ctx.stroke();
+}
+
+// ============================================================
+// INITIAL RENDER
+// ============================================================
+prePopulateWaves();
+updateDisplays();
+draw();
+</script>
+</body>
+</html>
