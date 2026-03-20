@@ -480,11 +480,14 @@ function scheduleRender() {
 // ─────────────────────────────────────────────────────────────────────────────
 showMorphToggle.addEventListener('change', () => {
   showMorph = showMorphToggle.checked;
-  if (showMorph) {
-    scheduleRender();   // warp was not computed while morph was off
-  } else {
-    repaintFromCache(); // instant — just swap to white background
-  }
+  // Yield to the browser so the toggle visually updates before any computation.
+  requestAnimationFrame(() => {
+    if (showMorph) {
+      scheduleRender();   // warp was not computed while morph was off
+    } else {
+      repaintFromCache(); // instant — just swap to white background
+    }
+  });
 });
 
 showSourceToggle.addEventListener('change', () => {
