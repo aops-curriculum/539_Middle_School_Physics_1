@@ -11,6 +11,9 @@
 </head>
 <body>
 <canvas id="canvas"></canvas>
+<div style="position:fixed;bottom:10px;right:10px;color:#aabbcc;font:13px Arial;background:rgba(16,33,62,0.92);padding:6px 12px;border-radius:6px;border:1px solid #4a90d9;user-select:none;">
+  <label style="cursor:pointer"><input type="checkbox" id="showReflAngles"> Show reflection angles</label>
+</div>
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -19,8 +22,10 @@ let W, H;
 let cone;      // {x, y} cone center on screen
 let SCREEN_X;  // x position of the vertical projection screen
 
-// Mirror supply box (top-left)
-const BOX = { x: 20, y: 20, w: 110, h: 110 };
+// Supply boxes — dynamically positioned at bottom-centre
+const BOX_W = 110, BOX_H = 110;
+function getMirrorBox() { return { x: W / 2 - BOX_W - 5, y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
+function getRulerBox()  { return { x: W / 2 + 5,          y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
 
 // Ice cream geometry relative to cone center (cx, cy)
 // Cone triangle: (-22, +5), (+22, +5), (0, +45)  → tip at (0, +45)
@@ -41,29 +46,31 @@ const ROT_STEP    = Math.PI / 2880;  // 0.0625 degrees
 
 const SNAP_THRESHOLD = 20;  // px — how close ends must be to snap
 
-// State
-let mirrors       = [];   // placed mirrors on screen: [{id, cx, cy, angle}, ...]
+// Ruler constants
+const RULER_DEFAULT_LEN = 120;
+
+// Mirror state
+let mirrors       = [];   // placed mirrors: [{id, cx, cy, angle}, ...]
 let nextId        = 0;
-let drag          = null;
-// drag modes:
-//   'move'         – mirror removed from array, stored in drag.mirror
-//   'rot1'/'rot2'  – mirror stays in mirrors[], drag.mirrorIndex is its index
+let drag          = null; // 'move' | 'rot1' | 'rot2'
+let snaps         = [];   // [{parentId, parentEndSign, childId, childEndSign}]
+let coneDrag      = null;
+let rotBtns       = [];   // rebuilt each frame
+let rotHoldMeta   = null;
+let rotHoldDelay  = null;
+let rotHoldIntv   = null;
 
-let snaps = [];
-// snap = {parentId, parentEndSign, childId, childEndSign}
-//   parentEndSign / childEndSign: +1 or -1
-//   The connected point on mirror m with sign s is:
-//     (m.cx + s*MIRROR_HALF*cos(m.angle),  m.cy + s*MIRROR_HALF*sin(m.angle))
+// Ruler state
+let rulers        = [];   // placed rulers: [{id, cx, cy, angle, len}, ...]
+let nextRulerId   = 0;
+let rulerDrag     = null; // 'move' | 'stretch1' | 'stretch2'
+let rulRotBtns    = [];   // rebuilt each frame
+let rulRotHold    = null;
+let rulRotDelay   = null;
+let rulRotIntv    = null;
 
-let coneDrag      = null; // {offsetX, offsetY} while dragging the cone
-
-// Rotate-button hit regions rebuilt every frame
-let rotBtns = []; // [{mirrorId, dir:+1|-1, x, y}]  dir: +1=CW, -1=CCW
-
-// Held rotate button (hold-to-spin)
-let rotHoldMeta   = null;  // {mirrorId, dir} while button is held
-let rotHoldDelay  = null;  // setTimeout id for ramp-up delay
-let rotHoldIntv   = null;  // setInterval id for continuous spin
+// Reflection angles overlay toggle
+let showReflAngles = false;
 
 function startRotateHold(mirrorId, dir) {
   stopRotateHold();
@@ -90,6 +97,23 @@ function stopRotateHold() {
   rotHoldDelay = rotHoldIntv = rotHoldMeta = null;
 }
 
+function startRulerRotateHold(rulerId, dir) {
+  stopRulerRotateHold();
+  rulRotHold = { rulerId, dir };
+  applyRulerRotate();
+  rulRotDelay = setTimeout(() => { rulRotIntv = setInterval(applyRulerRotate, 40); }, 350);
+}
+function applyRulerRotate() {
+  if (!rulRotHold) return;
+  const r = rulers.find(r => r.id === rulRotHold.rulerId);
+  if (r) r.angle += rulRotHold.dir * ROT_STEP;
+}
+function stopRulerRotateHold() {
+  clearTimeout(rulRotDelay);
+  clearInterval(rulRotIntv);
+  rulRotDelay = rulRotIntv = rulRotHold = null;
+}
+
 // ─────────────────────────────────────────────
 //  Layout helpers
 // ─────────────────────────────────────────────
@@ -108,8 +132,12 @@ function resize() {
 }
 
 function isOverBox(x, y) {
-  return x >= BOX.x && x <= BOX.x + BOX.w &&
-         y >= BOX.y && y <= BOX.y + BOX.h;
+  const B = getMirrorBox();
+  return x >= B.x && x <= B.x + B.w && y >= B.y && y <= B.y + B.h;
+}
+function isOverRulerBox(x, y) {
+  const B = getRulerBox();
+  return x >= B.x && x <= B.x + B.w && y >= B.y && y <= B.y + B.h;
 }
 
 function getPos(e) {
@@ -381,11 +409,11 @@ function detectSnaps(droppedId) {
     const Etop = getTopEnd(E);
     const Ebot = getBottomEnd(E);
 
-    // D's bottom near E's top → E is parent, D is child
+    // D's bottom near E's top → E is parent (stationary), D is child (moves)
     if (dist2(Dbot.pt.x, Dbot.pt.y, Etop.pt.x, Etop.pt.y) < SNAP_THRESHOLD) {
-      const parentTopFree = !snaps.some(s => s.parentId === E.id);
+      const parentEndFree = !snaps.some(s => s.parentId === E.id && s.parentEndSign === Etop.sign);
       const childFree     = !snaps.some(s => s.childId  === D.id);
-      if (parentTopFree && childFree && !isAncestor(D.id, E.id)) {
+      if (parentEndFree && childFree && !isAncestor(D.id, E.id)) {
         snaps.push({ parentId: E.id, parentEndSign: Etop.sign,
                      childId:  D.id, childEndSign:  Dbot.sign });
         setEndPt(D, Dbot.sign, Etop.pt);  // exact snap
@@ -393,14 +421,14 @@ function detectSnaps(droppedId) {
       }
     }
 
-    // D's top near E's bottom → D is parent, E is child
+    // D's top near E's bottom → E is parent (stationary), D is child (moves)
     if (dist2(Dtop.pt.x, Dtop.pt.y, Ebot.pt.x, Ebot.pt.y) < SNAP_THRESHOLD) {
-      const parentTopFree = !snaps.some(s => s.parentId === D.id);
-      const childFree     = !snaps.some(s => s.childId  === E.id);
-      if (parentTopFree && childFree && !isAncestor(E.id, D.id)) {
-        snaps.push({ parentId: D.id, parentEndSign: Dtop.sign,
-                     childId:  E.id, childEndSign:  Ebot.sign });
-        setEndPt(E, Ebot.sign, Dtop.pt);  // exact snap
+      const parentEndFree = !snaps.some(s => s.parentId === E.id && s.parentEndSign === Ebot.sign);
+      const childFree     = !snaps.some(s => s.childId  === D.id);
+      if (parentEndFree && childFree && !isAncestor(D.id, E.id)) {
+        snaps.push({ parentId: E.id, parentEndSign: Ebot.sign,
+                     childId:  D.id, childEndSign:  Dtop.sign });
+        setEndPt(D, Dtop.sign, Ebot.pt);  // move D only
         return;
       }
     }
@@ -408,14 +436,12 @@ function detectSnaps(droppedId) {
 }
 
 // ─────────────────────────────────────────────
-//  Angle of mirror in degrees CCW from vertical
-//  Normalised to (-90, 90] so horizontal = ±90°.
+//  Angle of a line in degrees from horizontal, in [0°, 180°).
+//  Horizontal = 0°, vertical = 90°.
 // ─────────────────────────────────────────────
-function mirrorDegreesFromVertical(m) {
-  let deg = (Math.PI / 2 - m.angle) * (180 / Math.PI);
-  // fold into (-90, 90]
-  while (deg >  90) deg -= 180;
-  while (deg <= -90) deg += 180;
+function angDegsFromHorizontal(angle) {
+  let deg = (angle * 180 / Math.PI) % 180;
+  if (deg < 0) deg += 180;
   return deg;
 }
 
@@ -445,15 +471,14 @@ function drawRotateButtons(m) {
     ctx.textBaseline = 'alphabetic';
   }
 
-  // Degree label to the right of the mirror
-  const deg = mirrorDegreesFromVertical(m);
-  const label = (deg >= 0 ? '+' : '') + deg.toFixed(1) + '°';
+  // Degree label to the LEFT of the mirror
+  const deg = angDegsFromHorizontal(m.angle);
+  const label = deg.toFixed(1) + '°';
   ctx.fillStyle    = 'rgba(180,210,255,0.85)';
   ctx.font         = 'bold 11px Arial';
-  ctx.textAlign    = 'left';
+  ctx.textAlign    = 'right';
   ctx.textBaseline = 'middle';
-  // x = centre + how far the mirror bar reaches in the +x direction + small gap
-  const labelX = m.cx + MIRROR_HALF * Math.abs(Math.cos(m.angle)) + 8;
+  const labelX = m.cx - MIRROR_HALF * Math.abs(Math.cos(m.angle)) - 8;
   ctx.fillText(label, labelX, m.cy);
   ctx.textBaseline = 'alphabetic';
 
@@ -461,14 +486,9 @@ function drawRotateButtons(m) {
 }
 
 // ─────────────────────────────────────────────
-//  Mirror supply box
+//  Shared rounded-rect path helper
 // ─────────────────────────────────────────────
-function drawMirrorBox() {
-  // background panel
-  ctx.fillStyle   = 'rgba(16,33,62,0.92)';
-  ctx.strokeStyle = '#4a90d9';
-  ctx.lineWidth   = 2;
-  const bx = BOX.x, by = BOX.y, bw = BOX.w, bh = BOX.h, br = 8;
+function drawRoundedRect(bx, by, bw, bh, br) {
   ctx.beginPath();
   ctx.moveTo(bx + br, by);
   ctx.lineTo(bx + bw - br, by);
@@ -480,23 +500,191 @@ function drawMirrorBox() {
   ctx.lineTo(bx,      by + br);
   ctx.arcTo(bx,      by,      bx + br, by,            br);
   ctx.closePath();
+}
+
+// ─────────────────────────────────────────────
+//  Mirror supply box
+// ─────────────────────────────────────────────
+function drawMirrorBox() {
+  const B = getMirrorBox();
+  ctx.fillStyle   = 'rgba(16,33,62,0.92)';
+  ctx.strokeStyle = '#4a90d9';
+  ctx.lineWidth   = 2;
+  drawRoundedRect(B.x, B.y, B.w, B.h, 8);
   ctx.fill();
   ctx.stroke();
 
-  // label
   ctx.fillStyle  = '#8899aa';
   ctx.font       = 'bold 12px Arial';
   ctx.textAlign  = 'center';
-  ctx.fillText('Mirrors', BOX.x + BOX.w / 2, BOX.y + 18);
+  ctx.fillText('Mirrors', B.x + B.w / 2, B.y + 18);
 
-  // preview mirror in box (vertical)
-  const previewM = { cx: BOX.x + BOX.w / 2, cy: BOX.y + BOX.h / 2 + 8, angle: Math.PI / 2 };
+  const previewM = { cx: B.x + B.w / 2, cy: B.y + B.h / 2 + 8, angle: Math.PI / 2 };
   drawMirror(previewM, false);
 
   ctx.fillStyle = 'rgba(100,150,200,0.6)';
   ctx.font      = '10px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText('drag to place', BOX.x + BOX.w / 2, BOX.y + BOX.h - 7);
+  ctx.fillText('drag to place', B.x + B.w / 2, B.y + B.h - 7);
+}
+
+// ─────────────────────────────────────────────
+//  Ruler drawing
+// ─────────────────────────────────────────────
+function drawRuler(r) {
+  const half = r.len / 2;
+  const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
+
+  ctx.save();
+  ctx.translate(r.cx, r.cy);
+  ctx.rotate(r.angle);
+  ctx.globalAlpha = 0.60;
+
+  // ruler body
+  ctx.fillStyle   = '#d4c060';
+  ctx.strokeStyle = '#a09030';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.rect(-half, -5, r.len, 10);
+  ctx.fill();
+  ctx.stroke();
+
+  // tick marks
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth   = 0.8;
+  for (let px = -half; px <= half + 0.5; px += 10) {
+    const isMajor = (Math.round(px + half) % 50) < 1;
+    ctx.beginPath();
+    ctx.moveTo(px, -5);
+    ctx.lineTo(px, -5 + (isMajor ? 6 : 3));
+    ctx.stroke();
+  }
+
+  ctx.restore();
+
+  // degree label left of ruler
+  ctx.save();
+  const deg = angDegsFromHorizontal(r.angle);
+  ctx.fillStyle    = 'rgba(230,215,100,0.9)';
+  ctx.font         = 'bold 11px Arial';
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(deg.toFixed(1) + '°', r.cx - half * Math.abs(ca) - 8, r.cy);
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+
+  // end handles
+  for (const [hx, hy] of [
+    [r.cx - ca * half, r.cy - sa * half],
+    [r.cx + ca * half, r.cy + sa * half]
+  ]) {
+    ctx.fillStyle   = '#e8c840';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.arc(hx, hy, HANDLE_R - 2, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Ruler rotate buttons
+// ─────────────────────────────────────────────
+function drawRulerRotateButtons(r) {
+  const ccwX = r.cx - 15, ccwY = r.cy - 22;
+  const  cwX = r.cx + 15,  cwY = r.cy - 22;
+
+  for (const [bx, by, lbl] of [[ccwX, ccwY, '↺'], [cwX, cwY, '↻']]) {
+    ctx.fillStyle    = 'rgba(50,45,5,0.88)';
+    ctx.strokeStyle  = '#c8a830';
+    ctx.lineWidth    = 1.2;
+    ctx.beginPath();
+    ctx.arc(bx, by, BTN_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle    = '#fff8c0';
+    ctx.font         = '11px Arial';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(lbl, bx, by + 0.5);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  return { ccwX, ccwY, cwX, cwY };
+}
+
+// ─────────────────────────────────────────────
+//  Ruler supply box
+// ─────────────────────────────────────────────
+function drawRulerBox() {
+  const B = getRulerBox();
+  ctx.fillStyle   = 'rgba(30,27,8,0.92)';
+  ctx.strokeStyle = '#c8a830';
+  ctx.lineWidth   = 2;
+  drawRoundedRect(B.x, B.y, B.w, B.h, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle  = '#9a8844';
+  ctx.font       = 'bold 12px Arial';
+  ctx.textAlign  = 'center';
+  ctx.fillText('Rulers', B.x + B.w / 2, B.y + 18);
+
+  const previewR = { cx: B.x + B.w / 2, cy: B.y + B.h / 2 + 10, angle: 0, len: 72 };
+  drawRuler(previewR);
+
+  ctx.fillStyle = 'rgba(180,160,70,0.6)';
+  ctx.font      = '10px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('drag to place', B.x + B.w / 2, B.y + B.h - 7);
+}
+
+// ─────────────────────────────────────────────
+//  Reflection angles overlay
+// ─────────────────────────────────────────────
+function drawReflAngles(active) {
+  const tipPt = { x: cone.x, y: cone.y + TIP_DY };
+  const topPt = { x: cone.x, y: cone.y + TOP_DY };
+
+  for (const m of active) {
+    const nx = -Math.sin(m.angle), ny = Math.cos(m.angle);
+
+    // dashed normal through mirror centre
+    ctx.save();
+    ctx.strokeStyle = 'rgba(100,230,100,0.5)';
+    ctx.lineWidth   = 1;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(m.cx - nx * 50, m.cy - ny * 50);
+    ctx.lineTo(m.cx + nx * 50, m.cy + ny * 50);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    // angle labels for tip ray (brown) and top ray (red)
+    let labelOff = 0;
+    for (const [srcPt, color] of [[tipPt, '#CD6020'], [topPt, '#CC0000']]) {
+      const toM = normalize({ x: m.cx - srcPt.x, y: m.cy - srcPt.y });
+      const dot = toM.x * nx + toM.y * ny;
+      const angleDeg = Math.acos(Math.abs(dot)) * 180 / Math.PI;
+      // place label on the incoming-ray side of the normal
+      const sideSign = dot < 0 ? 1 : -1;
+      ctx.save();
+      ctx.fillStyle    = color;
+      ctx.font         = 'bold 10px Arial';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.globalAlpha  = 0.9;
+      ctx.fillText(
+        angleDeg.toFixed(1) + '°',
+        m.cx + sideSign * nx * 30,
+        m.cy + sideSign * ny * 30 + labelOff
+      );
+      ctx.restore();
+      labelOff += 13;
+    }
+  }
 }
 
 // ─────────────────────────────────────────────
@@ -606,6 +794,16 @@ function draw() {
   const tipPt = { x: cone.x,           y: cone.y + TIP_DY };
   const topPt = { x: cone.x,           y: cone.y + TOP_DY };
 
+  // Draw placed rulers + their rotate buttons
+  rulRotBtns = [];
+  for (const r of rulers) {
+    drawRuler(r);
+    const { ccwX, ccwY, cwX, cwY } = drawRulerRotateButtons(r);
+    rulRotBtns.push({ rulerId: r.id, dir: -1, x: ccwX, y: ccwY });
+    rulRotBtns.push({ rulerId: r.id, dir: +1, x:  cwX, y:  cwY });
+  }
+  if (rulerDrag && rulerDrag.mode === 'move') drawRuler(rulerDrag.ruler);
+
   // Build list of mirrors to simulate (placed + move-dragged if off box)
   const active = [...mirrors];
   if (drag && drag.mode === 'move' && !isOverBox(drag.mirror.cx, drag.mirror.cy)) {
@@ -647,6 +845,9 @@ function draw() {
     }
   }
 
+  // Reflection angles overlay (drawn before mirror buttons so labels stay readable)
+  if (showReflAngles) drawReflAngles(active);
+
   // Draw placed mirrors + their rotate buttons (on top of rays)
   rotBtns = [];
   for (const m of mirrors) {
@@ -673,8 +874,9 @@ function draw() {
     ctx.stroke();
   }
 
-  // Mirror supply box (on top of everything)
+  // Supply boxes (on top of everything)
   drawMirrorBox();
+  drawRulerBox();
 
   // Small dot markers at tip and top of the original cone
   ctx.fillStyle = '#8B4513';
@@ -711,7 +913,7 @@ function dist2(ax, ay, bx, by) {
 function onDown(e) {
   const pos = getPos(e);
 
-  // 1. Rotate buttons
+  // 1. Mirror rotate buttons
   for (const btn of rotBtns) {
     if (dist2(pos.x, pos.y, btn.x, btn.y) <= BTN_R + 2) {
       startRotateHold(btn.mirrorId, btn.dir);
@@ -719,14 +921,21 @@ function onDown(e) {
     }
   }
 
-  // 2. Placed mirrors (reverse = topmost first)
+  // 2. Ruler rotate buttons
+  for (const btn of rulRotBtns) {
+    if (dist2(pos.x, pos.y, btn.x, btn.y) <= BTN_R + 2) {
+      startRulerRotateHold(btn.rulerId, btn.dir);
+      return;
+    }
+  }
+
+  // 3. Placed mirrors (reverse = topmost first)
   for (let i = mirrors.length - 1; i >= 0; i--) {
     const m  = mirrors[i];
     const e1 = mirrorEnd1(m);
     const e2 = mirrorEnd2(m);
 
     if (dist2(pos.x, pos.y, e1.x, e1.y) < HANDLE_R + 4) {
-      // Rotation drag: mirror stays in mirrors[], we just track its index
       drag = { mode: 'rot1', mirrorIndex: i };
       return;
     }
@@ -735,7 +944,6 @@ function onDown(e) {
       return;
     }
     if (dist2(pos.x, pos.y, m.cx, m.cy) < BODY_R) {
-      // Move drag: remove from array and break all snaps
       removeSnapsFor(m.id);
       mirrors.splice(i, 1);
       drag = { mode: 'move', mirror: { ...m },
@@ -744,17 +952,51 @@ function onDown(e) {
     }
   }
 
-  // 3. Ice cream cone
+  // 4. Placed rulers (reverse = topmost first)
+  for (let i = rulers.length - 1; i >= 0; i--) {
+    const r    = rulers[i];
+    const half = r.len / 2;
+    const ca   = Math.cos(r.angle), sa = Math.sin(r.angle);
+    const ex1  = { x: r.cx - ca * half, y: r.cy - sa * half };
+    const ex2  = { x: r.cx + ca * half, y: r.cy + sa * half };
+
+    if (dist2(pos.x, pos.y, ex1.x, ex1.y) < HANDLE_R + 4) {
+      rulerDrag = { mode: 'stretch1', rulerIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, ex2.x, ex2.y) < HANDLE_R + 4) {
+      rulerDrag = { mode: 'stretch2', rulerIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, r.cx, r.cy) < BODY_R) {
+      rulers.splice(i, 1);
+      rulerDrag = { mode: 'move', ruler: { ...r },
+                    offsetX: pos.x - r.cx, offsetY: pos.y - r.cy };
+      return;
+    }
+  }
+
+  // 5. Ice cream cone
   if (dist2(pos.x, pos.y, cone.x, cone.y) < 55) {
     coneDrag = { offsetX: pos.x - cone.x, offsetY: pos.y - cone.y };
     return;
   }
 
-  // 4. Mirror supply box → create and start moving a new mirror
+  // 6. Mirror supply box → create new mirror
   if (isOverBox(pos.x, pos.y)) {
     drag = {
       mode: 'move',
       mirror: { id: nextId++, cx: pos.x, cy: pos.y, angle: Math.PI / 2 },
+      offsetX: 0, offsetY: 0
+    };
+    return;
+  }
+
+  // 7. Ruler supply box → create new ruler
+  if (isOverRulerBox(pos.x, pos.y)) {
+    rulerDrag = {
+      mode: 'move',
+      ruler: { id: nextRulerId++, cx: pos.x, cy: pos.y, angle: 0, len: RULER_DEFAULT_LEN },
       offsetX: 0, offsetY: 0
     };
   }
@@ -768,6 +1010,37 @@ function onMove(e) {
     cone.y = pos.y - coneDrag.offsetY;
     return;
   }
+
+  if (rulerDrag) {
+    if (rulerDrag.mode === 'move') {
+      rulerDrag.ruler.cx = pos.x - rulerDrag.offsetX;
+      rulerDrag.ruler.cy = pos.y - rulerDrag.offsetY;
+    } else if (rulerDrag.mode === 'stretch1') {
+      // end1 moves to pos, end2 stays fixed
+      const r = rulers[rulerDrag.rulerIndex];
+      if (!r) return;
+      const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
+      const ex2 = { x: r.cx + ca * (r.len / 2), y: r.cy + sa * (r.len / 2) };
+      const newLen = Math.max(30, Math.hypot(ex2.x - pos.x, ex2.y - pos.y));
+      r.angle = Math.atan2(ex2.y - pos.y, ex2.x - pos.x);
+      r.len   = newLen;
+      r.cx    = (pos.x + ex2.x) / 2;
+      r.cy    = (pos.y + ex2.y) / 2;
+    } else if (rulerDrag.mode === 'stretch2') {
+      // end2 moves to pos, end1 stays fixed
+      const r = rulers[rulerDrag.rulerIndex];
+      if (!r) return;
+      const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
+      const ex1 = { x: r.cx - ca * (r.len / 2), y: r.cy - sa * (r.len / 2) };
+      const newLen = Math.max(30, Math.hypot(pos.x - ex1.x, pos.y - ex1.y));
+      r.angle = Math.atan2(pos.y - ex1.y, pos.x - ex1.x);
+      r.len   = newLen;
+      r.cx    = (ex1.x + pos.x) / 2;
+      r.cy    = (ex1.y + pos.y) / 2;
+    }
+    return;
+  }
+
   if (!drag) return;
 
   if (drag.mode === 'move') {
@@ -788,17 +1061,28 @@ function onMove(e) {
 
 function onUp(e) {
   stopRotateHold();
+  stopRulerRotateHold();
   if (coneDrag) { coneDrag = null; return; }
+
+  if (rulerDrag) {
+    if (rulerDrag.mode === 'move') {
+      if (!isOverRulerBox(rulerDrag.ruler.cx, rulerDrag.ruler.cy)) {
+        rulers.push({ ...rulerDrag.ruler });
+      }
+    }
+    // stretch modes: ruler stays in rulers[], nothing to do
+    rulerDrag = null;
+    return;
+  }
+
   if (!drag) return;
 
   if (drag.mode === 'move') {
     if (!isOverBox(drag.mirror.cx, drag.mirror.cy)) {
       mirrors.push({ ...drag.mirror });
-      detectSnaps(drag.mirror.id);   // try to snap to nearby mirrors
+      detectSnaps(drag.mirror.id);
     }
-    // if over box: mirror is simply discarded (already removed from array)
   }
-  // rot1/rot2: mirror was never removed from array, nothing to do
   drag = null;
 }
 
@@ -812,6 +1096,9 @@ canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, {
 canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp(e);   }, { passive: false });
 
 window.addEventListener('resize', resize);
+document.getElementById('showReflAngles').addEventListener('change', e => {
+  showReflAngles = e.target.checked;
+});
 resize();
 draw();
 </script>
