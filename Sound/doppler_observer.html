@@ -127,7 +127,7 @@ canvas { display: block; }
 // students see the Doppler relationship.
 
 const WAVE_SPEED    = 120;   // px/s — speed of expanding wave fronts
-const SOURCE_FREQ   = 2;     // Hz — wave fronts emitted per second
+const SOURCE_FREQ   = 2;     //  — wave fronts emitted per second
 const SOURCE_PERIOD = 1 / SOURCE_FREQ;  // 0.5 s between emissions
 const SIM_DURATION  = 6;     // seconds — total run time
 const SOURCE_X      = 50;    // source x-position (left side)
@@ -415,7 +415,7 @@ function draw() {
   ctx.textAlign = 'center';
   ctx.font = '12px Arial';
   ctx.fillStyle = '#777';
-  ctx.fillText('Source (2 Hz)', SOURCE_X + 4, centerY + 52);
+  ctx.fillText('Source', SOURCE_X + 4, centerY + 52);
   ctx.fillText('Observer', observerX, centerY + 52);
 
   // Show a small velocity indicator near the observer
