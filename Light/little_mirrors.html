@@ -1,0 +1,819 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Little Mirrors</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #1a1a2e; font-family: Arial, sans-serif; }
+    canvas { display: block; touch-action: none; user-select: none; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+let cone;      // {x, y} cone center on screen
+let SCREEN_X;  // x position of the vertical projection screen
+
+// Mirror supply box (top-left)
+const BOX = { x: 20, y: 20, w: 110, h: 110 };
+
+// Ice cream geometry relative to cone center (cx, cy)
+// Cone triangle: (-22, +5), (+22, +5), (0, +45)  → tip at (0, +45)
+// Bottom scoop: center (0, -12), r=22             → top at (0, -34)
+// Top scoop:    center (0, -47), r=20             → top at (0, -67)
+// Cherry:       center (0, -73), r=6              → top at (0, -79)
+const TIP_DY  =  45;   // y offset of cone tip from cone center
+const TOP_DY  = -79;   // y offset of topmost point (cherry tip) from cone center
+const CONE_SPAN = TIP_DY - TOP_DY;  // 124 px — distance from tip to top in original drawing
+
+// Mirror constants
+const MIRROR_LEN  = 70;
+const MIRROR_HALF = MIRROR_LEN / 2;
+const HANDLE_R    = 8;    // radius of end-handle hit zone
+const BODY_R      = 26;   // radius of center-move hit zone
+const BTN_R       = 10;   // radius of rotate-button hit zone
+const ROT_STEP    = Math.PI / 2880;  // 0.0625 degrees
+
+const SNAP_THRESHOLD = 20;  // px — how close ends must be to snap
+
+// State
+let mirrors       = [];   // placed mirrors on screen: [{id, cx, cy, angle}, ...]
+let nextId        = 0;
+let drag          = null;
+// drag modes:
+//   'move'         – mirror removed from array, stored in drag.mirror
+//   'rot1'/'rot2'  – mirror stays in mirrors[], drag.mirrorIndex is its index
+
+let snaps = [];
+// snap = {parentId, parentEndSign, childId, childEndSign}
+//   parentEndSign / childEndSign: +1 or -1
+//   The connected point on mirror m with sign s is:
+//     (m.cx + s*MIRROR_HALF*cos(m.angle),  m.cy + s*MIRROR_HALF*sin(m.angle))
+
+let coneDrag      = null; // {offsetX, offsetY} while dragging the cone
+
+// Rotate-button hit regions rebuilt every frame
+let rotBtns = []; // [{mirrorId, dir:+1|-1, x, y}]  dir: +1=CW, -1=CCW
+
+// Held rotate button (hold-to-spin)
+let rotHoldMeta   = null;  // {mirrorId, dir} while button is held
+let rotHoldDelay  = null;  // setTimeout id for ramp-up delay
+let rotHoldIntv   = null;  // setInterval id for continuous spin
+
+function startRotateHold(mirrorId, dir) {
+  stopRotateHold();
+  rotHoldMeta  = { mirrorId, dir };
+  // fire once immediately, then continuously after 350 ms
+  applyRotate();
+  rotHoldDelay = setTimeout(() => {
+    rotHoldIntv = setInterval(applyRotate, 40); // ~25 steps/sec
+  }, 350);
+}
+
+function applyRotate() {
+  if (!rotHoldMeta) return;
+  const m = mirrors.find(m => m.id === rotHoldMeta.mirrorId);
+  if (m) {
+    m.angle += rotHoldMeta.dir * ROT_STEP;
+    applySnapConstraints(m.id);
+  }
+}
+
+function stopRotateHold() {
+  clearTimeout(rotHoldDelay);
+  clearInterval(rotHoldIntv);
+  rotHoldDelay = rotHoldIntv = rotHoldMeta = null;
+}
+
+// ─────────────────────────────────────────────
+//  Layout helpers
+// ─────────────────────────────────────────────
+let coneInitialized = false;
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = W;
+  canvas.height = H;
+  if (!coneInitialized) {
+    cone = { x: Math.round(W * 0.22), y: Math.round(H * 0.50) };
+    coneInitialized = true;
+  }
+  SCREEN_X = Math.round(W * 0.82);
+}
+
+function isOverBox(x, y) {
+  return x >= BOX.x && x <= BOX.x + BOX.w &&
+         y >= BOX.y && y <= BOX.y + BOX.h;
+}
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+// ─────────────────────────────────────────────
+//  Ice-cream drawing
+// ─────────────────────────────────────────────
+function drawIceCream(c2, cx, cy, alpha) {
+  c2.save();
+  if (alpha !== undefined) c2.globalAlpha = alpha;
+
+  // ── Cone ──
+  c2.fillStyle   = '#C68642';
+  c2.strokeStyle = '#A0522D';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.moveTo(cx - 22, cy + 5);
+  c2.lineTo(cx + 22, cy + 5);
+  c2.lineTo(cx,      cy + 45);
+  c2.closePath();
+  c2.fill();
+  c2.stroke();
+
+  // waffle lines (horizontal)
+  c2.strokeStyle = 'rgba(120,60,10,0.45)';
+  c2.lineWidth   = 0.7;
+  for (let row = 0; row < 4; row++) {
+    const fy = cy + 8 + row * 9;
+    const t  = (fy - (cy + 5)) / 40;
+    const hw = 22 * (1 - t);
+    c2.beginPath();
+    c2.moveTo(cx - hw, fy);
+    c2.lineTo(cx + hw, fy);
+    c2.stroke();
+  }
+  // waffle lines (diagonal left)
+  c2.strokeStyle = 'rgba(120,60,10,0.30)';
+  c2.lineWidth   = 0.6;
+  for (let d = -3; d <= 3; d++) {
+    const startX = cx + d * 10;
+    c2.beginPath();
+    c2.moveTo(startX - 22, cy + 5);
+    c2.lineTo(cx,          cy + 45);
+    c2.stroke();
+  }
+
+  // ── Bottom scoop (vanilla cream) ──
+  c2.fillStyle   = '#FFF8DC';
+  c2.strokeStyle = '#D4C07A';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.arc(cx, cy - 12, 22, 0, Math.PI * 2);
+  c2.fill();
+  c2.stroke();
+
+  // ── Top scoop (strawberry) ──
+  c2.fillStyle   = '#FFB6C1';
+  c2.strokeStyle = '#E07088';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.arc(cx, cy - 47, 20, 0, Math.PI * 2);
+  c2.fill();
+  c2.stroke();
+
+  // slight highlight on top scoop
+  c2.fillStyle = 'rgba(255,255,255,0.20)';
+  c2.beginPath();
+  c2.arc(cx - 6, cy - 54, 8, 0, Math.PI * 2);
+  c2.fill();
+
+  // ── Cherry ──
+  c2.fillStyle   = '#CC0022';
+  c2.strokeStyle = '#880011';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.arc(cx, cy - 73, 6, 0, Math.PI * 2);
+  c2.fill();
+  c2.stroke();
+
+  // cherry stem
+  c2.strokeStyle = '#228833';
+  c2.lineWidth   = 1.5;
+  c2.beginPath();
+  c2.moveTo(cx, cy - 73);
+  c2.quadraticCurveTo(cx + 6, cy - 82, cx + 3, cy - 88);
+  c2.stroke();
+
+  c2.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Ghost ice-cream on the screen
+//  tipScreenPt / topScreenPt are the screen intersections
+// ─────────────────────────────────────────────
+function drawGhostIceCream(tipScreenPt, topScreenPt) {
+  const dx   = topScreenPt.x - tipScreenPt.x;
+  const dy   = topScreenPt.y - tipScreenPt.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 6) return;
+
+  const scale       = dist / CONE_SPAN;
+  // In original drawing, tip-to-top vector is (0, TOP_DY - TIP_DY) = (0, -124)
+  // pointing straight up → angle = -π/2
+  const origAngle   = -Math.PI / 2;
+  const targetAngle = Math.atan2(dy, dx);
+  const rotation    = targetAngle - origAngle;
+
+  ctx.save();
+  ctx.globalAlpha = 0.1;
+  ctx.translate(tipScreenPt.x, tipScreenPt.y);
+  ctx.rotate(rotation);
+  ctx.scale(scale, scale);
+  // Draw with cone center at (0, -TIP_DY) so tip lands at (0,0)
+  drawIceCream(ctx, 0, -TIP_DY);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Mirror drawing
+// ─────────────────────────────────────────────
+function drawMirror(m, showHandles) {
+  const ca = Math.cos(m.angle), sa = Math.sin(m.angle);
+
+  ctx.save();
+  ctx.translate(m.cx, m.cy);
+  ctx.rotate(m.angle);
+
+  // mirror body — silver bar
+  const grd = ctx.createLinearGradient(0, -4, 0, 4);
+  grd.addColorStop(0,   '#777');
+  grd.addColorStop(0.3, '#fff');
+  grd.addColorStop(0.6, '#ccc');
+  grd.addColorStop(1,   '#555');
+  ctx.fillStyle = grd;
+  // manual rounded rect
+  const x0 = -MIRROR_HALF, y0 = -4, mw = MIRROR_LEN, mh = 8, r = 3;
+  ctx.beginPath();
+  ctx.moveTo(x0 + r, y0);
+  ctx.lineTo(x0 + mw - r, y0);
+  ctx.arcTo(x0 + mw, y0,      x0 + mw, y0 + r,      r);
+  ctx.lineTo(x0 + mw, y0 + mh - r);
+  ctx.arcTo(x0 + mw, y0 + mh, x0 + mw - r, y0 + mh, r);
+  ctx.lineTo(x0 + r, y0 + mh);
+  ctx.arcTo(x0, y0 + mh, x0, y0 + mh - r, r);
+  ctx.lineTo(x0, y0 + r);
+  ctx.arcTo(x0, y0, x0 + r, y0, r);
+  ctx.closePath();
+  ctx.fill();
+
+  // highlight streak
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(-MIRROR_HALF + 6, -1.5);
+  ctx.lineTo( MIRROR_HALF - 6, -1.5);
+  ctx.stroke();
+
+  ctx.restore();
+
+  if (showHandles) {
+    for (const [hx, hy, sign] of [
+      [m.cx - ca * MIRROR_HALF, m.cy - sa * MIRROR_HALF, -1],
+      [m.cx + ca * MIRROR_HALF, m.cy + sa * MIRROR_HALF, +1]
+    ]) {
+      const isSnapped = snaps.some(s =>
+        (s.parentId === m.id && s.parentEndSign === sign) ||
+        (s.childId  === m.id && s.childEndSign  === sign)
+      );
+      ctx.fillStyle   = isSnapped ? '#e94560' : '#4a90d9';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(hx, hy, HANDLE_R - 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Snap helpers
+// ─────────────────────────────────────────────
+
+// Position of a mirror's end identified by sign (+1 = end2, -1 = end1)
+function getEndPt(m, sign) {
+  return {
+    x: m.cx + sign * MIRROR_HALF * Math.cos(m.angle),
+    y: m.cy + sign * MIRROR_HALF * Math.sin(m.angle)
+  };
+}
+
+// Which end is "top" (lower y on screen) — returns {sign, pt}
+function getTopEnd(m) {
+  const ep = Math.sin(m.angle) >= 0 ? -1 : 1;  // end with lower y
+  return { sign: ep, pt: getEndPt(m, ep) };
+}
+
+// Which end is "bottom" (higher y on screen) — returns {sign, pt}
+function getBottomEnd(m) {
+  const ep = Math.sin(m.angle) >= 0 ? 1 : -1;
+  return { sign: ep, pt: getEndPt(m, ep) };
+}
+
+// Move mirror m so that its end identified by `sign` lands at position pt
+function setEndPt(m, sign, pt) {
+  m.cx = pt.x - sign * MIRROR_HALF * Math.cos(m.angle);
+  m.cy = pt.y - sign * MIRROR_HALF * Math.sin(m.angle);
+}
+
+// After m's angle (or position) changed, re-apply the parent constraint
+// then cascade to children.
+function applySnapConstraints(mirrorId) {
+  const m = mirrors.find(m => m.id === mirrorId);
+  if (!m) return;
+
+  // Re-anchor m's bottom to parent's top (if m has a parent)
+  const ps = snaps.find(s => s.childId === mirrorId);
+  if (ps) {
+    const parent = mirrors.find(p => p.id === ps.parentId);
+    if (parent) {
+      setEndPt(m, ps.childEndSign, getEndPt(parent, ps.parentEndSign));
+    }
+  }
+
+  // Cascade: slide child whose bottom is snapped to m's top
+  const cs = snaps.find(s => s.parentId === mirrorId);
+  if (cs) {
+    const child = mirrors.find(c => c.id === cs.childId);
+    if (child) {
+      setEndPt(child, cs.childEndSign, getEndPt(m, cs.parentEndSign));
+      applySnapConstraints(child.id);  // recurse down the chain
+    }
+  }
+}
+
+// Remove every snap involving mirrorId
+function removeSnapsFor(mirrorId) {
+  snaps = snaps.filter(s => s.parentId !== mirrorId && s.childId !== mirrorId);
+}
+
+// True if potentialAncestorId is an ancestor of mirrorId (cycle check)
+function isAncestor(potentialAncestorId, mirrorId) {
+  let cur = mirrorId;
+  const seen = new Set();
+  while (cur !== null) {
+    if (cur === potentialAncestorId) return true;
+    if (seen.has(cur)) break;
+    seen.add(cur);
+    const ps = snaps.find(s => s.childId === cur);
+    cur = ps ? ps.parentId : null;
+  }
+  return false;
+}
+
+// After dropping mirror D, check every other mirror for snappable proximity
+function detectSnaps(droppedId) {
+  const D = mirrors.find(m => m.id === droppedId);
+  if (!D) return;
+
+  const Dtop = getTopEnd(D);
+  const Dbot = getBottomEnd(D);
+
+  for (const E of mirrors) {
+    if (E.id === droppedId) continue;
+    const Etop = getTopEnd(E);
+    const Ebot = getBottomEnd(E);
+
+    // D's bottom near E's top → E is parent, D is child
+    if (dist2(Dbot.pt.x, Dbot.pt.y, Etop.pt.x, Etop.pt.y) < SNAP_THRESHOLD) {
+      const parentTopFree = !snaps.some(s => s.parentId === E.id);
+      const childFree     = !snaps.some(s => s.childId  === D.id);
+      if (parentTopFree && childFree && !isAncestor(D.id, E.id)) {
+        snaps.push({ parentId: E.id, parentEndSign: Etop.sign,
+                     childId:  D.id, childEndSign:  Dbot.sign });
+        setEndPt(D, Dbot.sign, Etop.pt);  // exact snap
+        return;                            // only one snap per drop
+      }
+    }
+
+    // D's top near E's bottom → D is parent, E is child
+    if (dist2(Dtop.pt.x, Dtop.pt.y, Ebot.pt.x, Ebot.pt.y) < SNAP_THRESHOLD) {
+      const parentTopFree = !snaps.some(s => s.parentId === D.id);
+      const childFree     = !snaps.some(s => s.childId  === E.id);
+      if (parentTopFree && childFree && !isAncestor(E.id, D.id)) {
+        snaps.push({ parentId: D.id, parentEndSign: Dtop.sign,
+                     childId:  E.id, childEndSign:  Ebot.sign });
+        setEndPt(E, Ebot.sign, Dtop.pt);  // exact snap
+        return;
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Angle of mirror in degrees CCW from vertical
+//  Normalised to (-90, 90] so horizontal = ±90°.
+// ─────────────────────────────────────────────
+function mirrorDegreesFromVertical(m) {
+  let deg = (Math.PI / 2 - m.angle) * (180 / Math.PI);
+  // fold into (-90, 90]
+  while (deg >  90) deg -= 180;
+  while (deg <= -90) deg += 180;
+  return deg;
+}
+
+// ─────────────────────────────────────────────
+//  Rotate buttons + angle label next to a placed mirror
+//  Returns the two button centres so the caller can store them.
+// ─────────────────────────────────────────────
+function drawRotateButtons(m) {
+  // Buttons 22 px above the mirror centre, spread ±15 px
+  const ccwX = m.cx - 15, ccwY = m.cy - 22;
+  const  cwX = m.cx + 15,  cwY = m.cy - 22;
+
+  for (const [bx, by, label] of [[ccwX, ccwY, '↺'], [cwX, cwY, '↻']]) {
+    ctx.fillStyle    = 'rgba(20,40,80,0.88)';
+    ctx.strokeStyle  = '#4a90d9';
+    ctx.lineWidth    = 1.2;
+    ctx.beginPath();
+    ctx.arc(bx, by, BTN_R, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.fillStyle    = '#d0e8ff';
+    ctx.font         = '11px Arial';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, bx, by + 0.5);
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  // Degree label to the right of the mirror
+  const deg = mirrorDegreesFromVertical(m);
+  const label = (deg >= 0 ? '+' : '') + deg.toFixed(1) + '°';
+  ctx.fillStyle    = 'rgba(180,210,255,0.85)';
+  ctx.font         = 'bold 11px Arial';
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'middle';
+  // x = centre + how far the mirror bar reaches in the +x direction + small gap
+  const labelX = m.cx + MIRROR_HALF * Math.abs(Math.cos(m.angle)) + 8;
+  ctx.fillText(label, labelX, m.cy);
+  ctx.textBaseline = 'alphabetic';
+
+  return { ccwX, ccwY, cwX, cwY };
+}
+
+// ─────────────────────────────────────────────
+//  Mirror supply box
+// ─────────────────────────────────────────────
+function drawMirrorBox() {
+  // background panel
+  ctx.fillStyle   = 'rgba(16,33,62,0.92)';
+  ctx.strokeStyle = '#4a90d9';
+  ctx.lineWidth   = 2;
+  const bx = BOX.x, by = BOX.y, bw = BOX.w, bh = BOX.h, br = 8;
+  ctx.beginPath();
+  ctx.moveTo(bx + br, by);
+  ctx.lineTo(bx + bw - br, by);
+  ctx.arcTo(bx + bw, by,      bx + bw, by + br,      br);
+  ctx.lineTo(bx + bw, by + bh - br);
+  ctx.arcTo(bx + bw, by + bh, bx + bw - br, by + bh, br);
+  ctx.lineTo(bx + br, by + bh);
+  ctx.arcTo(bx,      by + bh, bx,      by + bh - br, br);
+  ctx.lineTo(bx,      by + br);
+  ctx.arcTo(bx,      by,      bx + br, by,            br);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // label
+  ctx.fillStyle  = '#8899aa';
+  ctx.font       = 'bold 12px Arial';
+  ctx.textAlign  = 'center';
+  ctx.fillText('Mirrors', BOX.x + BOX.w / 2, BOX.y + 18);
+
+  // preview mirror in box (vertical)
+  const previewM = { cx: BOX.x + BOX.w / 2, cy: BOX.y + BOX.h / 2 + 8, angle: Math.PI / 2 };
+  drawMirror(previewM, false);
+
+  ctx.fillStyle = 'rgba(100,150,200,0.6)';
+  ctx.font      = '10px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('drag to place', BOX.x + BOX.w / 2, BOX.y + BOX.h - 7);
+}
+
+// ─────────────────────────────────────────────
+//  Projection screen
+// ─────────────────────────────────────────────
+function drawProjectionScreen() {
+  // subtle glow band to the right of the line
+  const grd = ctx.createLinearGradient(SCREEN_X, 0, SCREEN_X + 50, 0);
+  grd.addColorStop(0, 'rgba(240,235,210,0.18)');
+  grd.addColorStop(1, 'rgba(240,235,210,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(SCREEN_X, 0, 50, H);
+
+  // screen line
+  ctx.strokeStyle = 'rgba(220,215,190,0.85)';
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(SCREEN_X, 0);
+  ctx.lineTo(SCREEN_X, H);
+  ctx.stroke();
+
+  // vertical label
+  ctx.save();
+  ctx.fillStyle  = '#7788aa';
+  ctx.font       = '13px Arial';
+  ctx.textAlign  = 'center';
+  ctx.translate(SCREEN_X + 22, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Screen', 0, 0);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Physics
+// ─────────────────────────────────────────────
+function normalize(v) {
+  const len = Math.hypot(v.x, v.y);
+  return len < 1e-9 ? { x: 0, y: 1 } : { x: v.x / len, y: v.y / len };
+}
+
+// Reflect direction `r` about unit normal `n`
+function reflect(r, n) {
+  const dot = r.x * n.x + r.y * n.y;
+  return { x: r.x - 2 * dot * n.x, y: r.y - 2 * dot * n.y };
+}
+
+// Intersect ray (from, dir) with the vertical screen at x = SCREEN_X
+// Returns null if the ray doesn't reach the screen in the forward direction
+function rayScreenHit(from, dir) {
+  if (Math.abs(dir.x) < 1e-9) return null;
+  const t = (SCREEN_X - from.x) / dir.x;
+  if (t <= 0.5) return null;   // screen is behind or too close
+  return { x: SCREEN_X, y: from.y + t * dir.y };
+}
+
+// Compute reflected ray data for a given source point and mirror
+// Returns { incoming:(to mirror), reflected:(from mirror), screenHit:{x,y}|null }
+function computeRay(sourcePt, m) {
+  const normal_candidate = { x: -Math.sin(m.angle), y: Math.cos(m.angle) };
+
+  const toMirrorDir = normalize({ x: m.cx - sourcePt.x, y: m.cy - sourcePt.y });
+
+  // Choose the normal that opposes the incoming ray (front face)
+  const dot = toMirrorDir.x * normal_candidate.x + toMirrorDir.y * normal_candidate.y;
+  const n   = dot < 0 ? normal_candidate : { x: -normal_candidate.x, y: -normal_candidate.y };
+
+  const reflDir  = reflect(toMirrorDir, n);
+  const screenHit = rayScreenHit({ x: m.cx, y: m.cy }, reflDir);
+
+  return { toMirrorDir, reflDir, screenHit };
+}
+
+// ─────────────────────────────────────────────
+//  Draw ray segment — clips off-canvas quietly
+// ─────────────────────────────────────────────
+function drawSegment(x1, y1, x2, y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+// ─────────────────────────────────────────────
+//  Main render loop
+// ─────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  drawProjectionScreen();
+
+  // Horizontal dashed axis through the cone centre, screen → left edge
+  ctx.save();
+  ctx.strokeStyle = 'rgba(180,180,160,0.35)';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath();
+  ctx.moveTo(SCREEN_X, cone.y);
+  ctx.lineTo(0, cone.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  drawIceCream(ctx, cone.x, cone.y);
+
+  const tipPt = { x: cone.x,           y: cone.y + TIP_DY };
+  const topPt = { x: cone.x,           y: cone.y + TOP_DY };
+
+  // Build list of mirrors to simulate (placed + move-dragged if off box)
+  const active = [...mirrors];
+  if (drag && drag.mode === 'move' && !isOverBox(drag.mirror.cx, drag.mirror.cy)) {
+    active.push(drag.mirror);
+  }
+
+  // For each mirror: compute rays, draw them, draw ghost image
+  for (const m of active) {
+    const tipRay = computeRay(tipPt, m);
+    const topRay = computeRay(topPt, m);
+
+    // ── Draw tip rays (brown / saddle-brown) ──
+    ctx.strokeStyle = '#8B4513';
+    ctx.lineWidth   = 1.5;
+    // incoming: tipPt → mirror center
+    drawSegment(tipPt.x, tipPt.y, m.cx, m.cy);
+    // reflected: mirror center → screen (or far)
+    if (tipRay.screenHit) {
+      drawSegment(m.cx, m.cy, tipRay.screenHit.x, tipRay.screenHit.y);
+    } else {
+      const far = { x: m.cx + tipRay.reflDir.x * 3000, y: m.cy + tipRay.reflDir.y * 3000 };
+      drawSegment(m.cx, m.cy, far.x, far.y);
+    }
+
+    // ── Draw top rays (red) ──
+    ctx.strokeStyle = '#CC0000';
+    ctx.lineWidth   = 1.5;
+    drawSegment(topPt.x, topPt.y, m.cx, m.cy);
+    if (topRay.screenHit) {
+      drawSegment(m.cx, m.cy, topRay.screenHit.x, topRay.screenHit.y);
+    } else {
+      const far = { x: m.cx + topRay.reflDir.x * 3000, y: m.cy + topRay.reflDir.y * 3000 };
+      drawSegment(m.cx, m.cy, far.x, far.y);
+    }
+
+    // ── Ghost image on screen ──
+    if (tipRay.screenHit && topRay.screenHit) {
+      drawGhostIceCream(tipRay.screenHit, topRay.screenHit);
+    }
+  }
+
+  // Draw placed mirrors + their rotate buttons (on top of rays)
+  rotBtns = [];
+  for (const m of mirrors) {
+    drawMirror(m, true);
+    const { ccwX, ccwY, cwX, cwY } = drawRotateButtons(m);
+    rotBtns.push({ mirrorId: m.id, dir: -1, x: ccwX, y: ccwY });
+    rotBtns.push({ mirrorId: m.id, dir: +1, x:  cwX, y:  cwY });
+  }
+
+  // Draw move-dragged mirror (rotation drags keep mirror in mirrors[])
+  if (drag && drag.mode === 'move') drawMirror(drag.mirror, true);
+
+  // Snap joint indicators (cyan dots at connection points)
+  for (const s of snaps) {
+    const parent = mirrors.find(m => m.id === s.parentId);
+    if (!parent) continue;
+    const pt = getEndPt(parent, s.parentEndSign);
+    ctx.fillStyle   = '#00e5ff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Mirror supply box (on top of everything)
+  drawMirrorBox();
+
+  // Small dot markers at tip and top of the original cone
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.arc(tipPt.x, tipPt.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#CC0000';
+  ctx.beginPath();
+  ctx.arc(topPt.x, topPt.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+
+  requestAnimationFrame(draw);
+}
+
+// ─────────────────────────────────────────────
+//  Hit testing helpers
+// ─────────────────────────────────────────────
+function mirrorEnd1(m) {
+  return { x: m.cx - Math.cos(m.angle) * MIRROR_HALF,
+           y: m.cy - Math.sin(m.angle) * MIRROR_HALF };
+}
+function mirrorEnd2(m) {
+  return { x: m.cx + Math.cos(m.angle) * MIRROR_HALF,
+           y: m.cy + Math.sin(m.angle) * MIRROR_HALF };
+}
+function dist2(ax, ay, bx, by) {
+  return Math.hypot(ax - bx, ay - by);
+}
+
+// ─────────────────────────────────────────────
+//  Event handling
+// ─────────────────────────────────────────────
+function onDown(e) {
+  const pos = getPos(e);
+
+  // 1. Rotate buttons
+  for (const btn of rotBtns) {
+    if (dist2(pos.x, pos.y, btn.x, btn.y) <= BTN_R + 2) {
+      startRotateHold(btn.mirrorId, btn.dir);
+      return;
+    }
+  }
+
+  // 2. Placed mirrors (reverse = topmost first)
+  for (let i = mirrors.length - 1; i >= 0; i--) {
+    const m  = mirrors[i];
+    const e1 = mirrorEnd1(m);
+    const e2 = mirrorEnd2(m);
+
+    if (dist2(pos.x, pos.y, e1.x, e1.y) < HANDLE_R + 4) {
+      // Rotation drag: mirror stays in mirrors[], we just track its index
+      drag = { mode: 'rot1', mirrorIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, e2.x, e2.y) < HANDLE_R + 4) {
+      drag = { mode: 'rot2', mirrorIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, m.cx, m.cy) < BODY_R) {
+      // Move drag: remove from array and break all snaps
+      removeSnapsFor(m.id);
+      mirrors.splice(i, 1);
+      drag = { mode: 'move', mirror: { ...m },
+               offsetX: pos.x - m.cx, offsetY: pos.y - m.cy };
+      return;
+    }
+  }
+
+  // 3. Ice cream cone
+  if (dist2(pos.x, pos.y, cone.x, cone.y) < 55) {
+    coneDrag = { offsetX: pos.x - cone.x, offsetY: pos.y - cone.y };
+    return;
+  }
+
+  // 4. Mirror supply box → create and start moving a new mirror
+  if (isOverBox(pos.x, pos.y)) {
+    drag = {
+      mode: 'move',
+      mirror: { id: nextId++, cx: pos.x, cy: pos.y, angle: Math.PI / 2 },
+      offsetX: 0, offsetY: 0
+    };
+  }
+}
+
+function onMove(e) {
+  const pos = getPos(e);
+
+  if (coneDrag) {
+    cone.x = pos.x - coneDrag.offsetX;
+    cone.y = pos.y - coneDrag.offsetY;
+    return;
+  }
+  if (!drag) return;
+
+  if (drag.mode === 'move') {
+    drag.mirror.cx = pos.x - drag.offsetX;
+    drag.mirror.cy = pos.y - drag.offsetY;
+  } else if (drag.mode === 'rot1') {
+    const m = mirrors[drag.mirrorIndex];
+    if (!m) return;
+    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx) + Math.PI;
+    applySnapConstraints(m.id);
+  } else if (drag.mode === 'rot2') {
+    const m = mirrors[drag.mirrorIndex];
+    if (!m) return;
+    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx);
+    applySnapConstraints(m.id);
+  }
+}
+
+function onUp(e) {
+  stopRotateHold();
+  if (coneDrag) { coneDrag = null; return; }
+  if (!drag) return;
+
+  if (drag.mode === 'move') {
+    if (!isOverBox(drag.mirror.cx, drag.mirror.cy)) {
+      mirrors.push({ ...drag.mirror });
+      detectSnaps(drag.mirror.id);   // try to snap to nearby mirrors
+    }
+    // if over box: mirror is simply discarded (already removed from array)
+  }
+  // rot1/rot2: mirror was never removed from array, nothing to do
+  drag = null;
+}
+
+canvas.addEventListener('mousedown',  onDown);
+canvas.addEventListener('mousemove',  onMove);
+canvas.addEventListener('mouseup',    onUp);
+canvas.addEventListener('mouseleave', onUp);
+
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, { passive: false });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, { passive: false });
+canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp(e);   }, { passive: false });
+
+window.addEventListener('resize', resize);
+resize();
+draw();
+</script>
+</body>
+</html>
