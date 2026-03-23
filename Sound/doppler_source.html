@@ -295,6 +295,7 @@ function gameLoop(timestamp) {
   lastTimestamp = timestamp;
 
   simTime += dt;
+  if (simTime > SIM_DURATION) simTime = SIM_DURATION;
 
   emitFlashTimer  = Math.max(0, emitFlashTimer - dt);
   countFlashTimer = Math.max(0, countFlashTimer - dt);
