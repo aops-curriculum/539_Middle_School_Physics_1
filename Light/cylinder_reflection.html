@@ -245,10 +245,17 @@
           </div>
           <input type="range" id="observer-slider" min="5" max="60" step="0.5" value="20.0">
         </div>
+        <div class="slider-row">
+          <div class="slider-label">
+            <span>Edge Buffer</span>
+            <span class="val" id="buffer-val">0.0 mm</span>
+          </div>
+          <input type="range" id="buffer-slider" min="0" max="10" step="0.5" value="0">
+        </div>
       </div>
       <div class="hint" style="margin-top:10px;">
         <strong>R</strong> = cylinder radius · <strong>E</strong> = eye-to-front-edge distance.
-        Scale: 38 px/cm (~96 DPI).
+        Scale: 38 px/cm (~96 DPI). <strong>Buffer</strong> = blank gap between cylinder edge and warp.
       </div>
     </div>
 
@@ -278,6 +285,10 @@
           </div>
         </div>
         <div class="hint" style="margin-top:8px;">Drag the canvas to reposition the image.</div>
+        <div class="toggle-row" style="margin-top:10px;">
+          <input type="checkbox" class="toggle" id="hide-direct-view-toggle">
+          <label for="hide-direct-view-toggle">Hide outside-mirror image</label>
+        </div>
       </div>
       <div class="toggle-row" style="margin-top:10px;">
         <input type="checkbox" class="toggle" id="show-grid-toggle">
@@ -347,6 +358,12 @@ let showGrid = false;
 // Morph display toggle
 let showMorph = true;
 
+// Buffer around cylinder edge (mm)
+let bufferMm = 0;
+
+// Hide the semi-transparent directly-visible region
+let hideDirectView = false;
+
 // Canvas drag state
 let isDraggingCanvas = false;
 let dragLastX = 0, dragLastY = 0;
@@ -377,8 +394,11 @@ const imgScaleSlider   = document.getElementById('img-scale-slider');
 const imgScaleVal      = document.getElementById('img-scale-val');
 const offsetDisplay    = document.getElementById('offset-display');
 const resetPosBtn      = document.getElementById('reset-pos-btn');
-const pasteBtn         = document.getElementById('paste-btn');
-const showGridToggle   = document.getElementById('show-grid-toggle');
+const pasteBtn            = document.getElementById('paste-btn');
+const showGridToggle      = document.getElementById('show-grid-toggle');
+const bufferSlider        = document.getElementById('buffer-slider');
+const bufferVal           = document.getElementById('buffer-val');
+const hideDirectViewToggle = document.getElementById('hide-direct-view-toggle');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Image loading
@@ -499,6 +519,17 @@ showSourceToggle.addEventListener('change', () => {
 
 showGridToggle.addEventListener('change', () => {
   showGrid = showGridToggle.checked;
+  repaintFromCache();
+});
+
+bufferSlider.addEventListener('input', () => {
+  bufferMm = parseFloat(bufferSlider.value);
+  bufferVal.textContent = bufferMm.toFixed(1) + ' mm';
+});
+bufferSlider.addEventListener('change', scheduleRender);
+
+hideDirectViewToggle.addEventListener('change', () => {
+  hideDirectView = hideDirectViewToggle.checked;
   repaintFromCache();
 });
 
@@ -626,10 +657,11 @@ function findReflectionPhi(dx, dy, R, E) {
     return mid * sign;
 }
 
-function renderBackwardMapping(srcPx, srcW, srcH, R, E, outPx, outW, outH, scaleMult, offsetX, offsetY) {
+function renderBackwardMapping(srcPx, srcW, srcH, R, E, outPx, outW, outH, scaleMult, offsetX, offsetY, bufferCm) {
     const effectiveScale = ((2 * R) / Math.max(srcW, srcH)) * scaleMult;
     const cx = outW / 2;
     const cy = outH / 2;
+    const innerR = R + bufferCm;  // skip pixels within buffer of cylinder edge
 
     // Loop over every pixel on the physical output canvas
     for (let py = 0; py < outH; py++) {
@@ -637,7 +669,7 @@ function renderBackwardMapping(srcPx, srcW, srcH, R, E, outPx, outW, outH, scale
             const dx = (px - cx) / PX_PER_CM;
             const dy = -(py - cy) / PX_PER_CM;
 
-            if (dx * dx + dy * dy <= R * R) continue; // Skip physical interior
+            if (dx * dx + dy * dy <= innerR * innerR) continue; // Skip interior + buffer
 
             const phi = findReflectionPhi(dx, dy, R, E);
             if (phi === null) continue; 
@@ -853,14 +885,16 @@ function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
   };
 
   // ── Semi-transparent: directly-visible region (canvas MINUS shadow cone) ──
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, canvasSize, canvasSize);
-  addShadowCone();
-  ctx.clip('evenodd');
-  ctx.globalAlpha = 0.28;
-  ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
-  ctx.restore();
+  if (!hideDirectView) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, canvasSize, canvasSize);
+    addShadowCone();
+    ctx.clip('evenodd');
+    ctx.globalAlpha = 0.28;
+    ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
+    ctx.restore();
+  }
 
   // ── Full-opacity: shadow cone region (projected into mirror — show clearly) ──
   ctx.save();
@@ -937,7 +971,7 @@ function doRender() {
   const t0 = performance.now();
   if (showMorph) {
     renderBackwardMapping(srcPx, srcW, srcH, R, E, outImg.data, sizePx, sizePx,
-                          srcScaleMult, srcOffsetX, srcOffsetY);
+                          srcScaleMult, srcOffsetX, srcOffsetY, bufferMm / 10);
     warpCacheData = new Uint8ClampedArray(outImg.data);
     ctx.putImageData(outImg, 0, 0);
   } else {
@@ -972,55 +1006,108 @@ function doRender() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Print to PDF
 // ─────────────────────────────────────────────────────────────────────────────
-function getContentSizeCm() {
-  if (!warpCacheData || !warpSizePx) return null;
-  const data = warpCacheData, w = warpSizePx;
-  let minX = w - 1, maxX = 0, minY = w - 1, maxY = 0, found = false;
-  for (let y = 0; y < w; y++) {
-    for (let x = 0; x < w; x++) {
-      const i = (y * w + x) * 4;
-      if (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250) {
-        if (x < minX) minX = x;
-        if (x > maxX) maxX = x;
-        if (y < minY) minY = y;
-        if (y > maxY) maxY = y;
-        found = true;
+
+// Returns pixel bounds of all content: warped pixels (from cache) plus the
+// cylinder ring (computed analytically so it's always included even when the
+// warp cache is absent).
+function getContentBoundsPx() {
+  if (!warpSizePx) return null;
+  const w = warpSizePx;
+  const cx = w / 2, cy = w / 2;
+  const R  = parseFloat(radiusSlider.value);
+  const rPx = R * PX_PER_CM + 3;  // +3 px for stroke line-width
+
+  // Start from the cylinder ring's axis-aligned bounding box
+  let minX = Math.max(0, Math.floor(cx - rPx));
+  let maxX = Math.min(w - 1, Math.ceil(cx + rPx));
+  let minY = Math.max(0, Math.floor(cy - rPx));
+  let maxY = Math.min(w - 1, Math.ceil(cy + rPx));
+
+  // Expand to include warped image pixels
+  if (warpCacheData) {
+    const data = warpCacheData;
+    for (let y = 0; y < w; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
       }
     }
   }
-  if (!found) return null;
-  return { w: (maxX - minX) / PX_PER_CM, h: (maxY - minY) / PX_PER_CM };
+
+  return { minX, maxX, minY, maxY };
 }
 
 pdfBtn.addEventListener('click', () => {
-  const dataUrl  = outputCanvas.toDataURL('image/png');
-  const imgCm    = outputCanvas.width / PX_PER_CM;
-  const imgCmStr = imgCm.toFixed(2);
+  // US Letter dimensions in cm
+  const portW = 21.59, portH = 27.94;
 
-  // US Letter in cm
-  const pageWcm = 21.59, pageHcm = 27.94;
+  const bounds = getContentBoundsPx();
+  let contentW, contentH;
+  if (bounds) {
+    contentW = (bounds.maxX - bounds.minX) / PX_PER_CM;
+    contentH = (bounds.maxY - bounds.minY) / PX_PER_CM;
+  } else {
+    contentW = outputCanvas.width / PX_PER_CM;
+    contentH = outputCanvas.height / PX_PER_CM;
+  }
 
-  const content = getContentSizeCm();
-  const contentTooBig = content && (content.w > pageWcm || content.h > pageHcm);
-  if (contentTooBig) {
+  // Choose orientation based on content aspect ratio
+  const landscape = contentW > contentH;
+  const pageW = landscape ? portH : portW;   // printable width in chosen orientation
+  const pageH = landscape ? portW : portH;   // printable height in chosen orientation
+
+  // Warn only if content cannot fit on US Letter in *either* orientation
+  const fitsPortrait  = contentW <= portW && contentH <= portH;
+  const fitsLandscape = contentW <= portH && contentH <= portW;
+  if (!fitsPortrait && !fitsLandscape) {
     const ok = confirm(
-      `The warped image content is ${content.w.toFixed(1)}×${content.h.toFixed(1)} cm, ` +
-      `which is larger than US Letter paper (${pageWcm.toFixed(1)}×${pageHcm.toFixed(1)} cm).\n\n` +
-      `Parts of the image will be clipped when printed on letter-size paper. ` +
+      `The content is ${contentW.toFixed(1)}×${contentH.toFixed(1)} cm, which is too large ` +
+      `for US Letter paper in any orientation.\n\nParts of the image will be clipped. ` +
       `Reduce Cylinder Radius R to shrink the output, or use larger paper.\n\nContinue anyway?`
     );
     if (!ok) return;
   }
+
+  // Crop the canvas to the content bounding box for printing
+  let dataUrl, imgW_cm, imgH_cm;
+  if (bounds) {
+    const cropW = bounds.maxX - bounds.minX + 1;
+    const cropH = bounds.maxY - bounds.minY + 1;
+    const crop  = document.createElement('canvas');
+    crop.width  = cropW;
+    crop.height = cropH;
+    crop.getContext('2d').drawImage(
+      outputCanvas,
+      bounds.minX, bounds.minY, cropW, cropH,
+      0, 0, cropW, cropH
+    );
+    dataUrl  = crop.toDataURL('image/png');
+    imgW_cm  = cropW / PX_PER_CM;
+    imgH_cm  = cropH / PX_PER_CM;
+  } else {
+    dataUrl  = outputCanvas.toDataURL('image/png');
+    imgW_cm  = outputCanvas.width  / PX_PER_CM;
+    imgH_cm  = outputCanvas.height / PX_PER_CM;
+  }
+
+  const pageSize   = landscape ? '11in 8.5in' : '8.5in 11in';
+  const bodyW      = landscape ? '11in' : '8.5in';
+  const bodyH      = landscape ? '8.5in' : '11in';
 
   const win = window.open('', '_blank');
   if (!win) { alert('Allow pop-ups to use Print to PDF.'); return; }
   win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
 <style>
 *,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
-@page{size:8.5in 11in;margin:0}
-html,body{width:8.5in;height:11in;background:white;overflow:hidden}
+@page{size:${pageSize};margin:0}
+html,body{width:${bodyW};height:${bodyH};background:white;overflow:hidden}
 body{display:flex;align-items:center;justify-content:center}
-img{width:${imgCmStr}cm;height:${imgCmStr}cm;display:block}
+img{width:${imgW_cm.toFixed(2)}cm;height:${imgH_cm.toFixed(2)}cm;display:block}
 .note{position:fixed;bottom:6px;left:0;right:0;text-align:center;
       font-family:sans-serif;font-size:11px;color:#999;display:none}
 @media screen{.note{display:block}}
