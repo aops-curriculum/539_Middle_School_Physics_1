@@ -904,6 +904,54 @@ function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
   ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
   ctx.restore();
 
+  // ── Buffer zone: overlay a white mask on the reflection of the buffer annulus ──
+  // The buffer annulus (R < r < R+buffer in physical print space) is not rendered in
+  // the warp. The virtual image points that would have been reflected off this zone
+  // are found by forward-mapping each canvas pixel: if forwardMap gives a physical
+  // point whose radius falls in [R, R+buffer], that virtual pixel should appear as
+  // "outside mirror" (semi-transparent or hidden), not full-opacity.
+  const bufferCm = bufferMm / 10;
+  if (bufferCm > 0) {
+    const maskSize = Math.min(canvasSize, 512);
+    const mask = document.createElement('canvas');
+    mask.width  = maskSize;
+    mask.height = maskSize;
+    const mCtx  = mask.getContext('2d');
+    const mData = mCtx.createImageData(maskSize, maskSize);
+    const step  = canvasSize / maskSize;
+    const R2lo  = R * R;
+    const R2hi  = (R + bufferCm) * (R + bufferCm);
+
+    for (let my = 0; my < maskSize; my++) {
+      for (let mx = 0; mx < maskSize; mx++) {
+        // Canvas pixel → virtual image physical coords
+        const vx = (mx * step - cx) / PX_PER_CM;
+        const vy = -(my * step - cy) / PX_PER_CM;
+        const m  = forwardMap(vx, vy, R, E);
+        if (!m) continue;
+        const dr2 = m.dx * m.dx + m.dy * m.dy;
+        if (dr2 >= R2lo && dr2 <= R2hi) {
+          const i = (my * maskSize + mx) * 4;
+          mData.data[i]   = 255;
+          mData.data[i+1] = 255;
+          mData.data[i+2] = 255;
+          // If hiding outside-mirror image entirely, erase; otherwise reduce to
+          // the same ~28 % opacity used for the directly-visible region.
+          mData.data[i+3] = hideDirectView ? 255 : Math.round(255 * 0.72);
+        }
+      }
+    }
+    mCtx.putImageData(mData, 0, 0);
+
+    // Only apply mask inside the shadow cone so the outside-mirror region is unaffected.
+    ctx.save();
+    ctx.beginPath();
+    addShadowCone();
+    ctx.clip();
+    ctx.drawImage(mask, 0, 0, canvasSize, canvasSize);
+    ctx.restore();
+  }
+
   // ── Full-opacity: cylinder interior (positioning guide) ──
   ctx.save();
   ctx.beginPath();
