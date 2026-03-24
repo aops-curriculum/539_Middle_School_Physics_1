@@ -1452,7 +1452,7 @@ function drawRayElements(ctx, cx, cy, R) {
     const iDotN = ix*nx + iy*ny;
     rx = ix - 2*iDotN*nx;
     ry = iy - 2*iDotN*ny;
-    chordLen = Q ? Math.hypot(Q.x - P.x, Q.y - P.y) : rPx * 2;
+    chordLen = Math.hypot(rayA.x - P.x, rayA.y - P.y);
   }
 
   // ── Normal ──
@@ -1496,7 +1496,7 @@ function drawRayElements(ctx, cx, cy, R) {
     ctx.moveTo(P.x, P.y);
     ctx.lineTo(ex, ey);
     ctx.stroke();
-    drawArrowHead(ctx, P.x, P.y, ex, ey, '#43a047', 16);
+    drawArrowHead(ctx, ex, ey, P.x, P.y, '#43a047', 16);
     ctx.restore();
   }
 
