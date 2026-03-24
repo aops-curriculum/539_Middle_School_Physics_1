@@ -40,6 +40,18 @@
       border-right: 1px solid var(--border);
       display: flex; flex-direction: column; overflow-y: auto; padding: 14px; gap: 16px;
     }
+
+    /* ── Right panel ── */
+    .right-panel {
+      width: 190px; flex-shrink: 0; background: var(--panel);
+      border-left: 1px solid var(--border);
+      display: flex; flex-direction: column; overflow-y: auto; padding: 14px; gap: 14px;
+    }
+    .rp-color-dot {
+      display: inline-block; width: 9px; height: 9px; border-radius: 50%;
+      margin-right: 4px; vertical-align: middle; flex-shrink: 0;
+    }
+    .rp-divider { border: none; border-top: 1px solid var(--border); margin: 2px 0; }
     .section-title {
       font-size: 11px; font-weight: 700; letter-spacing: 0.1em;
       text-transform: uppercase; color: var(--text-muted); margin-bottom: 8px;
@@ -537,6 +549,48 @@
       <canvas id="output-canvas" style="display:none;"></canvas>
     </div>
   </div>
+
+  <div class="right-panel">
+    <div>
+      <div class="section-title">Display</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="toggle-row">
+          <input type="checkbox" class="toggle" id="rp-eye-toggle" checked>
+          <label for="rp-eye-toggle"><span class="rp-color-dot" style="background:#3a6abf;"></span>Observer eye</label>
+        </div>
+      </div>
+    </div>
+    <hr class="rp-divider">
+    <div>
+      <div class="section-title">Ray Tracing</div>
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="toggle-row">
+          <input type="checkbox" class="toggle" id="rp-ray-toggle" checked>
+          <label for="rp-ray-toggle"><span class="rp-color-dot" style="background:#e53935;"></span>Straight ray</label>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" class="toggle" id="rp-longrefl-toggle" checked>
+          <label for="rp-longrefl-toggle"><span class="rp-color-dot" style="background:#4a90d9;"></span>Long reflection</label>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" class="toggle" id="rp-refl-toggle" checked>
+          <label for="rp-refl-toggle"><span class="rp-color-dot" style="background:#43a047;"></span>Reflection</label>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" class="toggle" id="rp-normal-toggle" checked>
+          <label for="rp-normal-toggle"><span class="rp-color-dot" style="background:#999;"></span>Normal</label>
+        </div>
+        <div class="toggle-row">
+          <input type="checkbox" class="toggle" id="rp-angles-toggle" checked>
+          <label for="rp-angles-toggle">Angles</label>
+        </div>
+      </div>
+    </div>
+    <div class="hint" style="margin-top:4px;">
+      Drag the red endpoints to move the ray. Only the bottom half of the circle reflects.
+    </div>
+  </div>
+
 </div><script>
 'use strict';
 
@@ -574,6 +628,19 @@ let hideDirectView = false;
 // Canvas drag state
 let isDraggingCanvas = false;
 let dragLastX = 0, dragLastY = 0;
+
+// ── Right-panel display toggles ──
+let showEye             = true;
+let showStraightRay     = true;
+let showLongReflection  = true;
+let showShortReflection = true;
+let showNormal          = true;
+let showAngles          = true;
+
+// ── Ray tracing state (physical cm from canvas centre) ──
+let rayA_cm       = null;   // { x, y }
+let rayB_cm       = null;
+let rayDragTarget = null;   // 'A', 'B', or null
 
 // ─────────────────────────────────────────────────────────────────────────────
 // DOM refs
@@ -772,8 +839,32 @@ function updateOffsetDisplay() {
     `(${srcOffsetX >= 0 ? '+' : ''}${srcOffsetX.toFixed(1)}, ${srcOffsetY >= 0 ? '+' : ''}${srcOffsetY.toFixed(1)}) cm`;
 }
 
-// Canvas drag
+// Canvas drag — ray endpoint dragging takes priority over image panning
 outputCanvas.addEventListener('pointerdown', e => {
+  const rect  = outputCanvas.getBoundingClientRect();
+  const canX  = (e.clientX - rect.left) / zoomFactor;
+  const canY  = (e.clientY - rect.top)  / zoomFactor;
+
+  // Hit-test ray endpoints (stored in physical cm; convert to canvas px for test)
+  if (showStraightRay && warpSizePx && rayA_cm && rayB_cm) {
+    const ccx  = warpSizePx / 2, ccy = warpSizePx / 2;
+    const axPx = ccx + rayA_cm.x * PX_PER_CM, ayPx = ccy - rayA_cm.y * PX_PER_CM;
+    const bxPx = ccx + rayB_cm.x * PX_PER_CM, byPx = ccy - rayB_cm.y * PX_PER_CM;
+    const hitR = 14;
+    if (Math.hypot(canX - axPx, canY - ayPx) < hitR) {
+      rayDragTarget = 'A';
+      outputCanvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+    if (Math.hypot(canX - bxPx, canY - byPx) < hitR) {
+      rayDragTarget = 'B';
+      outputCanvas.setPointerCapture(e.pointerId);
+      e.preventDefault();
+      return;
+    }
+  }
+
   if (!showSource) return;
   isDraggingCanvas = true;
   outputCanvas.setPointerCapture(e.pointerId);
@@ -784,6 +875,16 @@ outputCanvas.addEventListener('pointerdown', e => {
 });
 
 outputCanvas.addEventListener('pointermove', e => {
+  if (rayDragTarget) {
+    const rect = outputCanvas.getBoundingClientRect();
+    const canX = (e.clientX - rect.left) / zoomFactor;
+    const canY = (e.clientY - rect.top)  / zoomFactor;
+    const ccx  = warpSizePx / 2, ccy = warpSizePx / 2;
+    const cm   = { x: (canX - ccx) / PX_PER_CM, y: -(canY - ccy) / PX_PER_CM };
+    if (rayDragTarget === 'A') rayA_cm = cm; else rayB_cm = cm;
+    repaintFromCache();
+    return;
+  }
   if (!isDraggingCanvas) return;
   const dx = (e.clientX - dragLastX) / zoomFactor;
   const dy = (e.clientY - dragLastY) / zoomFactor;
@@ -796,6 +897,10 @@ outputCanvas.addEventListener('pointermove', e => {
 });
 
 outputCanvas.addEventListener('pointerup', e => {
+  if (rayDragTarget) {
+    rayDragTarget = null;
+    return;
+  }
   if (!isDraggingCanvas) return;
   isDraggingCanvas = false;
   outputCanvas.classList.remove('is-dragging');
@@ -976,9 +1081,9 @@ function forwardMap(vx, vy, R, E) {
 // ─────────────────────────────────────────────────────────────────────────────
 function drawCylinderRing(ctx, cx, cy, R) {
   ctx.save();
-  ctx.strokeStyle = 'rgba(20,50,180,0.95)';
-  ctx.lineWidth   = 2.5;
-  ctx.setLineDash([6, 5]);
+  ctx.strokeStyle = 'rgba(20,50,200,1)';
+  ctx.lineWidth   = 4.5;
+  ctx.setLineDash([8, 5]);
   ctx.beginPath();
   ctx.arc(cx, cy, R * PX_PER_CM, 0, 2 * Math.PI);
   ctx.stroke();
@@ -1063,16 +1168,6 @@ function drawObserverEye(ctx, cx, cy, R, E, canvasSize) {
   const eyeY = clamped ? canvasSize - margin : eyeY_true;
 
   ctx.save();
-
-  // Dashed line from bottom of cylinder to the eye
-  ctx.strokeStyle = 'rgba(100,100,100,0.55)';
-  ctx.lineWidth = 1.2;
-  ctx.setLineDash([5, 4]);
-  ctx.beginPath();
-  ctx.moveTo(eyeX, cy + R * PX_PER_CM);
-  ctx.lineTo(eyeX, eyeY - eyeHH - 2);
-  ctx.stroke();
-  ctx.setLineDash([]);
 
   // If observer is beyond canvas edge, draw a small downward arrow cue
   if (clamped) {
@@ -1252,6 +1347,175 @@ function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
   ctx.restore();
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Ray Tracing Drawing
+// ─────────────────────────────────────────────────────────────────────────────
+
+function circleLineIntersect(ax, ay, bx, by, ccx, ccy, r) {
+  const dx = bx - ax, dy = by - ay;
+  const fx = ax - ccx, fy = ay - ccy;
+  const a  = dx*dx + dy*dy;
+  if (a < 1e-12) return null;
+  const b    = 2*(fx*dx + fy*dy);
+  const c    = fx*fx + fy*fy - r*r;
+  const disc = b*b - 4*a*c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const t1 = (-b - sq) / (2*a);
+  const t2 = (-b + sq) / (2*a);
+  return { t1, t2,
+    P1: { x: ax + t1*dx, y: ay + t1*dy },
+    P2: { x: ax + t2*dx, y: ay + t2*dy } };
+}
+
+function drawArrowHead(ctx, fromX, fromY, toX, toY, color, size) {
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - size * Math.cos(angle - Math.PI/6), toY - size * Math.sin(angle - Math.PI/6));
+  ctx.lineTo(toX - size * Math.cos(angle + Math.PI/6), toY - size * Math.sin(angle + Math.PI/6));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawAngleArc(ctx, px, py, dir1x, dir1y, dir2x, dir2y, color, radius) {
+  const a1   = Math.atan2(dir1y, dir1x);
+  const a2   = Math.atan2(dir2y, dir2x);
+  let   diff = a2 - a1;
+  while (diff >  Math.PI) diff -= 2 * Math.PI;
+  while (diff < -Math.PI) diff += 2 * Math.PI;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(px, py, radius, a1, a2, diff < 0);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawRayElements(ctx, cx, cy, R) {
+  const rPx = R * PX_PER_CM;
+
+  // Initialise ray in physical cm (proportional to R so it looks good at any R)
+  if (!rayA_cm) {
+    rayA_cm = { x: -3.0 * R, y: -2.0 * R };
+    rayB_cm = { x:  0.5 * R, y:  0.1 * R };
+  }
+
+  // Convert physical cm → canvas pixels
+  // canvas_x = cx + phys_x * PX_PER_CM,  canvas_y = cy − phys_y * PX_PER_CM
+  const rayA = { x: cx + rayA_cm.x * PX_PER_CM, y: cy - rayA_cm.y * PX_PER_CM };
+  const rayB = { x: cx + rayB_cm.x * PX_PER_CM, y: cy - rayB_cm.y * PX_PER_CM };
+
+  // Find circle intersections; only reflect off bottom half (canvas y > cy)
+  const ints = circleLineIntersect(rayA.x, rayA.y, rayB.x, rayB.y, cx, cy, rPx);
+  let P = null, Q = null;
+  if (ints) {
+    const { P1, P2, t1, t2 } = ints;
+    const P1bot = P1.y >= cy, P2bot = P2.y >= cy;
+    if      ( P1bot && !P2bot)  { P = P1; Q = P2; }
+    else if (!P1bot &&  P2bot)  { P = P2; Q = P1; }
+    else if ( P1bot &&  P2bot)  { // both in bottom — pick first intersection from A
+      if (t1 < t2) { P = P1; Q = P2; } else { P = P2; Q = P1; }
+    }
+  }
+
+  // Precompute reflection geometry if we have a valid intersection
+  let nx, ny, ix, iy, rx, ry, chordLen;
+  if (P) {
+    nx = (P.x - cx) / rPx;
+    ny = (P.y - cy) / rPx;
+    const ddx = rayB.x - rayA.x, ddy = rayB.y - rayA.y;
+    const dlen = Math.hypot(ddx, ddy);
+    ix = ddx / dlen;  iy = ddy / dlen;
+    const iDotN = ix*nx + iy*ny;
+    rx = ix - 2*iDotN*nx;
+    ry = iy - 2*iDotN*ny;
+    chordLen = Q ? Math.hypot(Q.x - P.x, Q.y - P.y) : rPx * 2;
+  }
+
+  // ── Normal ──
+  if (P && showNormal) {
+    const ext = rPx * 0.75;
+    ctx.save();
+    ctx.strokeStyle = '#aaaaaa';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(P.x - nx * ext, P.y - ny * ext);
+    ctx.lineTo(P.x + nx * ext, P.y + ny * ext);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // ── Long reflection (blue) ──
+  if (P && showLongReflection) {
+    const farDist  = warpSizePx * 4;
+    const arrowDist = Math.min(2.5 * rPx, warpSizePx * 0.2);
+    ctx.save();
+    ctx.strokeStyle = '#4a90d9';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(P.x, P.y);
+    ctx.lineTo(P.x + rx * farDist, P.y + ry * farDist);
+    ctx.stroke();
+    drawArrowHead(ctx, P.x, P.y,
+                  P.x + rx * arrowDist, P.y + ry * arrowDist, '#4a90d9', 11);
+    ctx.restore();
+  }
+
+  // ── Short reflection (green) ──
+  if (P && showShortReflection && chordLen > 1) {
+    const ex = P.x + rx * chordLen, ey = P.y + ry * chordLen;
+    ctx.save();
+    ctx.strokeStyle = '#43a047';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(P.x, P.y);
+    ctx.lineTo(ex, ey);
+    ctx.stroke();
+    drawArrowHead(ctx, P.x, P.y, ex, ey, '#43a047', 11);
+    ctx.restore();
+  }
+
+  // ── Angle arcs ──
+  if (P && showAngles) {
+    const arcR1 = rPx * 0.30;
+    const arcR2 = rPx * 0.40;
+    // Incidence: from reversed-incident to outward-normal
+    drawAngleArc(ctx, P.x, P.y, -ix, -iy, nx, ny, '#ff9944', arcR1);
+    // Reflection: from outward-normal to reflected
+    drawAngleArc(ctx, P.x, P.y,  nx,  ny, rx, ry, '#44aaff', arcR2);
+  }
+
+  // ── Straight ray (drawn on top so handles are accessible) ──
+  if (showStraightRay) {
+    ctx.save();
+    ctx.strokeStyle = '#e53935';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(rayA.x, rayA.y);
+    ctx.lineTo(rayB.x, rayB.y);
+    ctx.stroke();
+    drawArrowHead(ctx, rayA.x, rayA.y, rayB.x, rayB.y, '#e53935', 12);
+    // Drag handles
+    for (const pt of [rayA, rayB]) {
+      ctx.beginPath();
+      ctx.arc(pt.x, pt.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = 'rgba(229,57,53,0.22)';
+      ctx.fill();
+      ctx.strokeStyle = '#e53935';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+}
+
 function repaintFromCache() {
   if (!warpSizePx) return;
   if (showMorph && !warpCacheData) return;
@@ -1265,10 +1529,11 @@ function repaintFromCache() {
   const cx = warpSizePx / 2, cy = warpSizePx / 2;
   const R  = parseFloat(radiusSlider.value);
   const E  = parseFloat(observerSlider.value);
-  drawCylinderRing(ctx, cx, cy, R);
   if (showSource) drawSourceOverlay(ctx, cx, cy, R, E, warpSizePx);
   if (showGrid)   drawGrid(ctx, cx, cy, R, E);
-  drawObserverEye(ctx, cx, cy, R, E, warpSizePx);
+  drawRayElements(ctx, cx, cy, R);
+  if (showEye) drawObserverEye(ctx, cx, cy, R, E, warpSizePx);
+  drawCylinderRing(ctx, cx, cy, R);   // drawn last — always on top
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1321,10 +1586,11 @@ function doRender() {
   }
 
   const cx = sizePx / 2, cy = sizePx / 2;
-  drawCylinderRing(ctx, cx, cy, R);
   if (showSource) drawSourceOverlay(ctx, cx, cy, R, E, sizePx);
   if (showGrid)   drawGrid(ctx, cx, cy, R, E);
-  drawObserverEye(ctx, cx, cy, R, E, sizePx);
+  drawRayElements(ctx, cx, cy, R);
+  if (showEye) drawObserverEye(ctx, cx, cy, R, E, sizePx);
+  drawCylinderRing(ctx, cx, cy, R);   // drawn last — always on top
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
   const cmSize  = (sizePx / PX_PER_CM).toFixed(1);
@@ -1801,6 +2067,26 @@ playGifBtn.addEventListener('click', () => {
   if (isPlayingGif) stopGifPreview(); else startGifPreview();
 });
 saveGifBtn.addEventListener('click', saveAsGif);
+
+// ── Right panel event listeners ──
+document.getElementById('rp-eye-toggle').addEventListener('change', e => {
+  showEye = e.target.checked; repaintFromCache();
+});
+document.getElementById('rp-ray-toggle').addEventListener('change', e => {
+  showStraightRay = e.target.checked; repaintFromCache();
+});
+document.getElementById('rp-longrefl-toggle').addEventListener('change', e => {
+  showLongReflection = e.target.checked; repaintFromCache();
+});
+document.getElementById('rp-refl-toggle').addEventListener('change', e => {
+  showShortReflection = e.target.checked; repaintFromCache();
+});
+document.getElementById('rp-normal-toggle').addEventListener('change', e => {
+  showNormal = e.target.checked; repaintFromCache();
+});
+document.getElementById('rp-angles-toggle').addEventListener('change', e => {
+  showAngles = e.target.checked; repaintFromCache();
+});
 </script>
 </body>
 </html>
