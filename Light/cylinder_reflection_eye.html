@@ -1392,7 +1392,7 @@ function drawAngleArc(ctx, px, py, dir1x, dir1y, dir2x, dir2y, color, radius) {
   while (diff < -Math.PI) diff += 2 * Math.PI;
   ctx.save();
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
+  ctx.lineWidth = 4.5;
   ctx.beginPath();
   ctx.arc(px, py, radius, a1, a2, diff < 0);
   ctx.stroke();
@@ -1457,9 +1457,9 @@ function drawRayElements(ctx, cx, cy, R) {
 
   // ── Normal ──
   if (P && showNormal) {
-    const ext = rPx * 0.75;
+    const ext = rPx * 1.5;
     ctx.save();
-    ctx.strokeStyle = '#aaaaaa';
+    ctx.strokeStyle = '#444444';
     ctx.lineWidth = 1.2;
     ctx.setLineDash([6, 4]);
     ctx.beginPath();
@@ -1481,8 +1481,8 @@ function drawRayElements(ctx, cx, cy, R) {
     ctx.moveTo(P.x, P.y);
     ctx.lineTo(P.x + rx * farDist, P.y + ry * farDist);
     ctx.stroke();
-    drawArrowHead(ctx, P.x, P.y,
-                  P.x + rx * arrowDist, P.y + ry * arrowDist, '#4a90d9', 16);
+    drawArrowHead(ctx, P.x + rx * arrowDist, P.y + ry * arrowDist,
+                  P.x, P.y, '#4a90d9', 16);
     ctx.restore();
   }
 
@@ -1502,8 +1502,8 @@ function drawRayElements(ctx, cx, cy, R) {
 
   // ── Angle arcs ──
   if (P && showAngles) {
-    const arcR1 = rPx * 0.30;
-    const arcR2 = rPx * 0.40;
+    const arcR1 = rPx * 0.90;
+    const arcR2 = rPx * 1.20;
     // Incidence: from reversed-incident to outward-normal
     drawAngleArc(ctx, P.x, P.y, -ix, -iy, nx, ny, '#ff9944', arcR1);
     // Reflection: from outward-normal to reflected
