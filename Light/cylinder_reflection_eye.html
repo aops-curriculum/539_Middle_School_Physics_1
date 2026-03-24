@@ -1160,8 +1160,8 @@ function drawGrid(ctx, cx, cy, R, E) {
 
 function drawObserverEye(ctx, cx, cy, R, E, canvasSize) {
   const eyeY_true = cy + (E + R) * PX_PER_CM;
-  const eyeHW = 22;   // half-width of eye almond shape
-  const eyeHH = 11;   // half-height of eye almond shape
+  const eyeHW = 44;   // half-width of eye almond shape
+  const eyeHH = 22;   // half-height of eye almond shape
   const margin = eyeHH + 6;
   const eyeX = cx;
   const clamped = eyeY_true > canvasSize - margin;
@@ -1414,13 +1414,18 @@ function drawRayElements(ctx, cx, cy, R) {
   const ints = circleLineIntersect(rayA.x, rayA.y, rayB.x, rayB.y, cx, cy, rPx);
   let P = null, Q = null;
   if (ints) {
-    const { P1, P2, t1, t2 } = ints;
-    const P1bot = P1.y >= cy, P2bot = P2.y >= cy;
-    if      ( P1bot && !P2bot)  { P = P1; Q = P2; }
-    else if (!P1bot &&  P2bot)  { P = P2; Q = P1; }
-    else if ( P1bot &&  P2bot)  { // both in bottom — pick first intersection from A
-      if (t1 < t2) { P = P1; Q = P2; } else { P = P2; Q = P1; }
-    }
+    const { P1, P2 } = ints;
+    const ddx0 = rayB.x - rayA.x, ddy0 = rayB.y - rayA.y;
+    const dlen0 = Math.hypot(ddx0, ddy0);
+    const ix0 = ddx0 / dlen0, iy0 = ddy0 / dlen0;
+    // iDotN < 0 means hitting from outside (entry point, not exit)
+    const idn1 = ix0*(P1.x-cx)/rPx + iy0*(P1.y-cy)/rPx;
+    const idn2 = ix0*(P2.x-cx)/rPx + iy0*(P2.y-cy)/rPx;
+    const v1 = P1.y >= cy && idn1 < 0;
+    const v2 = P2.y >= cy && idn2 < 0;
+    if      (v1 && !v2) { P = P1; Q = P2; }
+    else if (v2 && !v1) { P = P2; Q = P1; }
+    else if (v1 &&  v2) { P = P1; Q = P2; }
   }
 
   // Precompute reflection geometry if we have a valid intersection
@@ -1458,13 +1463,13 @@ function drawRayElements(ctx, cx, cy, R) {
     const arrowDist = Math.min(2.5 * rPx, warpSizePx * 0.2);
     ctx.save();
     ctx.strokeStyle = '#4a90d9';
-    ctx.lineWidth = 1.8;
+    ctx.lineWidth = 3.6;
     ctx.beginPath();
     ctx.moveTo(P.x, P.y);
     ctx.lineTo(P.x + rx * farDist, P.y + ry * farDist);
     ctx.stroke();
     drawArrowHead(ctx, P.x, P.y,
-                  P.x + rx * arrowDist, P.y + ry * arrowDist, '#4a90d9', 11);
+                  P.x + rx * arrowDist, P.y + ry * arrowDist, '#4a90d9', 16);
     ctx.restore();
   }
 
@@ -1473,12 +1478,12 @@ function drawRayElements(ctx, cx, cy, R) {
     const ex = P.x + rx * chordLen, ey = P.y + ry * chordLen;
     ctx.save();
     ctx.strokeStyle = '#43a047';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(P.x, P.y);
     ctx.lineTo(ex, ey);
     ctx.stroke();
-    drawArrowHead(ctx, P.x, P.y, ex, ey, '#43a047', 11);
+    drawArrowHead(ctx, P.x, P.y, ex, ey, '#43a047', 16);
     ctx.restore();
   }
 
@@ -1496,12 +1501,12 @@ function drawRayElements(ctx, cx, cy, R) {
   if (showStraightRay) {
     ctx.save();
     ctx.strokeStyle = '#e53935';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 4;
     ctx.beginPath();
     ctx.moveTo(rayA.x, rayA.y);
     ctx.lineTo(rayB.x, rayB.y);
     ctx.stroke();
-    drawArrowHead(ctx, rayA.x, rayA.y, rayB.x, rayB.y, '#e53935', 12);
+    drawArrowHead(ctx, rayA.x, rayA.y, rayB.x, rayB.y, '#e53935', 16);
     // Drag handles
     for (const pt of [rayA, rayB]) {
       ctx.beginPath();
