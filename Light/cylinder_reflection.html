@@ -196,7 +196,25 @@
     ::-webkit-scrollbar { width: 6px; height: 6px; }
     ::-webkit-scrollbar-track { background: transparent; }
     ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+    /* ── GIF Mode ── */
+    .gif-tag {
+      display: inline-block; background: var(--accent); color: white;
+      font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 3px;
+      letter-spacing: 0.04em; vertical-align: middle; margin-left: 4px;
+    }
+    .progress-track {
+      height: 6px; background: var(--slider-track); border-radius: 3px;
+      overflow: hidden; margin: 6px 0 3px;
+    }
+    .progress-fill {
+      height: 100%; background: var(--accent2); border-radius: 3px;
+      transition: width 0.12s linear; width: 0%;
+    }
   </style>
+  <!-- GIF decode (gifuct-js) + GIF encode (gif.js) loaded from CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/dist/gifuct-js.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
 </head>
 <body>
 
@@ -215,7 +233,7 @@
       <div class="section-title">Source Image</div>
       <div class="drop-zone" id="drop-zone">
         <div class="dz-icon">🖼️</div>
-        <div>Drop an image here<br>or click to browse</div>
+        <div>Drop an image or GIF here<br>or click to browse</div>
         <input type="file" id="file-input" accept="image/*">
       </div>
       <div class="url-row">
@@ -225,6 +243,34 @@
       <button class="btn-small" id="paste-btn" style="margin-top:6px;">📋 Paste from clipboard</button>
       <div class="thumb-preview" id="thumb-preview" style="display:none;">
         <img id="thumb-img" alt="preview">
+      </div>
+    </div>
+
+    <!-- ── GIF Mode Panel (shown only when a GIF is loaded) ── -->
+    <div id="gif-panel" style="display:none;">
+      <div class="section-title">GIF Animation <span class="gif-tag">GIF</span></div>
+      <div class="hint" id="gif-info-text" style="margin-bottom:10px;"></div>
+
+      <div style="display:flex;flex-direction:column;gap:8px;">
+        <div class="slider-row" id="gif-scale-row">
+          <div class="slider-label">
+            <span>Output Scale</span>
+            <span class="val" id="gif-scale-val">50%</span>
+          </div>
+          <input type="range" id="gif-scale-slider" min="25" max="100" step="5" value="50">
+        </div>
+
+        <button class="btn btn-secondary" id="process-gif-btn" disabled>⚙ Process All Frames</button>
+
+        <div id="gif-progress" style="display:none;">
+          <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
+          <div class="offset-display" id="progress-text">Frame 0 of 0</div>
+        </div>
+
+        <div id="gif-result-section" style="display:none;flex-direction:column;gap:6px;">
+          <button class="btn-small" id="play-gif-btn">▶ Play Preview</button>
+          <button class="btn btn-secondary" id="save-gif-btn">💾 Save as GIF</button>
+        </div>
       </div>
     </div>
 
@@ -404,6 +450,16 @@ const hideDirectViewToggle = document.getElementById('hide-direct-view-toggle');
 // Image loading
 // ─────────────────────────────────────────────────────────────────────────────
 function setSourceImage(img) {
+  // Reset GIF mode when switching to a static image
+  if (isGifMode) {
+    isGifMode = false;
+    stopGifPreview();
+    gifFrames = [];
+    processedFrames = [];
+    gifPanel.style.display = 'none';
+    // Re-enable the show-morph toggle in case it was auto-disabled
+    showMorphToggle.disabled = false;
+  }
   sourceImage = img;
   thumbImg.src = img.src;
   thumbPreview.style.display = 'flex';
@@ -411,7 +467,9 @@ function setSourceImage(img) {
 }
 
 function loadFromFile(file) {
-  if (!file || !file.type.startsWith('image/')) return;
+  if (!file) return;
+  if (file.type === 'image/gif') { loadGifFile(file); return; }
+  if (!file.type.startsWith('image/')) return;
   const reader = new FileReader();
   reader.onload = e => {
     const img = new Image();
@@ -1193,6 +1251,320 @@ document.getElementById('zoom-fit').addEventListener('click', fitZoom);
 new ResizeObserver(() => {
   if (outputCanvas.style.display !== 'none') fitZoom();
 }).observe(canvasScroll);
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIF Mode — state & DOM refs
+// ─────────────────────────────────────────────────────────────────────────────
+let gifFrames        = [];    // [{rgba, w, h, delay_ms}] composited decoded frames
+let isGifMode        = false;
+let processedFrames  = [];    // [{canvas, delay_ms}] warped output frames
+let isPlayingGif     = false;
+let gifPlayTimer     = null;
+let currentGifFrame  = 0;
+let gifWorkerUrl     = null;  // blob URL for gif.js worker (needs same-origin)
+
+const gifPanel         = document.getElementById('gif-panel');
+const gifInfoText      = document.getElementById('gif-info-text');
+const processGifBtn    = document.getElementById('process-gif-btn');
+const gifProgressDiv   = document.getElementById('gif-progress');
+const progressFill     = document.getElementById('progress-fill');
+const progressText     = document.getElementById('progress-text');
+const gifResultSection = document.getElementById('gif-result-section');
+const playGifBtn       = document.getElementById('play-gif-btn');
+const saveGifBtn       = document.getElementById('save-gif-btn');
+const gifScaleSlider   = document.getElementById('gif-scale-slider');
+const gifScaleVal      = document.getElementById('gif-scale-val');
+
+gifScaleSlider.addEventListener('input', () => {
+  gifScaleVal.textContent = gifScaleSlider.value + '%';
+});
+
+// ── Pre-fetch gif.js worker and turn it into a same-origin blob URL ──
+(async function initGifWorker() {
+  try {
+    const r = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+    if (!r.ok) throw new Error('HTTP ' + r.status);
+    const src = await r.text();
+    gifWorkerUrl = URL.createObjectURL(new Blob([src], { type: 'application/javascript' }));
+  } catch (e) {
+    console.warn('[gif] Worker unavailable (GIF export needs internet):', e);
+  }
+})();
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIF Loading — decode every composited frame via gifuct-js
+// ─────────────────────────────────────────────────────────────────────────────
+function loadGifFile(file) {
+  const { parseGIF, decompressFrames } = window['gifuct-js'] || {};
+  if (!parseGIF || !decompressFrames) {
+    alert('GIF decoder library not available. Check your internet connection.');
+    return;
+  }
+
+  const fr = new FileReader();
+  fr.onload = () => {
+    try {
+      const gifData   = parseGIF(fr.result);
+      const rawFrames = decompressFrames(gifData, true);  // buildPatch = true
+      if (!rawFrames.length) { alert('No frames found in GIF.'); return; }
+
+      const totalW = gifData.lsd.width;
+      const totalH = gifData.lsd.height;
+
+      // Composite frames onto a canvas, respecting disposal methods
+      const compCanvas = document.createElement('canvas');
+      compCanvas.width  = totalW;
+      compCanvas.height = totalH;
+      const compCtx = compCanvas.getContext('2d');
+      compCtx.fillStyle = '#ffffff';
+      compCtx.fillRect(0, 0, totalW, totalH);
+
+      gifFrames = [];
+      let prevDisposal  = 0;
+      let savedSnapshot = null;
+
+      for (const frame of rawFrames) {
+        const { dims, patch, disposalType } = frame;
+        // delay: gifuct-js returns milliseconds already (it pre-multiplies by 10)
+        // Fall back to 100 ms (10 cs) if delay is 0 or missing
+        const delayMs = frame.delay || 100;
+
+        // Restore previous frame's state per disposal method
+        if (prevDisposal === 2) {
+          compCtx.fillStyle = '#ffffff';
+          compCtx.fillRect(0, 0, totalW, totalH);
+        } else if (prevDisposal === 3 && savedSnapshot) {
+          compCtx.putImageData(savedSnapshot, 0, 0);
+        }
+        if (disposalType === 3) {
+          savedSnapshot = compCtx.getImageData(0, 0, totalW, totalH);
+        }
+
+        // Blit this frame's patch at its offset
+        const patchData = new ImageData(new Uint8ClampedArray(patch), dims.width, dims.height);
+        compCtx.putImageData(patchData, dims.left, dims.top);
+
+        // Capture composited frame
+        const composed = compCtx.getImageData(0, 0, totalW, totalH);
+        gifFrames.push({ rgba: new Uint8ClampedArray(composed.data), w: totalW, h: totalH, delay: delayMs });
+        prevDisposal = disposalType;
+      }
+
+      isGifMode       = true;
+      processedFrames = [];
+
+      // Auto-disable the warp renderer
+      showMorphToggle.checked = false;
+      showMorph               = false;
+
+      // Use first composited frame as the positioning preview sourceImage
+      const previewCanvas = document.createElement('canvas');
+      previewCanvas.width  = totalW;
+      previewCanvas.height = totalH;
+      previewCanvas.getContext('2d').putImageData(
+        new ImageData(gifFrames[0].rgba, totalW, totalH), 0, 0);
+
+      const img = new Image();
+      img.onload = () => {
+        sourceImage      = img;
+        thumbImg.src     = img.src;
+        thumbPreview.style.display = 'flex';
+
+        // Size the output canvas (morph is off, just show ring)
+        const R       = parseFloat(radiusSlider.value);
+        const halfCm  = Math.max(5 * R + 4, 16);
+        const sizePx  = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
+        outputCanvas.width  = sizePx;
+        outputCanvas.height = sizePx;
+        warpSizePx          = sizePx;
+
+        const ctx = outputCanvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sizePx, sizePx);
+        drawCylinderRing(ctx, sizePx / 2, sizePx / 2, R);
+
+        placeholder.style.display    = 'none';
+        outputCanvas.style.display   = 'block';
+        pdfBtn.disabled              = false;
+        if (!outputCanvas.dataset.zoomed) { fitZoom(); outputCanvas.dataset.zoomed = true; }
+      };
+      img.src = previewCanvas.toDataURL();
+
+      // Update GIF UI
+      gifPanel.style.display             = 'block';
+      gifInfoText.innerHTML              =
+        `<strong>${rawFrames.length} frames</strong> · ${totalW}×${totalH} px<br>` +
+        `Warp auto-disabled. Re-enable <em>Show morph</em> to preview one frame, ` +
+        `then click <strong>Process All Frames</strong>.`;
+      processGifBtn.disabled             = false;
+      gifProgressDiv.style.display       = 'none';
+      gifResultSection.style.display     = 'none';
+      canvasInfo.textContent             =
+        `GIF loaded — ${rawFrames.length} frames · ${totalW}×${totalH} px`;
+    } catch (err) {
+      console.error(err);
+      alert('Could not parse GIF: ' + err.message);
+    }
+  };
+  fr.readAsArrayBuffer(file);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIF Processing — apply warp to every frame
+// ─────────────────────────────────────────────────────────────────────────────
+async function processGifFrames() {
+  if (!gifFrames.length) return;
+  stopGifPreview();
+  processGifBtn.disabled           = true;
+  gifProgressDiv.style.display     = 'block';
+  gifResultSection.style.display   = 'none';
+  progressFill.style.width         = '0%';
+
+  const R         = parseFloat(radiusSlider.value);
+  const E         = parseFloat(observerSlider.value);
+  const bufferCm  = bufferMm / 10;
+  const scalePct  = parseFloat(gifScaleSlider.value) / 100;
+  const halfCm    = Math.max(5 * R + 4, 16);
+  const fullSizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
+  const sizePx    = Math.max(64, Math.round(fullSizePx * scalePct));
+
+  processedFrames = [];
+
+  for (let i = 0; i < gifFrames.length; i++) {
+    const gf = gifFrames[i];
+    progressText.textContent = `Processing frame ${i + 1} of ${gifFrames.length}…`;
+    progressFill.style.width = ((i / gifFrames.length) * 100) + '%';
+    await new Promise(r => setTimeout(r, 0));  // yield so the browser can repaint
+
+    // Downscale source frame for the math (same budget as single-image mode)
+    const MAX_SRC = 600;
+    const ratio   = Math.min(1, MAX_SRC / Math.max(gf.w, gf.h));
+    const srcW    = Math.round(gf.w * ratio);
+    const srcH    = Math.round(gf.h * ratio);
+
+    const srcCanvas = document.createElement('canvas');
+    srcCanvas.width  = srcW;
+    srcCanvas.height = srcH;
+    const sCtx = srcCanvas.getContext('2d');
+    sCtx.fillStyle = '#ffffff';
+    sCtx.fillRect(0, 0, srcW, srcH);
+    const fullC = document.createElement('canvas');
+    fullC.width = gf.w; fullC.height = gf.h;
+    fullC.getContext('2d').putImageData(new ImageData(gf.rgba, gf.w, gf.h), 0, 0);
+    sCtx.drawImage(fullC, 0, 0, srcW, srcH);
+
+    const srcPx   = sCtx.getImageData(0, 0, srcW, srcH).data;
+    const outImg  = new ImageData(sizePx, sizePx);
+    outImg.data.fill(255);
+
+    renderBackwardMapping(srcPx, srcW, srcH, R, E, outImg.data, sizePx, sizePx,
+                          srcScaleMult, srcOffsetX, srcOffsetY, bufferCm);
+
+    const fc   = document.createElement('canvas');
+    fc.width   = sizePx;
+    fc.height  = sizePx;
+    const fCtx = fc.getContext('2d');
+    fCtx.putImageData(outImg, 0, 0);
+    drawCylinderRing(fCtx, sizePx / 2, sizePx / 2, R);
+
+    processedFrames.push({ canvas: fc, delay: gf.delay });
+  }
+
+  progressFill.style.width = '100%';
+  progressText.textContent  = `Done — ${processedFrames.length} frames at ${sizePx}×${sizePx} px.`;
+
+  // Show first processed frame in the main canvas
+  outputCanvas.width  = sizePx;
+  outputCanvas.height = sizePx;
+  warpSizePx          = sizePx;
+  outputCanvas.getContext('2d').drawImage(processedFrames[0].canvas, 0, 0);
+  fitZoom();
+
+  gifResultSection.style.display = 'flex';
+  processGifBtn.disabled          = false;
+  canvasInfo.textContent =
+    `GIF processed · ${processedFrames.length} frames · ${sizePx}×${sizePx} px`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIF Preview Playback
+// ─────────────────────────────────────────────────────────────────────────────
+function startGifPreview() {
+  if (!processedFrames.length || isPlayingGif) return;
+  isPlayingGif    = true;
+  currentGifFrame = 0;
+  playGifBtn.textContent = '⏹ Stop';
+  playNextGifFrame();
+}
+
+function stopGifPreview() {
+  isPlayingGif = false;
+  if (gifPlayTimer) { clearTimeout(gifPlayTimer); gifPlayTimer = null; }
+  playGifBtn.textContent = '▶ Play Preview';
+}
+
+function playNextGifFrame() {
+  if (!isPlayingGif || !processedFrames.length) return;
+  const f = processedFrames[currentGifFrame];
+  outputCanvas.getContext('2d').drawImage(f.canvas, 0, 0);
+  currentGifFrame = (currentGifFrame + 1) % processedFrames.length;
+  gifPlayTimer    = setTimeout(playNextGifFrame, f.delay);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIF Export via gif.js
+// ─────────────────────────────────────────────────────────────────────────────
+function saveAsGif() {
+  if (!processedFrames.length) return;
+  if (!gifWorkerUrl) {
+    alert('GIF encoder worker unavailable.\nMake sure you have internet access so the encoder can load.');
+    return;
+  }
+  if (typeof GIF === 'undefined') {
+    alert('gif.js library not loaded. Check your internet connection.');
+    return;
+  }
+
+  saveGifBtn.disabled = true;
+  saveGifBtn.textContent = '⏳ Encoding…';
+
+  const { canvas: fc } = processedFrames[0];
+  const encoder = new GIF({
+    workers:      2,
+    quality:      10,
+    width:        fc.width,
+    height:       fc.height,
+    workerScript: gifWorkerUrl,
+  });
+
+  for (const frame of processedFrames) {
+    encoder.addFrame(frame.canvas, { delay: frame.delay, copy: true });
+  }
+
+  encoder.on('progress', p => {
+    saveGifBtn.textContent = `⏳ ${Math.round(p * 100)}%…`;
+  });
+
+  encoder.on('finished', blob => {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href     = url;
+    a.download = 'warped_animation.gif';
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(url), 15000);
+    saveGifBtn.disabled    = false;
+    saveGifBtn.textContent = '💾 Save as GIF';
+  });
+
+  encoder.render();
+}
+
+// ── GIF button event listeners ──
+processGifBtn.addEventListener('click', processGifFrames);
+playGifBtn.addEventListener('click', () => {
+  if (isPlayingGif) stopGifPreview(); else startGifPreview();
+});
+saveGifBtn.addEventListener('click', saveAsGif);
 </script>
 </body>
 </html>
