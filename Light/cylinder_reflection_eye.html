@@ -880,7 +880,10 @@ outputCanvas.addEventListener('pointermove', e => {
     const canX = (e.clientX - rect.left) / zoomFactor;
     const canY = (e.clientY - rect.top)  / zoomFactor;
     const ccx  = warpSizePx / 2, ccy = warpSizePx / 2;
-    const cm   = { x: (canX - ccx) / PX_PER_CM, y: -(canY - ccy) / PX_PER_CM };
+    const pad  = 8;
+    const clampedX = Math.max(pad, Math.min(warpSizePx - pad, canX));
+    const clampedY = Math.max(pad, Math.min(warpSizePx - pad, canY));
+    const cm   = { x: (clampedX - ccx) / PX_PER_CM, y: -(clampedY - ccy) / PX_PER_CM };
     if (rayDragTarget === 'A') rayA_cm = cm; else rayB_cm = cm;
     repaintFromCache();
     return;
@@ -1409,6 +1412,16 @@ function drawRayElements(ctx, cx, cy, R) {
   // canvas_x = cx + phys_x * PX_PER_CM,  canvas_y = cy − phys_y * PX_PER_CM
   const rayA = { x: cx + rayA_cm.x * PX_PER_CM, y: cy - rayA_cm.y * PX_PER_CM };
   const rayB = { x: cx + rayB_cm.x * PX_PER_CM, y: cy - rayB_cm.y * PX_PER_CM };
+
+  // Push any off-canvas endpoint back onto the canvas and update stored cm
+  {
+    const pad = 8, sz = cx * 2;
+    const cl = (v, lo, hi) => Math.max(lo, Math.min(hi, v));
+    rayA.x = cl(rayA.x, pad, sz - pad); rayA.y = cl(rayA.y, pad, sz - pad);
+    rayB.x = cl(rayB.x, pad, sz - pad); rayB.y = cl(rayB.y, pad, sz - pad);
+    rayA_cm = { x: (rayA.x - cx) / PX_PER_CM, y: -(rayA.y - cy) / PX_PER_CM };
+    rayB_cm = { x: (rayB.x - cx) / PX_PER_CM, y: -(rayB.y - cy) / PX_PER_CM };
+  }
 
   // Find circle intersections; only reflect off bottom half (canvas y > cy)
   const ints = circleLineIntersect(rayA.x, rayA.y, rayB.x, rayB.y, cx, cy, rPx);
