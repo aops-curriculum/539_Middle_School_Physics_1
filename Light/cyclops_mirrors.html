@@ -230,7 +230,7 @@ function drawCylinderMirror(cx) {
 
 // ── Ruler ─────────────────────────────────────────────────────────────────────
 const RL = 20 * SCALE, RH = 36 * S;
-let ruler = { x: 16, y: 200, a: 0 };
+let ruler = { x: 20, y: 200, a: 0 };
 let drag = false, dox = 0, doy = 0;
 let rot  = false, rot0 = 0, ra0 = 0;
 
@@ -280,15 +280,14 @@ function draw() {
   drawCylinderMirror(CX);
   drawCyclops(CX);
 
-  // Legend – top right
-  const lx = W - 130;
-  const ly = 14;
-  drawSeg(lx, ly,      lx + 20, ly,      INC, 2.5);
+  // Legend (top right)
+  const lx = W - 120, ly = 10;
+  drawSeg(lx, ly + 10, lx + 20, ly + 10, INC, 2.5);
   ctx.fillStyle = '#d8e4f0'; ctx.font = '12px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('incident ray', lx + 26, ly + 4);
-  drawSeg(lx, ly + 16, lx + 20, ly + 16, REF, 2.5);
+  ctx.fillText('incident ray', lx + 26, ly + 14);
+  drawSeg(lx, ly + 28, lx + 20, ly + 28, REF, 2.5);
   ctx.fillStyle = '#d8e4f0';
-  ctx.fillText('reflected ray', lx + 26, ly + 20);
+  ctx.fillText('reflected ray', lx + 26, ly + 32);
 
   drawRuler();
 }
