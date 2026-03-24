@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Doppler Effect – Flyby</title>
+<title>Doppler Effect with Separation</title>
 <style>
 /* ── Reset & Container ────────────────────────────────── */
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -509,7 +509,7 @@ function draw() {
   ctx.fillStyle = '#777';
 
   if (sourceX > -10 && sourceX < canvas.width + 10) {
-    ctx.fillText('Source (624 Hz)', sourceX, SOURCE_Y - 18);
+    ctx.fillText('Source', sourceX, SOURCE_Y - 18);
   }
   ctx.fillText('Observer', OBSERVER_X, observerY + 40);
 }
