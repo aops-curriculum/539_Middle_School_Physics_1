@@ -1428,10 +1428,10 @@ function drawRayElements(ctx, cx, cy, R) {
   let P = null, Q = null;
   if (ints) {
     const { P1, P2 } = ints;
-    const ddx0 = rayB.x - rayA.x, ddy0 = rayB.y - rayA.y;
+    const ddx0 = rayA.x - rayB.x, ddy0 = rayA.y - rayB.y;  // B→A: direction from eye toward scene
     const dlen0 = Math.hypot(ddx0, ddy0);
     const ix0 = ddx0 / dlen0, iy0 = ddy0 / dlen0;
-    // iDotN < 0 means hitting from outside (entry point, not exit)
+    // iDotN < 0 means hitting from outside (backward ray from eye entering circle)
     const idn1 = ix0*(P1.x-cx)/rPx + iy0*(P1.y-cy)/rPx;
     const idn2 = ix0*(P2.x-cx)/rPx + iy0*(P2.y-cy)/rPx;
     const v1 = P1.y >= cy && idn1 < 0;
@@ -1446,7 +1446,7 @@ function drawRayElements(ctx, cx, cy, R) {
   if (P) {
     nx = (P.x - cx) / rPx;
     ny = (P.y - cy) / rPx;
-    const ddx = rayB.x - rayA.x, ddy = rayB.y - rayA.y;
+    const ddx = rayA.x - rayB.x, ddy = rayA.y - rayB.y;  // B→A: backward ray from eye
     const dlen = Math.hypot(ddx, ddy);
     ix = ddx / dlen;  iy = ddy / dlen;
     const iDotN = ix*nx + iy*ny;
