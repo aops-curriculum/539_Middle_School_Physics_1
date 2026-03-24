@@ -15,14 +15,12 @@
     color: white;
     user-select: none;
   }
-  h1 { margin: 0 0 6px 0; font-size: 20px; color: #c8d8f0; letter-spacing: 1px; }
   #info { margin-top: 8px; font-size: 13px; color: #7090a0; }
   canvas { border: 1px solid #1e2a40; cursor: default; display: block; }
 </style>
 </head>
 <body>
-<h1>Mirror Reflections</h1>
-<canvas id="canvas" width="1100" height="730"></canvas>
+<canvas id="canvas" width="413" height="548"></canvas>
 <div id="info">Drag the ruler to measure distances. Right-click drag to rotate.</div>
 
 <script>
@@ -30,32 +28,27 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = canvas.width, H = canvas.height;
-const SCALE = 20; // px per cm
+const S = 0.75; // scale factor
+const SCALE = 20 * S; // px per cm
 
-// ── Scene centres ─────────────────────────────────────────────────────────────
-const L_CX = 275, R_CX = 825;
+// ── Scene centre (was R_CX=825, shifted to fit scaled canvas) ─────────────────
+const CX = W / 2;
 
-// ── Flat mirror ───────────────────────────────────────────────────────────────
-const FM_Y = 108;
-const FM_W = 12 * SCALE;   // 240 px = 12 cm
-const FM_H = 12;
+// ── Flat mirror Y (used as reference for cylinder position) ───────────────────
+const FM_Y = 108 * S;
 
 // ── Cylinder (circular convex) mirror ─────────────────────────────────────────
-// Full circle, diameter 12 cm = 240 px, radius 120 px
-const CM_R  = 6 * SCALE;                // 120 px
-const CM_CY = FM_Y - CM_R;             // -12 – circle centre y (front face at FM_Y)
+const CM_R  = 6 * SCALE;                // radius
+const CM_CY = FM_Y - CM_R;             // circle centre y
 
 // ── Cyclops geometry ──────────────────────────────────────────────────────────
-const CY_EYE_Y = 448;
-const CY_Y     = 456;
-const CY_HR    = 36;
-const CY_ARM_Y = 464;
-const CY_HALF  = 9 * SCALE; // 180 px = 9 cm half-span
+const CY_EYE_Y = 448 * S;
+const CY_Y     = 456 * S;
+const CY_HR    = 36 * S;
+const CY_ARM_Y = 464 * S;
+const CY_HALF  = 9 * SCALE; // half-span
 
 // ── Numerical reflection-point solver ────────────────────────────────────────
-// Find M on circle (cx,cy,r) such that S→M→E obeys law of reflection.
-// Condition: (v̂ − û) × n = 0  [tangential components of incident and reflected are equal]
-// where û = (M−S)/|M−S|, v̂ = (E−M)/|E−M|, n = outward normal = (cosθ, sinθ)
 function findReflectionPoint(sx, sy, ex, ey, cx, cy, r) {
   function fEval(theta) {
     const mx = cx + r * Math.cos(theta);
@@ -64,11 +57,9 @@ function findReflectionPoint(sx, sy, ex, ey, cx, cy, r) {
     const ux = mx - sx, uy = my - sy, ul = Math.hypot(ux, uy);
     const vx = ex - mx, vy = ey - my, vl = Math.hypot(vx, vy);
     if (ul < 0.5 || vl < 0.5) return NaN;
-    // f = (v̂ − û) × n  (2-D cross product)
     return ((vx/vl) - (ux/ul)) * ny - ((vy/vl) - (uy/ul)) * nx;
   }
 
-  // Search θ in (5°, 175°) – lower hemisphere facing Cyclops
   const a0 = Math.PI / 36, a1 = Math.PI - Math.PI / 36;
   const N = 360;
   let prevF = fEval(a0), prevT = a0, result = null;
@@ -77,7 +68,6 @@ function findReflectionPoint(sx, sy, ex, ey, cx, cy, r) {
     const t = a0 + (a1 - a0) * i / N;
     const curr = fEval(t);
     if (!isNaN(prevF) && !isNaN(curr) && prevF * curr < 0) {
-      // Bisection
       let lo = prevT, hi = t;
       for (let k = 0; k < 52; k++) {
         const mid = (lo + hi) / 2;
@@ -86,7 +76,6 @@ function findReflectionPoint(sx, sy, ex, ey, cx, cy, r) {
       const theta = (lo + hi) / 2;
       const mx = cx + r * Math.cos(theta);
       const my = cy + r * Math.sin(theta);
-      // Check it's a front-surface hit: d_in · n < 0
       const ux = mx - sx, uy = my - sy, ul = Math.hypot(ux, uy);
       const dot = (ux / ul) * Math.cos(theta) + (uy / ul) * Math.sin(theta);
       if (dot < -0.01) {
@@ -99,37 +88,16 @@ function findReflectionPoint(sx, sy, ex, ey, cx, cy, r) {
   return result;
 }
 
-// ── Flat-mirror rays ──────────────────────────────────────────────────────────
-// Incident from body/arms → mirror hit → reflected to eye
-function buildFlatRays(cx) {
-  const my = FM_Y, ey = CY_EYE_Y;
-  const ml = cx - FM_W / 2, mr = cx + FM_W / 2;
-  const sources = [
-    [cx,            CY_EYE_Y + 2],
-    [cx - CY_HALF,  CY_ARM_Y],
-    [cx + CY_HALF,  CY_ARM_Y],
-    [cx - 58,       CY_ARM_Y - 4],
-    [cx + 58,       CY_ARM_Y - 4],
-  ];
-  return sources.map(([sx, sy]) => {
-    const k  = (sy - my) / (ey - my);
-    const xh = (sx + cx * k) / (1 + k);
-    if (xh < ml - 1 || xh > mr + 1) return null;
-    return { src: [sx, sy], hit: [xh, my], end: [cx, ey] };
-  }).filter(Boolean);
-}
-
 // ── Cylinder-mirror rays ──────────────────────────────────────────────────────
-// Incident from hands/body → circle hit → reflected to eye
 function buildCylinderRays(cx) {
   const ex = cx, ey = CY_EYE_Y;
   const cy0 = CM_CY, r = CM_R;
   const sources = [
-    [cx - CY_HALF, CY_ARM_Y],   // left hand
-    [cx + CY_HALF, CY_ARM_Y],   // right hand
-    [cx - 80,      CY_ARM_Y],   // left shoulder
-    [cx + 80,      CY_ARM_Y],   // right shoulder
-    [cx,           CY_ARM_Y],   // centre
+    [cx - CY_HALF, CY_ARM_Y],
+    [cx + CY_HALF, CY_ARM_Y],
+    [cx - 80 * S,  CY_ARM_Y],
+    [cx + 80 * S,  CY_ARM_Y],
+    [cx,           CY_ARM_Y],
   ];
   return sources.map(([sx, sy]) => {
     const hit = findReflectionPoint(sx, sy, ex, ey, cx, cy0, r);
@@ -138,12 +106,11 @@ function buildCylinderRays(cx) {
   }).filter(Boolean);
 }
 
-const flatRays     = buildFlatRays(L_CX);
-const cylinderRays = buildCylinderRays(R_CX);
+const cylinderRays = buildCylinderRays(CX);
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 function arrowHead(x1, y1, x2, y2) {
-  const a = Math.atan2(y2 - y1, x2 - x1), L = 9, hw = 0.45;
+  const a = Math.atan2(y2 - y1, x2 - x1), L = 9 * S, hw = 0.45;
   ctx.beginPath();
   ctx.moveTo(x2, y2);
   ctx.lineTo(x2 - L * Math.cos(a - hw), y2 - L * Math.sin(a - hw));
@@ -176,69 +143,53 @@ function drawCyclops(cx) {
   const hy = CY_Y, hr = CY_HR, ay = CY_ARM_Y, hs = CY_HALF;
 
   ctx.fillStyle = '#4a5270';
-  ctx.beginPath(); ctx.roundRect(cx - 17, hy + hr - 4, 34, 40, 6); ctx.fill();
+  ctx.beginPath(); ctx.roundRect(cx - 17 * S, hy + hr - 4 * S, 34 * S, 40 * S, 6 * S); ctx.fill();
 
-  ctx.strokeStyle = '#c8956a'; ctx.lineWidth = 7; ctx.lineCap = 'round';
-  ctx.beginPath(); ctx.moveTo(cx - hr + 4, ay); ctx.lineTo(cx - hs, ay); ctx.stroke();
-  ctx.beginPath(); ctx.moveTo(cx + hr - 4, ay); ctx.lineTo(cx + hs, ay); ctx.stroke();
+  ctx.strokeStyle = '#c8956a'; ctx.lineWidth = 7 * S; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(cx - hr + 4 * S, ay); ctx.lineTo(cx - hs, ay); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(cx + hr - 4 * S, ay); ctx.lineTo(cx + hs, ay); ctx.stroke();
 
   ctx.fillStyle = '#c8956a';
   [cx - hs, cx + hs].forEach(hx => {
-    ctx.beginPath(); ctx.arc(hx, ay, 8, 0, Math.PI * 2); ctx.fill();
+    ctx.beginPath(); ctx.arc(hx, ay, 8 * S, 0, Math.PI * 2); ctx.fill();
   });
 
-  const hg = ctx.createRadialGradient(cx - 8, hy - 10, 4, cx, hy, hr);
+  const hg = ctx.createRadialGradient(cx - 8 * S, hy - 10 * S, 4 * S, cx, hy, hr);
   hg.addColorStop(0, '#e8c090'); hg.addColorStop(1, '#b07848');
   ctx.fillStyle = hg;
   ctx.beginPath(); ctx.arc(cx, hy, hr, 0, Math.PI * 2); ctx.fill();
   ctx.strokeStyle = '#a06838'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(cx, hy, hr, 0, Math.PI * 2); ctx.stroke();
 
-  ctx.strokeStyle = '#906030'; ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y + 5, 18, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
+  ctx.strokeStyle = '#906030'; ctx.lineWidth = 2 * S;
+  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y + 5 * S, 18 * S, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
 
   ctx.fillStyle = '#1a1a2e';
-  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y, 14, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y, 14 * S, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#3060c0';
-  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y, 10, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y, 10 * S, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = '#080818';
-  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y, 5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx, CY_EYE_Y, 5 * S, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.9)';
-  ctx.beginPath(); ctx.arc(cx + 3, CY_EYE_Y - 3, 2.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(cx + 3 * S, CY_EYE_Y - 3 * S, 2.5 * S, 0, Math.PI * 2); ctx.fill();
 
   // 18 cm dimension
-  const dy = CY_ARM_Y + 22;
+  const dy = CY_ARM_Y + 22 * S;
   ctx.strokeStyle = '#8898b0'; ctx.lineWidth = 1; ctx.lineCap = 'butt';
   ctx.beginPath();
-  ctx.moveTo(cx - hs, CY_ARM_Y + 12); ctx.lineTo(cx - hs, dy);
-  ctx.moveTo(cx + hs, CY_ARM_Y + 12); ctx.lineTo(cx + hs, dy);
+  ctx.moveTo(cx - hs, CY_ARM_Y + 12 * S); ctx.lineTo(cx - hs, dy);
+  ctx.moveTo(cx + hs, CY_ARM_Y + 12 * S); ctx.lineTo(cx + hs, dy);
   ctx.moveTo(cx - hs, dy); ctx.lineTo(cx + hs, dy);
-  ctx.moveTo(cx - hs, dy); ctx.lineTo(cx - hs + 7, dy - 4);
-  ctx.moveTo(cx - hs, dy); ctx.lineTo(cx - hs + 7, dy + 4);
-  ctx.moveTo(cx + hs, dy); ctx.lineTo(cx + hs - 7, dy - 4);
-  ctx.moveTo(cx + hs, dy); ctx.lineTo(cx + hs - 7, dy + 4);
+  ctx.moveTo(cx - hs, dy); ctx.lineTo(cx - hs + 7 * S, dy - 4 * S);
+  ctx.moveTo(cx - hs, dy); ctx.lineTo(cx - hs + 7 * S, dy + 4 * S);
+  ctx.moveTo(cx + hs, dy); ctx.lineTo(cx + hs - 7 * S, dy - 4 * S);
+  ctx.moveTo(cx + hs, dy); ctx.lineTo(cx + hs - 7 * S, dy + 4 * S);
   ctx.stroke();
-  ctx.fillStyle = '#aabbd0'; ctx.font = '13px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('18 cm', cx, dy + 15);
+  ctx.fillStyle = '#aabbd0'; ctx.font = (13 * S) + 'px Arial'; ctx.textAlign = 'center';
+  ctx.fillText('18 cm', cx, dy + 15 * S);
 
-  ctx.fillStyle = '#c8d8f0'; ctx.font = 'bold 14px Arial';
-  ctx.fillText('Cyclops', cx, CY_Y + hr + 42);
-}
-
-// ── Flat mirror ───────────────────────────────────────────────────────────────
-function drawFlatMirror(cx) {
-  const x0 = cx - FM_W / 2, x1 = cx + FM_W / 2;
-  ctx.fillStyle = '#232d44';
-  ctx.fillRect(x0 - 4, 0, FM_W + 8, FM_Y);
-  ctx.fillStyle = '#3a4060';
-  ctx.fillRect(x0, FM_Y, FM_W, FM_H + 4);
-  const g = ctx.createLinearGradient(x0, FM_Y, x0, FM_Y + FM_H);
-  g.addColorStop(0, '#e0eaf8'); g.addColorStop(0.45, '#c0ccdc'); g.addColorStop(1, '#8898b0');
-  ctx.fillStyle = g; ctx.fillRect(x0, FM_Y, FM_W, FM_H);
-  ctx.strokeStyle = '#9aabcc'; ctx.lineWidth = 1.2; ctx.strokeRect(x0, FM_Y, FM_W, FM_H);
-
-  ctx.fillStyle = '#c8d8f0'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('Flat Mirror', cx, FM_Y - 14);
+  ctx.fillStyle = '#c8d8f0'; ctx.font = 'bold ' + (14 * S) + 'px Arial';
+  ctx.fillText('Cyclops', cx, CY_Y + hr + 42 * S);
 }
 
 // ── Cylinder mirror (full circle) ─────────────────────────────────────────────
@@ -247,7 +198,7 @@ function drawCylinderMirror(cx) {
 
   // Wall above the circle
   ctx.fillStyle = '#232d44';
-  ctx.fillRect(cx - r - 8, 0, 2 * r + 16, FM_Y + 4);
+  ctx.fillRect(cx - r - 8 * S, 0, 2 * r + 16 * S, FM_Y + 4 * S);
 
   // Backing fill
   const bg = ctx.createRadialGradient(cx, cy0, r * 0.15, cx, cy0, r);
@@ -256,7 +207,7 @@ function drawCylinderMirror(cx) {
   ctx.fillStyle = bg;
   ctx.beginPath(); ctx.arc(cx, cy0, r, 0, Math.PI * 2); ctx.fill();
 
-  // Reflective outer rim – silver gradient
+  // Reflective outer rim
   const sg = ctx.createLinearGradient(cx - r, cy0, cx + r, cy0);
   sg.addColorStop(0,    '#8898b8');
   sg.addColorStop(0.25, '#ddeeff');
@@ -264,22 +215,22 @@ function drawCylinderMirror(cx) {
   sg.addColorStop(0.75, '#ddeeff');
   sg.addColorStop(1,    '#8898b8');
   ctx.strokeStyle = sg;
-  ctx.lineWidth = 9;
+  ctx.lineWidth = 9 * S;
   ctx.beginPath(); ctx.arc(cx, cy0, r, 0, Math.PI * 2); ctx.stroke();
 
   // Inner highlight ring
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
-  ctx.lineWidth = 2;
-  ctx.beginPath(); ctx.arc(cx, cy0, r - 4, 0, Math.PI * 2); ctx.stroke();
+  ctx.lineWidth = 2 * S;
+  ctx.beginPath(); ctx.arc(cx, cy0, r - 4 * S, 0, Math.PI * 2); ctx.stroke();
 
-  // Label – drawn inside the visible dome area near the top
-  ctx.fillStyle = '#c8d8f0'; ctx.font = 'bold 15px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('Cylinder Mirror', cx, 24);
+  // Label
+  ctx.fillStyle = '#c8d8f0'; ctx.font = 'bold ' + (15 * S) + 'px Arial'; ctx.textAlign = 'center';
+  ctx.fillText('Cylinder Mirror', cx, 24 * S);
 }
 
 // ── Ruler ─────────────────────────────────────────────────────────────────────
-const RL = 20 * SCALE, RH = 36;
-let ruler = { x: 130, y: 650, a: 0 };
+const RL = 20 * SCALE, RH = 36 * S;
+let ruler = { x: 20, y: H - 60, a: 0 };
 let drag = false, dox = 0, doy = 0;
 let rot  = false, rot0 = 0, ra0 = 0;
 
@@ -288,17 +239,14 @@ function drawRuler() {
   ctx.translate(ruler.x, ruler.y);
   ctx.rotate(ruler.a);
 
-  // Body – bright cream, low transparency
   ctx.fillStyle = 'rgba(240, 220, 150, 0.88)';
   ctx.strokeStyle = 'rgba(140, 110, 40, 0.95)';
   ctx.lineWidth = 1.5;
-  ctx.beginPath(); ctx.roundRect(0, 0, RL, RH, 3);
-  ctx.fill(); ctx.stroke();
+  ctx.beginPath(); ctx.roundRect(0, 0, RL, RH, 3); ctx.fill(); ctx.stroke();
 
-  // Tick marks and numbers – dark, fully opaque
   ctx.fillStyle   = 'rgba(20, 10, 0, 1.0)';
   ctx.strokeStyle = 'rgba(20, 10, 0, 0.95)';
-  ctx.font = '17px Arial'; ctx.textAlign = 'center';
+  ctx.font = (17 * S) + 'px Arial'; ctx.textAlign = 'center';
 
   for (let i = 0; i <= 40; i++) {
     const x   = i * SCALE / 2;
@@ -310,8 +258,8 @@ function drawRuler() {
     ctx.beginPath(); ctx.moveTo(x, RH); ctx.lineTo(x, RH - th); ctx.stroke();
     if (cm && i > 0 && i < 40) ctx.fillText(String(i / 2), x, RH * 0.72);
   }
-  ctx.font = '18px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('cm', RL - 17, RH * 0.72);
+  ctx.font = (18 * S) + 'px Arial'; ctx.textAlign = 'left';
+  ctx.fillText('cm', RL - 17 * S, RH * 0.72);
 
   ctx.restore();
 }
@@ -328,33 +276,18 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#0a0f1e'; ctx.fillRect(0, 0, W, H);
 
-  ctx.fillStyle = '#0c1220';
-  ctx.fillRect(20, 0, 510, H);
-  ctx.fillRect(570, 0, 510, H);
-
-  ctx.strokeStyle = '#1a2438'; ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  ctx.beginPath(); ctx.moveTo(548, 8); ctx.lineTo(548, H - 8); ctx.stroke();
-  ctx.setLineDash([]);
-
-  // LEFT: flat mirror
-  flatRays.forEach(drawRay);
-  drawFlatMirror(L_CX);
-  drawCyclops(L_CX);
-
-  // RIGHT: cylinder mirror
   cylinderRays.forEach(drawRay);
-  drawCylinderMirror(R_CX);
-  drawCyclops(R_CX);
+  drawCylinderMirror(CX);
+  drawCyclops(CX);
 
   // Legend
-  const ly = H - 66;
-  drawSeg(30, ly,      54, ly,      INC, 2.5);
+  const ly = H - 50;
+  drawSeg(14, ly,      34, ly,      INC, 2.5);
   ctx.fillStyle = '#d8e4f0'; ctx.font = '12px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('incident ray', 60, ly + 4);
-  drawSeg(30, ly + 20, 54, ly + 20, REF, 2.5);
+  ctx.fillText('incident ray', 40, ly + 4);
+  drawSeg(14, ly + 18, 34, ly + 18, REF, 2.5);
   ctx.fillStyle = '#d8e4f0';
-  ctx.fillText('reflected ray', 60, ly + 24);
+  ctx.fillText('reflected ray', 40, ly + 22);
 
   drawRuler();
 }
@@ -362,7 +295,7 @@ function draw() {
 // ── Events ────────────────────────────────────────────────────────────────────
 canvas.addEventListener('mousedown', e => {
   const r = canvas.getBoundingClientRect();
-  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const mx = (e.clientX - r.left) * (W / r.width), my = (e.clientY - r.top) * (H / r.height);
   if (!rulerHit(mx, my)) return;
   if (e.button === 2) {
     rot = true; rot0 = Math.atan2(my - ruler.y, mx - ruler.x); ra0 = ruler.a;
@@ -372,7 +305,7 @@ canvas.addEventListener('mousedown', e => {
 });
 canvas.addEventListener('mousemove', e => {
   const r = canvas.getBoundingClientRect();
-  const mx = e.clientX - r.left, my = e.clientY - r.top;
+  const mx = (e.clientX - r.left) * (W / r.width), my = (e.clientY - r.top) * (H / r.height);
   if (drag) { ruler.x = mx - dox; ruler.y = my - doy; draw(); }
   else if (rot) { ruler.a = ra0 + Math.atan2(my - ruler.y, mx - ruler.x) - rot0; draw(); }
   else canvas.style.cursor = rulerHit(mx, my) ? 'grab' : 'default';
@@ -384,17 +317,23 @@ canvas.addEventListener('contextmenu', e => e.preventDefault());
 canvas.addEventListener('touchstart', e => {
   e.preventDefault();
   const t = e.touches[0], r = canvas.getBoundingClientRect();
-  const mx = t.clientX - r.left, my = t.clientY - r.top;
+  const mx = (t.clientX - r.left) * (W / r.width), my = (t.clientY - r.top) * (H / r.height);
   if (rulerHit(mx, my)) { drag = true; dox = mx - ruler.x; doy = my - ruler.y; }
 }, { passive: false });
 canvas.addEventListener('touchmove', e => {
   e.preventDefault(); if (!drag) return;
   const t = e.touches[0], r = canvas.getBoundingClientRect();
-  ruler.x = t.clientX - r.left - dox; ruler.y = t.clientY - r.top - doy; draw();
+  ruler.x = (t.clientX - r.left) * (W / r.width) - dox;
+  ruler.y = (t.clientY - r.top) * (H / r.height) - doy;
+  draw();
 }, { passive: false });
 canvas.addEventListener('touchend', () => { drag = false; });
 
 draw();
+
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
 </script>
 </body>
 </html>
