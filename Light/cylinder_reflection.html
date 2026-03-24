@@ -212,9 +212,170 @@
       transition: width 0.12s linear; width: 0%;
     }
   </style>
-  <!-- GIF decode (gifuct-js) + GIF encode (gif.js) loaded from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/gifuct-js@2.1.2/dist/gifuct-js.js"></script>
+  <!-- GIF encode (gif.js) loaded from CDN -->
   <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+  <!-- Self-contained GIF decoder — no CDN dependency -->
+  <script>
+  (function () {
+    'use strict';
+
+    function lzwDecode(minCodeSize, data, pixelCount) {
+      let pos = 0, bitsLeft = 0, curBits = 0;
+      const clearCode = 1 << minCodeSize;
+      const eofCode   = clearCode + 1;
+      let codeSize = minCodeSize + 1;
+      let codeMask = (1 << codeSize) - 1;
+      const MAX = 4096;
+      const prefix     = new Int32Array(MAX).fill(-1);
+      const suffix     = new Uint8Array(MAX);
+      const pixelStack = new Uint8Array(MAX + 1);
+
+      const initTable = () => {
+        for (let i = 0; i < clearCode; i++) { prefix[i] = -1; suffix[i] = i; }
+        codeSize = minCodeSize + 1;
+        codeMask = (1 << codeSize) - 1;
+        return clearCode + 2;
+      };
+
+      let tableSize = initTable();
+      let oldCode = -1, first = 0, stackTop = 0;
+      const pixels = new Uint8Array(pixelCount);
+      let pxOut = 0;
+
+      const readCode = () => {
+        while (bitsLeft < codeSize) {
+          if (pos >= data.length) return -1;
+          curBits |= data[pos++] << bitsLeft;
+          bitsLeft += 8;
+        }
+        const code = curBits & codeMask;
+        curBits >>>= codeSize;
+        bitsLeft -= codeSize;
+        return code;
+      };
+
+      while (pxOut < pixelCount) {
+        while (stackTop > 0 && pxOut < pixelCount) pixels[pxOut++] = pixelStack[--stackTop];
+        if (pxOut >= pixelCount) break;
+
+        let code = readCode();
+        if (code < 0 || code === eofCode) break;
+        if (code === clearCode) { tableSize = initTable(); oldCode = -1; continue; }
+        if (oldCode === -1) { pixels[pxOut++] = suffix[code]; oldCode = code; first = code; continue; }
+
+        const inCode = code;
+        if (code >= tableSize) { pixelStack[stackTop++] = first; code = oldCode; }
+        while (code >= clearCode) { pixelStack[stackTop++] = suffix[code]; code = prefix[code]; }
+        first = suffix[code];
+        pixelStack[stackTop++] = first;
+
+        if (tableSize < MAX) {
+          prefix[tableSize] = oldCode; suffix[tableSize] = first; tableSize++;
+          if (tableSize === (1 << codeSize) && codeSize < 12) { codeSize++; codeMask = (1 << codeSize) - 1; }
+        }
+        oldCode = inCode;
+      }
+      while (stackTop > 0 && pxOut < pixelCount) pixels[pxOut++] = pixelStack[--stackTop];
+      return pixels;
+    }
+
+    function deinterlace(pixels, width, height) {
+      const out = new Uint8Array(pixels.length);
+      const passes = [[0,8],[4,8],[2,4],[1,2]];
+      let src = 0;
+      for (const [start, step] of passes) {
+        for (let row = start; row < height; row += step) {
+          out.set(pixels.subarray(src * width, (src + 1) * width), row * width);
+          src++;
+        }
+      }
+      return out;
+    }
+
+    window.parseGIF = function parseGIF(buffer) {
+      const d = new Uint8Array(buffer);
+      let p = 0;
+      const rb = () => d[p++];
+      const rw = () => { const v = d[p] | (d[p+1] << 8); p += 2; return v; };
+
+      p = 6; // skip "GIF89a" / "GIF87a"
+      const width  = rw();
+      const height = rw();
+      const packed = rb();
+      rb(); rb(); // background color index, pixel aspect ratio
+
+      let gct = null;
+      if (packed >> 7) { const n = 3 * (2 << (packed & 7)); gct = d.slice(p, p + n); p += n; }
+
+      const frames = [];
+      let gce = null;
+
+      while (p < d.length) {
+        const intro = rb();
+        if (intro === 0x3B) break; // Trailer
+        if (intro === 0x21) {      // Extension
+          const label = rb();
+          if (label === 0xF9) {    // Graphic Control Extension
+            rb();                  // block size (always 4)
+            const gceP     = rb();
+            const delay    = rw();
+            const transpIdx = rb();
+            rb();                  // block terminator
+            gce = {
+              delay:            (delay || 10) * 10,
+              disposalMethod:   (gceP >> 2) & 7,
+              hasTransparency:  !!(gceP & 1),
+              transparentIndex: transpIdx
+            };
+          } else {
+            let sz; while ((sz = rb()) !== 0) p += sz;
+          }
+        } else if (intro === 0x2C) { // Image Descriptor
+          const left   = rw(), top    = rw();
+          const frameW = rw(), frameH = rw();
+          const imgP   = rb();
+          const hasLCT     = imgP >> 7;
+          const interlaced = (imgP >> 6) & 1;
+
+          let ct = gct;
+          if (hasLCT) { const n = 3 * (2 << (imgP & 7)); ct = d.slice(p, p + n); p += n; }
+
+          const minCode = rb();
+          const subData = [];
+          let sz;
+          while ((sz = rb()) !== 0) { for (let i = 0; i < sz; i++) subData.push(d[p++]); }
+
+          let pixels = lzwDecode(minCode, new Uint8Array(subData), frameW * frameH);
+          if (interlaced) pixels = deinterlace(pixels, frameW, frameH);
+
+          const transpIdx = (gce && gce.hasTransparency) ? gce.transparentIndex : -1;
+          const patch = new Uint8ClampedArray(frameW * frameH * 4);
+          for (let i = 0; i < pixels.length; i++) {
+            const idx = pixels[i];
+            if (idx === transpIdx) { patch[i*4+3] = 0; continue; }
+            patch[i*4]   = ct[idx*3];
+            patch[i*4+1] = ct[idx*3+1];
+            patch[i*4+2] = ct[idx*3+2];
+            patch[i*4+3] = 255;
+          }
+
+          frames.push({
+            patch,
+            dims: { left, top, width: frameW, height: frameH },
+            delay: gce ? gce.delay : 100,
+            disposalType: gce ? gce.disposalMethod : 0
+          });
+          gce = null;
+        }
+      }
+      return { lsd: { width, height }, frames };
+    };
+
+    window.decompressFrames = function decompressFrames(parsedGif /*, buildPatch */) {
+      return parsedGif.frames;
+    };
+  })();
+  </script>
 </head>
 <body>
 
@@ -1295,9 +1456,10 @@ gifScaleSlider.addEventListener('input', () => {
 // GIF Loading — decode every composited frame via gifuct-js
 // ─────────────────────────────────────────────────────────────────────────────
 function loadGifFile(file) {
-  const { parseGIF, decompressFrames } = window['gifuct-js'] || {};
+  const parseGIF = window.parseGIF;
+  const decompressFrames = window.decompressFrames;
   if (!parseGIF || !decompressFrames) {
-    alert('GIF decoder library not available. Check your internet connection.');
+    alert('GIF decoder not available.');
     return;
   }
 
