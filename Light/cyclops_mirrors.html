@@ -20,7 +20,7 @@
 </style>
 </head>
 <body>
-<canvas id="canvas" width="413" height="548"></canvas>
+<canvas id="canvas" width="413" height="430"></canvas>
 <div id="info">Drag the ruler to measure distances. Right-click drag to rotate.</div>
 
 <script>
@@ -230,7 +230,7 @@ function drawCylinderMirror(cx) {
 
 // ── Ruler ─────────────────────────────────────────────────────────────────────
 const RL = 20 * SCALE, RH = 36 * S;
-let ruler = { x: 20, y: H - 60, a: 0 };
+let ruler = { x: 16, y: 200, a: 0 };
 let drag = false, dox = 0, doy = 0;
 let rot  = false, rot0 = 0, ra0 = 0;
 
@@ -280,14 +280,15 @@ function draw() {
   drawCylinderMirror(CX);
   drawCyclops(CX);
 
-  // Legend
-  const ly = H - 50;
-  drawSeg(14, ly,      34, ly,      INC, 2.5);
+  // Legend – top right
+  const lx = W - 130;
+  const ly = 14;
+  drawSeg(lx, ly,      lx + 20, ly,      INC, 2.5);
   ctx.fillStyle = '#d8e4f0'; ctx.font = '12px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('incident ray', 40, ly + 4);
-  drawSeg(14, ly + 18, 34, ly + 18, REF, 2.5);
+  ctx.fillText('incident ray', lx + 26, ly + 4);
+  drawSeg(lx, ly + 16, lx + 20, ly + 16, REF, 2.5);
   ctx.fillStyle = '#d8e4f0';
-  ctx.fillText('reflected ray', 40, ly + 22);
+  ctx.fillText('reflected ray', lx + 26, ly + 20);
 
   drawRuler();
 }
