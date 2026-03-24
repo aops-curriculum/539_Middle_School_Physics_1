@@ -128,7 +128,7 @@ canvas { display: block; }
 
   <!-- Row 3: Frequency readout + action buttons -->
   <div id="info-row">
-    <span id="freq-display">Observed f = 2.00 Hz</span>
+    <span id="freq-display">Observed f = 624 Hz</span>
     <div class="row">
       <button class="action" id="startBtn">▶ Start</button>
       <button class="action" id="resetBtn">↺ Reset</button>
@@ -162,10 +162,23 @@ canvas { display: block; }
 // As it recedes, v_radial < 0 → lower frequency.
 // When directly above the observer, v_radial ≈ 0 → f_source.
 
-const WAVE_SPEED    = 120;   // px/s
-const SOURCE_FREQ   = 2;     // Hz
+const WAVE_SPEED    = 120;   // px/s  (visual simulation units)
+const SOURCE_FREQ   = 2;     // Hz   (visual simulation units)
 const SOURCE_PERIOD = 1 / SOURCE_FREQ;
 const MAX_WAVE_RADIUS = 900;
+
+// ── Display-frequency scaling ──────────────────────────
+// The visual wave fronts use exaggerated speeds for clarity.
+// The DISPLAYED frequency uses realistic Doppler parameters
+// so students see physically meaningful Hz values.
+//
+// At zero observer separation (head-on approach / recede):
+//   f_approach = 624 / (1 − 0.07337) ≈ 673 Hz
+//   f_recede   = 624 / (1 + 0.07337) ≈ 581 Hz
+//
+const DISPLAY_SOURCE_FREQ = 623.625;  // Hz (real-world source)
+const BASE_VS_RATIO       = 0.07337;  // v_source / v_sound for Slow (60 px/s)
+const BASE_SOURCE_VX      = 60;       // reference sim speed for the ratio
 
 const SOURCE_Y      = 30;    // source travels along this y-level
 const SOURCE_START_X = -60;  // start off-screen left
@@ -279,6 +292,32 @@ function computeObservedFreq() {
 }
 
 // ============================================================
+// DISPLAY-FREQUENCY CALCULATION
+// ============================================================
+// Uses the same geometry (cos θ) as the visual simulation but
+// plugs it into a realistic Doppler formula so the readout
+// shows physically meaningful Hz values.
+//
+// The v_source/v_sound ratio scales with the speed button so
+// faster visual speeds also produce larger displayed shifts.
+
+function computeDisplayFreq() {
+  const dx = OBSERVER_X - sourceX;
+  const dy = observerY - SOURCE_Y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+
+  if (dist < 1) return DISPLAY_SOURCE_FREQ;
+
+  const cosTheta = dx / dist;   // +1 approaching, −1 receding
+  const vsRatio  = BASE_VS_RATIO * (sourceVx / BASE_SOURCE_VX);
+  const denom    = 1 - vsRatio * cosTheta;
+
+  if (denom < 0.01) return DISPLAY_SOURCE_FREQ / 0.01;
+
+  return DISPLAY_SOURCE_FREQ / denom;
+}
+
+// ============================================================
 // VELOCITY BUTTON HANDLING
 // ============================================================
 
@@ -347,13 +386,13 @@ resetBtn.addEventListener('click', () => {
 // ============================================================
 
 function updateFreqDisplay() {
-  currentFreq = computeObservedFreq();
-  freqEl.textContent = `Observed f = ${currentFreq.toFixed(2)} Hz`;
+  currentFreq = computeDisplayFreq();
+  freqEl.textContent = `Observed f = ${currentFreq.toFixed(0)} Hz`;
 
   // Color the readout: blue if above source freq, red if below
-  if (currentFreq > SOURCE_FREQ + 0.05) {
+  if (currentFreq > DISPLAY_SOURCE_FREQ + 2) {
     freqEl.style.color = '#2563eb';  // blue — approaching
-  } else if (currentFreq < SOURCE_FREQ - 0.05) {
+  } else if (currentFreq < DISPLAY_SOURCE_FREQ - 2) {
     freqEl.style.color = '#dc2626';  // red — receding
   } else {
     freqEl.style.color = '#d97706';  // amber — near source freq
@@ -470,7 +509,7 @@ function draw() {
   ctx.fillStyle = '#777';
 
   if (sourceX > -10 && sourceX < canvas.width + 10) {
-    ctx.fillText('Source (2 Hz)', sourceX, SOURCE_Y - 18);
+    ctx.fillText('Source (624 Hz)', sourceX, SOURCE_Y - 18);
   }
   ctx.fillText('Observer', OBSERVER_X, observerY + 40);
 }
