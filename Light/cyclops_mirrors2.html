@@ -253,9 +253,9 @@ function drawCylinderMirror() {
   ctx.lineWidth = 2 * S;
   ctx.beginPath(); ctx.arc(cx, cy0, r - 4 * S, 0, Math.PI * 2); ctx.stroke();
 
-  // Label
+  // Label — drawn above the wall
   ctx.fillStyle = '#c8d8f0'; ctx.font = 'bold ' + (15 * S) + 'px Arial'; ctx.textAlign = 'center';
-  ctx.fillText('Cylindrical Mirror', cx, FM_Y - 14 * S);
+  ctx.fillText('Cylindrical Mirror', cx, FM_Y - 28 * S);
 }
 
 // ── Ruler ─────────────────────────────────────────────────────────────────────
