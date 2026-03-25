@@ -1,0 +1,546 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sun Reflection off Glass Skyscraper</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #87CEEB;
+  font-family: Arial, sans-serif;
+  max-width: 600px;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+p.instructions {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  padding: 12px 8px 4px;
+}
+.slider-container {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 6px 16px 8px;
+}
+.slider-container label {
+  font-size: 13px;
+  color: #555;
+  white-space: nowrap;
+}
+.slider-container input[type="range"] {
+  width: 300px;
+  accent-color: #f9a825;
+}
+canvas {
+  display: block;
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: default;
+}
+</style>
+</head>
+<body>
+<p class="instructions">Use the slider to change the angle of the sunlight. Watch how rays reflect off the building's windows.</p>
+<div class="slider-container">
+  <label>Sun angle:</label>
+  <input type="range" id="angleSlider" min="10" max="80" value="35">
+</div>
+<canvas id="canvas" width="600" height="500"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const slider = document.getElementById('angleSlider');
+const W = 600;
+const H = 500;
+
+const GROUND_Y = 440;
+const NUM_RAYS = 14;
+const MAX_BOUNCES = 6;
+const RAY_MAX_LEN = 1500;
+
+// Building definition — the front face we see
+const bldgLeft = 360;
+const bldgRight = 510;
+const bldgTop = 60;
+const bldgBottom = GROUND_Y;
+
+// Protruding windows on the left side of the building
+// Each window is a small rectangular bump sticking out to the left
+const windowProtrusion = 8;
+const windowRows = 13;
+const windowH = 20;
+const windowGapY = (bldgBottom - bldgTop - windowRows * windowH) / (windowRows + 1);
+
+function getWindows() {
+  const wins = [];
+  for (let r = 0; r < windowRows; r++) {
+    const wy = bldgTop + windowGapY + r * (windowH + windowGapY);
+    wins.push({
+      x: bldgLeft - windowProtrusion,
+      y: wy,
+      w: windowProtrusion,
+      h: windowH
+    });
+  }
+  return wins;
+}
+
+const windows = getWindows();
+
+// Build reflective surfaces from protruding windows
+// Each window has: left face, top face, bottom face
+function getWindowSurfaces() {
+  const surfaces = [];
+  for (const win of windows) {
+    // Left face (vertical, normal pointing left)
+    surfaces.push({
+      x1: win.x, y1: win.y,
+      x2: win.x, y2: win.y + win.h,
+      nx: -1, ny: 0, type: 'glass'
+    });
+    // Top face (horizontal, normal pointing up)
+    surfaces.push({
+      x1: win.x, y1: win.y,
+      x2: win.x + win.w, y2: win.y,
+      nx: 0, ny: -1, type: 'glass'
+    });
+    // Bottom face (horizontal, normal pointing down)
+    surfaces.push({
+      x1: win.x, y1: win.y + win.h,
+      x2: win.x + win.w, y2: win.y + win.h,
+      nx: 0, ny: 1, type: 'glass'
+    });
+  }
+  // Left wall of building between windows (non-glass)
+  surfaces.push({
+    x1: bldgLeft, y1: bldgTop,
+    x2: bldgLeft, y2: bldgBottom,
+    nx: -1, ny: 0, type: 'wall'
+  });
+  // Roof
+  surfaces.push({
+    x1: bldgLeft - windowProtrusion, y1: bldgTop,
+    x2: bldgRight, y2: bldgTop,
+    nx: 0, ny: -1, type: 'wall'
+  });
+  return surfaces;
+}
+
+const allSurfaces = getWindowSurfaces();
+
+// Car body definition
+const carX = 80;
+const carY = GROUND_Y;
+const carW = 120;
+const carH = 30;
+const carBodyRect = { x: carX, y: carY - carH, w: carW, h: carH };
+const cabinX = carX + 30;
+const cabinY = carY - carH - 18;
+const cabinW = 55;
+const cabinH = 18;
+const carCabinRect = { x: cabinX, y: cabinY, w: cabinW, h: cabinH };
+
+function raySegmentIntersect(ox, oy, dx, dy, x1, y1, x2, y2) {
+  const ex = x2 - x1;
+  const ey = y2 - y1;
+  const denom = dx * ey - dy * ex;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((x1 - ox) * ey - (y1 - oy) * ex) / denom;
+  const u = ((x1 - ox) * dy - (y1 - oy) * dx) / denom;
+  if (t > 0.01 && u >= 0 && u <= 1) {
+    return { t, x: ox + dx * t, y: oy + dy * t, u };
+  }
+  return null;
+}
+
+function rayRectIntersect(ox, oy, dx, dy, rect) {
+  const sides = [
+    { x1: rect.x, y1: rect.y, x2: rect.x + rect.w, y2: rect.y, nx: 0, ny: -1 },
+    { x1: rect.x, y1: rect.y + rect.h, x2: rect.x + rect.w, y2: rect.y + rect.h, nx: 0, ny: 1 },
+    { x1: rect.x, y1: rect.y, x2: rect.x, y2: rect.y + rect.h, nx: -1, ny: 0 },
+    { x1: rect.x + rect.w, y1: rect.y, x2: rect.x + rect.w, y2: rect.y + rect.h, nx: 1, ny: 0 },
+  ];
+  let best = null;
+  for (const s of sides) {
+    const hit = raySegmentIntersect(ox, oy, dx, dy, s.x1, s.y1, s.x2, s.y2);
+    if (hit && (!best || hit.t < best.t)) {
+      best = { t: hit.t, x: hit.x, y: hit.y, nx: s.nx, ny: s.ny };
+    }
+  }
+  return best;
+}
+
+function traceRay(ox, oy, dx, dy) {
+  let segments = [];
+  let cx = ox, cy = oy;
+  let rdx = dx, rdy = dy;
+
+  for (let bounce = 0; bounce <= MAX_BOUNCES; bounce++) {
+    let closest = null;
+    let hitType = null;
+
+    // Check all building/window surfaces
+    for (const surf of allSurfaces) {
+      const hit = raySegmentIntersect(cx, cy, rdx, rdy, surf.x1, surf.y1, surf.x2, surf.y2);
+      if (hit && (!closest || hit.t < closest.t)) {
+        closest = { t: hit.t, x: hit.x, y: hit.y, nx: surf.nx, ny: surf.ny };
+        hitType = surf.type;
+      }
+    }
+
+    // Check ground
+    if (rdy > 0) {
+      const tg = (GROUND_Y - cy) / rdy;
+      if (tg > 0.01 && (!closest || tg < closest.t)) {
+        closest = { t: tg, x: cx + rdx * tg, y: GROUND_Y, nx: 0, ny: -1 };
+        hitType = 'ground';
+      }
+    }
+
+    // Check car body
+    const carBodyHit = rayRectIntersect(cx, cy, rdx, rdy, carBodyRect);
+    if (carBodyHit && (!closest || carBodyHit.t < closest.t)) {
+      closest = carBodyHit;
+      hitType = 'car';
+    }
+    const carCabinHit = rayRectIntersect(cx, cy, rdx, rdy, carCabinRect);
+    if (carCabinHit && (!closest || carCabinHit.t < closest.t)) {
+      closest = carCabinHit;
+      hitType = 'car';
+    }
+
+    if (!closest) {
+      const endX = cx + rdx * RAY_MAX_LEN;
+      const endY = cy + rdy * RAY_MAX_LEN;
+      segments.push({ x1: cx, y1: cy, x2: endX, y2: endY, reflected: bounce > 0 });
+      break;
+    }
+
+    segments.push({ x1: cx, y1: cy, x2: closest.x, y2: closest.y, reflected: bounce > 0 });
+
+    if (hitType === 'glass') {
+      // Reflect off glass
+      const dot = rdx * closest.nx + rdy * closest.ny;
+      rdx = rdx - 2 * dot * closest.nx;
+      rdy = rdy - 2 * dot * closest.ny;
+      cx = closest.x;
+      cy = closest.y;
+    } else {
+      break;
+    }
+  }
+  return segments;
+}
+
+function drawSky() {
+  const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  grad.addColorStop(0, '#4A90D9');
+  grad.addColorStop(1, '#87CEEB');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, GROUND_Y);
+}
+
+function drawGround() {
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+  ctx.setLineDash([20, 15]);
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y + 30);
+  ctx.lineTo(W, GROUND_Y + 30);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = '#888';
+  ctx.fillRect(bldgLeft - 25, GROUND_Y, bldgRight - bldgLeft + 50, 8);
+}
+
+function drawBuilding() {
+  // Main front face — plain, featureless
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(bldgLeft, bldgTop, bldgRight - bldgLeft, bldgBottom - bldgTop);
+
+  // Subtle vertical lines for paneling
+  ctx.strokeStyle = '#7a7a7a';
+  ctx.lineWidth = 1;
+  const panelCount = 6;
+  const panelW = (bldgRight - bldgLeft) / panelCount;
+  for (let i = 1; i < panelCount; i++) {
+    const px = bldgLeft + i * panelW;
+    ctx.beginPath();
+    ctx.moveTo(px, bldgTop);
+    ctx.lineTo(px, bldgBottom);
+    ctx.stroke();
+  }
+
+  // Protruding windows on the left side
+  for (const win of windows) {
+    // Window frame/structure
+    ctx.fillStyle = '#606060';
+    ctx.fillRect(win.x, win.y, win.w, win.h);
+
+    // Glass face (left-facing)
+    const glassGrad = ctx.createLinearGradient(win.x, win.y, win.x + win.w, win.y);
+    glassGrad.addColorStop(0, '#7ec8e3');
+    glassGrad.addColorStop(1, '#5ba3c9');
+    ctx.fillStyle = glassGrad;
+    ctx.fillRect(win.x, win.y + 1, win.w - 1, win.h - 2);
+
+    // Highlight on glass
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(win.x, win.y + 1, 2, win.h - 2);
+
+    // Outline
+    ctx.strokeStyle = '#4a4a4a';
+    ctx.lineWidth = 0.5;
+    ctx.strokeRect(win.x, win.y, win.w, win.h);
+  }
+
+  // Building outline
+  ctx.strokeStyle = '#456';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bldgLeft, bldgTop, bldgRight - bldgLeft, bldgBottom - bldgTop);
+
+  // Roof accent
+  ctx.fillStyle = '#456';
+  ctx.fillRect(bldgLeft, bldgTop, bldgRight - bldgLeft, 4);
+}
+
+function drawCar() {
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(carX + carW / 2, GROUND_Y + 2, carW / 2 + 5, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.moveTo(carX, carY);
+  ctx.lineTo(carX, carY - carH);
+  ctx.lineTo(carX + 10, carY - carH - 5);
+  ctx.lineTo(carX + carW - 10, carY - carH - 5);
+  ctx.lineTo(carX + carW, carY - carH);
+  ctx.lineTo(carX + carW, carY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#2a2a3a';
+  ctx.beginPath();
+  ctx.moveTo(cabinX, cabinY + cabinH);
+  ctx.lineTo(cabinX + 8, cabinY);
+  ctx.lineTo(cabinX + cabinW - 8, cabinY);
+  ctx.lineTo(cabinX + cabinW, cabinY + cabinH);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(100, 150, 200, 0.3)';
+  ctx.beginPath();
+  ctx.moveTo(cabinX + 2, cabinY + cabinH);
+  ctx.lineTo(cabinX + 10, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW / 2 - 2, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW / 2 - 2, cabinY + cabinH);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(100, 150, 200, 0.25)';
+  ctx.beginPath();
+  ctx.moveTo(cabinX + cabinW / 2 + 2, cabinY + cabinH);
+  ctx.lineTo(cabinX + cabinW / 2 + 2, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW - 10, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW - 2, cabinY + cabinH);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.arc(carX + 25, carY, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(carX + carW - 25, carY, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#666';
+  ctx.beginPath();
+  ctx.arc(carX + 25, carY, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(carX + carW - 25, carY, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#ff6';
+  ctx.beginPath();
+  ctx.ellipse(carX + carW, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#e33';
+  ctx.beginPath();
+  ctx.ellipse(carX, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(carX + 5, carY - carH / 2);
+  ctx.lineTo(carX + carW - 5, carY - carH / 2);
+  ctx.stroke();
+}
+
+function drawRays(angleDeg) {
+  const angleRad = angleDeg * Math.PI / 180;
+  const dx = Math.cos(angleRad);
+  const dy = Math.sin(angleRad);
+
+  // Generate parallel rays coming from off-screen upper-left
+  // Space them perpendicular to the ray direction
+  const perpX = -dy;
+  const perpY = dx;
+  const spacing = 30;
+
+  const allTraced = [];
+
+  for (let i = -NUM_RAYS; i <= NUM_RAYS; i++) {
+    // Start point far off-screen in the direction opposite to the ray
+    const cx = -dx * 800 + perpX * spacing * i + W / 2;
+    const cy = -dy * 800 + perpY * spacing * i + H / 2;
+
+    // Only trace rays that could enter the canvas
+    const entryT = findCanvasEntry(cx, cy, dx, dy);
+    if (entryT === null) continue;
+
+    const startX = cx + dx * (entryT - 5);
+    const startY = cy + dy * (entryT - 5);
+
+    const segs = traceRay(startX, startY, dx, dy);
+    allTraced.push(segs);
+  }
+
+  // Draw incoming (unreflected) rays
+  ctx.lineWidth = 1.5;
+  for (const segs of allTraced) {
+    for (const seg of segs) {
+      if (seg.reflected) continue;
+      ctx.strokeStyle = 'rgba(255, 235, 59, 0.55)';
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(
+        Math.max(-50, Math.min(W + 50, seg.x2)),
+        Math.max(-50, Math.min(H + 50, seg.y2))
+      );
+      ctx.stroke();
+    }
+  }
+
+  // Draw reflected rays (brighter)
+  ctx.lineWidth = 2;
+  for (const segs of allTraced) {
+    for (const seg of segs) {
+      if (!seg.reflected) continue;
+      ctx.strokeStyle = 'rgba(255, 245, 100, 0.8)';
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+      ctx.lineTo(
+        Math.max(-50, Math.min(W + 50, seg.x2)),
+        Math.max(-50, Math.min(H + 50, seg.y2))
+      );
+      ctx.stroke();
+    }
+  }
+}
+
+function findCanvasEntry(ox, oy, dx, dy) {
+  // Find the smallest t>0 where the ray enters the canvas region
+  const margin = 20;
+  const tVals = [];
+  if (Math.abs(dx) > 1e-10) {
+    tVals.push((-margin - ox) / dx);
+    tVals.push((W + margin - ox) / dx);
+  }
+  if (Math.abs(dy) > 1e-10) {
+    tVals.push((-margin - oy) / dy);
+    tVals.push((H + margin - oy) / dy);
+  }
+  let best = null;
+  for (const t of tVals) {
+    if (t < 0) continue;
+    const px = ox + dx * t;
+    const py = oy + dy * t;
+    if (px >= -margin && px <= W + margin && py >= -margin && py <= H + margin) {
+      if (best === null || t < best) best = t;
+    }
+  }
+  return best;
+}
+
+// Glow spot on ground/car where reflected light hits
+function drawGlowSpots(angleDeg) {
+  const angleRad = angleDeg * Math.PI / 180;
+  const dx = Math.cos(angleRad);
+  const dy = Math.sin(angleRad);
+  const perpX = -dy;
+  const perpY = dx;
+  const spacing = 30;
+
+  for (let i = -NUM_RAYS; i <= NUM_RAYS; i++) {
+    const cx = -dx * 800 + perpX * spacing * i + W / 2;
+    const cy = -dy * 800 + perpY * spacing * i + H / 2;
+    const entryT = findCanvasEntry(cx, cy, dx, dy);
+    if (entryT === null) continue;
+    const startX = cx + dx * (entryT - 5);
+    const startY = cy + dy * (entryT - 5);
+    const segs = traceRay(startX, startY, dx, dy);
+
+    // Find terminal point of reflected rays
+    for (let s = 0; s < segs.length; s++) {
+      const seg = segs[s];
+      if (seg.reflected && s === segs.length - 1) {
+        // Draw a small glow at the endpoint
+        const gx = seg.x2;
+        const gy = seg.y2;
+        if (gx > -10 && gx < W + 10 && gy > -10 && gy < H + 10) {
+          const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, 12);
+          glow.addColorStop(0, 'rgba(255, 255, 180, 0.5)');
+          glow.addColorStop(1, 'rgba(255, 255, 180, 0)');
+          ctx.fillStyle = glow;
+          ctx.beginPath();
+          ctx.arc(gx, gy, 12, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+    }
+  }
+}
+
+function draw() {
+  const angleDeg = parseFloat(slider.value);
+  ctx.clearRect(0, 0, W, H);
+  drawSky();
+  drawGround();
+  drawGlowSpots(angleDeg);
+  drawRays(angleDeg);
+  drawBuilding();
+  drawCar();
+
+  // Angle label
+  ctx.fillStyle = 'rgba(0,0,0,0.4)';
+  ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'right';
+  ctx.fillText(angleDeg + '° from horizontal', W - 12, H - 10);
+  ctx.textAlign = 'left';
+}
+
+slider.addEventListener('input', draw);
+
+draw();
+
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
+</body>
+</html>
