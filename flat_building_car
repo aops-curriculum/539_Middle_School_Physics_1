@@ -1,0 +1,456 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Sun Reflection off Glass Skyscraper</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #87CEEB;
+  font-family: Arial, sans-serif;
+  max-width: 600px;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+}
+p.instructions {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  padding: 12px 8px 8px;
+}
+canvas {
+  display: block;
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: grab;
+}
+canvas.grabbing {
+  cursor: grabbing;
+}
+</style>
+</head>
+<body>
+<p class="instructions">Click and drag the sun to move it. Watch how rays reflect off the glass building.</p>
+<canvas id="canvas" width="600" height="500"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 600;
+const H = 500;
+
+const GROUND_Y = 440;
+const NUM_RAYS = 16;
+const MAX_BOUNCES = 10;
+const RAY_MAX_LEN = 1500;
+
+let sunX = 100;
+let sunY = 80;
+const SUN_R = 30;
+
+let dragging = false;
+
+// Building definition
+const bldgLeft = 380;
+const bldgRight = 520;
+const bldgTop = 80;
+const bldgBottom = GROUND_Y;
+
+// Building surfaces (line segments): left wall, right wall, roof
+const buildingSurfaces = [
+  { x1: bldgLeft, y1: bldgTop, x2: bldgLeft, y2: bldgBottom, nx: -1, ny: 0 },  // left wall, normal pointing left
+  { x1: bldgRight, y1: bldgTop, x2: bldgRight, y2: bldgBottom, nx: 1, ny: 0 },  // right wall, normal pointing right
+  { x1: bldgLeft, y1: bldgTop, x2: bldgRight, y2: bldgTop, nx: 0, ny: -1 },     // roof, normal pointing up
+];
+
+// Car body definition
+const carX = 60;
+const carY = GROUND_Y;
+const carW = 120;
+const carH = 30;
+const carBodyRect = { x: carX, y: carY - carH, w: carW, h: carH };
+// Car cabin
+const cabinX = carX + 30;
+const cabinY = carY - carH - 18;
+const cabinW = 55;
+const cabinH = 18;
+const carCabinRect = { x: cabinX, y: cabinY, w: cabinW, h: cabinH };
+
+// Segment intersection helper: ray from (ox,oy) in direction (dx,dy) with segment (x1,y1)-(x2,y2)
+function raySegmentIntersect(ox, oy, dx, dy, x1, y1, x2, y2) {
+  const ex = x2 - x1;
+  const ey = y2 - y1;
+  const denom = dx * ey - dy * ex;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((x1 - ox) * ey - (y1 - oy) * ex) / denom;
+  const u = ((x1 - ox) * dy - (y1 - oy) * dx) / denom;
+  if (t > 0.001 && u >= 0 && u <= 1) {
+    return { t, x: ox + dx * t, y: oy + dy * t, u };
+  }
+  return null;
+}
+
+// Ray-rect intersection: returns {t, x, y, nx, ny} or null
+function rayRectIntersect(ox, oy, dx, dy, rect) {
+  const sides = [
+    { x1: rect.x, y1: rect.y, x2: rect.x + rect.w, y2: rect.y, nx: 0, ny: -1 },             // top
+    { x1: rect.x, y1: rect.y + rect.h, x2: rect.x + rect.w, y2: rect.y + rect.h, nx: 0, ny: 1 }, // bottom
+    { x1: rect.x, y1: rect.y, x2: rect.x, y2: rect.y + rect.h, nx: -1, ny: 0 },              // left
+    { x1: rect.x + rect.w, y1: rect.y, x2: rect.x + rect.w, y2: rect.y + rect.h, nx: 1, ny: 0 }, // right
+  ];
+  let best = null;
+  for (const s of sides) {
+    const hit = raySegmentIntersect(ox, oy, dx, dy, s.x1, s.y1, s.x2, s.y2);
+    if (hit && (!best || hit.t < best.t)) {
+      best = { t: hit.t, x: hit.x, y: hit.y, nx: s.nx, ny: s.ny };
+    }
+  }
+  return best;
+}
+
+function traceRay(ox, oy, angle) {
+  let dx = Math.cos(angle);
+  let dy = Math.sin(angle);
+  let segments = [];
+  let cx = ox, cy = oy;
+
+  for (let bounce = 0; bounce <= MAX_BOUNCES; bounce++) {
+    let closest = null;
+    let hitType = null;
+
+    // Check building surfaces
+    for (const surf of buildingSurfaces) {
+      const hit = raySegmentIntersect(cx, cy, dx, dy, surf.x1, surf.y1, surf.x2, surf.y2);
+      if (hit && (!closest || hit.t < closest.t)) {
+        closest = { t: hit.t, x: hit.x, y: hit.y, nx: surf.nx, ny: surf.ny };
+        hitType = 'building';
+      }
+    }
+
+    // Check ground
+    if (dy > 0) {
+      const tg = (GROUND_Y - cy) / dy;
+      if (tg > 0.001 && (!closest || tg < closest.t)) {
+        closest = { t: tg, x: cx + dx * tg, y: GROUND_Y, nx: 0, ny: -1 };
+        hitType = 'ground';
+      }
+    }
+
+    // Check car body
+    const carBodyHit = rayRectIntersect(cx, cy, dx, dy, carBodyRect);
+    if (carBodyHit && (!closest || carBodyHit.t < closest.t)) {
+      closest = carBodyHit;
+      hitType = 'car';
+    }
+
+    // Check car cabin
+    const carCabinHit = rayRectIntersect(cx, cy, dx, dy, carCabinRect);
+    if (carCabinHit && (!closest || carCabinHit.t < closest.t)) {
+      closest = carCabinHit;
+      hitType = 'car';
+    }
+
+    if (!closest) {
+      // Ray goes off screen
+      const endX = cx + dx * RAY_MAX_LEN;
+      const endY = cy + dy * RAY_MAX_LEN;
+      segments.push({ x1: cx, y1: cy, x2: endX, y2: endY });
+      break;
+    }
+
+    segments.push({ x1: cx, y1: cy, x2: closest.x, y2: closest.y });
+
+    if (hitType === 'building') {
+      // Reflect
+      const dot = dx * closest.nx + dy * closest.ny;
+      dx = dx - 2 * dot * closest.nx;
+      dy = dy - 2 * dot * closest.ny;
+      cx = closest.x;
+      cy = closest.y;
+    } else {
+      // Ground or car or roof stop
+      break;
+    }
+  }
+  return segments;
+}
+
+function drawSky() {
+  const grad = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  grad.addColorStop(0, '#4A90D9');
+  grad.addColorStop(1, '#87CEEB');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, GROUND_Y);
+}
+
+function drawGround() {
+  ctx.fillStyle = '#555';
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+  // Road markings
+  ctx.setLineDash([20, 15]);
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y + 30);
+  ctx.lineTo(W, GROUND_Y + 30);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Sidewalk near building
+  ctx.fillStyle = '#888';
+  ctx.fillRect(bldgLeft - 20, GROUND_Y, bldgRight - bldgLeft + 40, 8);
+}
+
+function drawBuilding() {
+  // Main structure
+  const grad = ctx.createLinearGradient(bldgLeft, 0, bldgRight, 0);
+  grad.addColorStop(0, '#a8d8ea');
+  grad.addColorStop(0.5, '#cce5f0');
+  grad.addColorStop(1, '#a0cfe0');
+  ctx.fillStyle = grad;
+  ctx.fillRect(bldgLeft, bldgTop, bldgRight - bldgLeft, bldgBottom - bldgTop);
+
+  // Window grid
+  const cols = 5;
+  const rows = 12;
+  const winW = 18;
+  const winH = 22;
+  const gapX = (bldgRight - bldgLeft - cols * winW) / (cols + 1);
+  const gapY = (bldgBottom - bldgTop - rows * winH) / (rows + 1);
+
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const wx = bldgLeft + gapX + c * (winW + gapX);
+      const wy = bldgTop + gapY + r * (winH + gapY);
+      const wGrad = ctx.createLinearGradient(wx, wy, wx + winW, wy + winH);
+      wGrad.addColorStop(0, '#5ba3c9');
+      wGrad.addColorStop(1, '#3a7ca5');
+      ctx.fillStyle = wGrad;
+      ctx.fillRect(wx, wy, winW, winH);
+      ctx.strokeStyle = '#7bbdd4';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(wx, wy, winW, winH);
+    }
+  }
+
+  // Building outline
+  ctx.strokeStyle = '#456';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(bldgLeft, bldgTop, bldgRight - bldgLeft, bldgBottom - bldgTop);
+
+  // Roof accent
+  ctx.fillStyle = '#456';
+  ctx.fillRect(bldgLeft, bldgTop, bldgRight - bldgLeft, 4);
+}
+
+function drawCar() {
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.2)';
+  ctx.beginPath();
+  ctx.ellipse(carX + carW / 2, GROUND_Y + 2, carW / 2 + 5, 4, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Body
+  ctx.fillStyle = '#111';
+  ctx.beginPath();
+  ctx.moveTo(carX, carY);
+  ctx.lineTo(carX, carY - carH);
+  ctx.lineTo(carX + 10, carY - carH - 5);
+  ctx.lineTo(carX + carW - 10, carY - carH - 5);
+  ctx.lineTo(carX + carW, carY - carH);
+  ctx.lineTo(carX + carW, carY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Cabin / windshield
+  ctx.fillStyle = '#2a2a3a';
+  ctx.beginPath();
+  ctx.moveTo(cabinX, cabinY + cabinH);
+  ctx.lineTo(cabinX + 8, cabinY);
+  ctx.lineTo(cabinX + cabinW - 8, cabinY);
+  ctx.lineTo(cabinX + cabinW, cabinY + cabinH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Windshield tint
+  ctx.fillStyle = 'rgba(100, 150, 200, 0.3)';
+  ctx.beginPath();
+  ctx.moveTo(cabinX + 2, cabinY + cabinH);
+  ctx.lineTo(cabinX + 10, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW / 2 - 2, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW / 2 - 2, cabinY + cabinH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Rear window tint
+  ctx.fillStyle = 'rgba(100, 150, 200, 0.25)';
+  ctx.beginPath();
+  ctx.moveTo(cabinX + cabinW / 2 + 2, cabinY + cabinH);
+  ctx.lineTo(cabinX + cabinW / 2 + 2, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW - 10, cabinY + 2);
+  ctx.lineTo(cabinX + cabinW - 2, cabinY + cabinH);
+  ctx.closePath();
+  ctx.fill();
+
+  // Wheels
+  ctx.fillStyle = '#222';
+  ctx.beginPath();
+  ctx.arc(carX + 25, carY, 10, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(carX + carW - 25, carY, 10, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Hubcaps
+  ctx.fillStyle = '#666';
+  ctx.beginPath();
+  ctx.arc(carX + 25, carY, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(carX + carW - 25, carY, 5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Headlights
+  ctx.fillStyle = '#ff6';
+  ctx.beginPath();
+  ctx.ellipse(carX + carW, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Taillights
+  ctx.fillStyle = '#e33';
+  ctx.beginPath();
+  ctx.ellipse(carX, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Stripe
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(carX + 5, carY - carH / 2);
+  ctx.lineTo(carX + carW - 5, carY - carH / 2);
+  ctx.stroke();
+}
+
+function drawSun() {
+  // Glow
+  const glowGrad = ctx.createRadialGradient(sunX, sunY, SUN_R * 0.5, sunX, sunY, SUN_R * 2.5);
+  glowGrad.addColorStop(0, 'rgba(255, 220, 50, 0.4)');
+  glowGrad.addColorStop(1, 'rgba(255, 220, 50, 0)');
+  ctx.fillStyle = glowGrad;
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, SUN_R * 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Sun body
+  const sunGrad = ctx.createRadialGradient(sunX - 5, sunY - 5, 2, sunX, sunY, SUN_R);
+  sunGrad.addColorStop(0, '#fff176');
+  sunGrad.addColorStop(0.7, '#ffeb3b');
+  sunGrad.addColorStop(1, '#fbc02d');
+  ctx.fillStyle = sunGrad;
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, SUN_R, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Sun outline
+  ctx.strokeStyle = '#f9a825';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(sunX, sunY, SUN_R, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function drawRays() {
+  const rays = [];
+  for (let i = 0; i < NUM_RAYS; i++) {
+    const angle = (i / NUM_RAYS) * Math.PI * 2;
+    const startX = sunX + Math.cos(angle) * (SUN_R + 2);
+    const startY = sunY + Math.sin(angle) * (SUN_R + 2);
+    rays.push(traceRay(startX, startY, angle));
+  }
+
+  ctx.strokeStyle = 'rgba(255, 235, 59, 0.7)';
+  ctx.lineWidth = 2;
+  for (const segs of rays) {
+    for (const seg of segs) {
+      ctx.beginPath();
+      ctx.moveTo(seg.x1, seg.y1);
+
+      // Clip to canvas bounds loosely
+      const ex = Math.max(-50, Math.min(W + 50, seg.x2));
+      const ey = Math.max(-50, Math.min(H + 50, seg.y2));
+      ctx.lineTo(ex, ey);
+      ctx.stroke();
+    }
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  drawSky();
+  drawGround();
+  drawRays();
+  drawBuilding();
+  drawCar();
+  drawSun();
+}
+
+// Interaction
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  if (e.touches) {
+    return {
+      x: (e.touches[0].clientX - rect.left) * scaleX,
+      y: (e.touches[0].clientY - rect.top) * scaleY
+    };
+  }
+  return {
+    x: (e.clientX - rect.left) * scaleX,
+    y: (e.clientY - rect.top) * scaleY
+  };
+}
+
+function onDown(e) {
+  if (e.touches) e.preventDefault();
+  const p = getPos(e);
+  const dx = p.x - sunX;
+  const dy = p.y - sunY;
+  if (dx * dx + dy * dy < (SUN_R + 10) * (SUN_R + 10)) {
+    dragging = true;
+    canvas.classList.add('grabbing');
+  }
+}
+
+function onMove(e) {
+  if (!dragging) return;
+  if (e.touches) e.preventDefault();
+  const p = getPos(e);
+  sunX = Math.max(SUN_R, Math.min(W - SUN_R, p.x));
+  sunY = Math.max(SUN_R, Math.min(GROUND_Y - SUN_R, p.y));
+  draw();
+}
+
+function onUp() {
+  dragging = false;
+  canvas.classList.remove('grabbing');
+}
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: false });
+canvas.addEventListener('touchmove', onMove, { passive: false });
+canvas.addEventListener('touchend', onUp);
+
+draw();
+
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
+</body>
+</html>
