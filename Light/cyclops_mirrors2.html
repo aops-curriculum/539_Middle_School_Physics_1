@@ -36,7 +36,7 @@
 </head>
 <body>
 <p class="instructions">Drag the ruler to measure distances. Right-click drag to rotate.</p>
-<canvas id="canvas" width="600" height="370"></canvas>
+<canvas id="canvas" width="600" height="420"></canvas>
 <div id="controls">
   <label for="diamSlider">Cylinder diameter:</label>
   <input type="range" id="diamSlider" min="1" max="20" value="12" step="1">
@@ -47,16 +47,17 @@
 'use strict';
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;
 const S = 0.75;
 const SCALE = 20 * S; // px per cm
 
-// ── Horizontal offset to trim blank sides ─────────────────────────────────────
-const MARGIN = 70;
-const CX = W / 2;
+// ── Horizontal layout: shrink to fit content ──────────────────────────────────
+const CONTENT_HALF = 9 * SCALE + 20; // cyclops hand radius + padding
+const CANVAS_W = Math.ceil(CONTENT_HALF * 2 + 40); // ~330
+canvas.width = CANVAS_W;
+const W = canvas.width, CX = W / 2;
 
 // ── Cylinder (circular convex) mirror ─────────────────────────────────────────
-const FM_Y = 54 * S;
+const FM_Y = 54 * S; // mirror front face y
 let CM_R  = 6 * SCALE;
 let CM_CY = FM_Y - CM_R;
 
@@ -66,6 +67,14 @@ const CY_Y     = 316 * S;
 const CY_HR    = 36 * S;
 const CY_ARM_Y = 322 * S;
 const CY_HALF  = 9 * SCALE;
+
+// ── Vertical layout: compute canvas height to fit snugly ──────────────────────
+const CYCLOPS_BOTTOM = CY_Y + CY_HR + 42 * S + 6; // "Cyclops" label + padding
+const LEGEND_Y = CYCLOPS_BOTTOM + 8;
+const LEGEND_BOTTOM = LEGEND_Y + 32 * S + 4;
+const CANVAS_H = Math.ceil(LEGEND_BOTTOM + 6);
+canvas.height = CANVAS_H;
+const H = canvas.height;
 
 // ── Numerical reflection-point solver ────────────────────────────────────────
 function findReflectionPoint(sx, sy, ex, ey, cx, cy, r) {
@@ -215,11 +224,11 @@ function drawCyclops() {
 function drawCylinderMirror() {
   const cx = CX, cy0 = CM_CY, r = CM_R;
 
-  // Wall above the circle — clamp to visible area
-  const wallLeft = Math.max(0, cx - r - 8 * S);
-  const wallRight = Math.min(W, cx + r + 8 * S);
+  // Wall above the circle — clamp to canvas width
+  const wallL = Math.max(0, cx - r - 8 * S);
+  const wallR = Math.min(W, cx + r + 8 * S);
   ctx.fillStyle = '#232d44';
-  ctx.fillRect(wallLeft, 0, wallRight - wallLeft, FM_Y + 4 * S);
+  ctx.fillRect(wallL, 0, wallR - wallL, FM_Y + 4 * S);
 
   // Backing fill
   const bg = ctx.createRadialGradient(cx, cy0, r * 0.15, cx, cy0, r);
@@ -251,6 +260,7 @@ function drawCylinderMirror() {
 
 // ── Ruler ─────────────────────────────────────────────────────────────────────
 const RL = 20 * SCALE, RH = 36 * S;
+// Default position: above cyclops, centered
 let ruler = { x: CX - RL / 2, y: CY_EYE_Y - 60, a: 0 };
 let drag = false, dox = 0, doy = 0;
 let rot  = false, rot0 = 0, ra0 = 0;
@@ -293,9 +303,6 @@ function rulerHit(mx, my) {
   return lx >= -4 && lx <= RL + 4 && ly >= -4 && ly <= RH + 4;
 }
 
-// ── Legend position ───────────────────────────────────────────────────────────
-const LEGEND_Y = CY_Y + CY_HR + 58 * S;
-
 // ── Main draw ─────────────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -305,10 +312,10 @@ function draw() {
   drawCylinderMirror();
   drawCyclops();
 
-  // Legend — centered below cyclops label
+  // Legend — positioned just below the Cyclops label
   const ly = LEGEND_Y;
-  const lx = CX - 70;
-  drawSeg(lx, ly, lx + 24 * S, ly, INC, 2 * S);
+  const lx = CX - 60;
+  drawSeg(lx, ly,      lx + 24 * S, ly,      INC, 2 * S);
   ctx.fillStyle = '#d8e4f0'; ctx.font = (12 * S) + 'px Arial'; ctx.textAlign = 'left';
   ctx.fillText('incident ray', lx + 30 * S, ly + 4 * S);
   drawSeg(lx, ly + 16 * S, lx + 24 * S, ly + 16 * S, REF, 2 * S);
