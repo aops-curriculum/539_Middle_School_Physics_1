@@ -36,7 +36,7 @@
 </head>
 <body>
 <p class="instructions">Drag the ruler to measure distances. Right-click drag to rotate.</p>
-<canvas id="canvas" width="600" height="420"></canvas>
+<canvas id="canvas" width="600" height="370"></canvas>
 <div id="controls">
   <label for="diamSlider">Cylinder diameter:</label>
   <input type="range" id="diamSlider" min="1" max="20" value="12" step="1">
@@ -51,11 +51,12 @@ const W = canvas.width, H = canvas.height;
 const S = 0.75;
 const SCALE = 20 * S; // px per cm
 
-// ── Scene centre ──────────────────────────────────────────────────────────────
+// ── Horizontal offset to trim blank sides ─────────────────────────────────────
+const MARGIN = 70;
 const CX = W / 2;
 
 // ── Cylinder (circular convex) mirror ─────────────────────────────────────────
-const FM_Y = 54 * S; // mirror front face y
+const FM_Y = 54 * S;
 let CM_R  = 6 * SCALE;
 let CM_CY = FM_Y - CM_R;
 
@@ -214,9 +215,11 @@ function drawCyclops() {
 function drawCylinderMirror() {
   const cx = CX, cy0 = CM_CY, r = CM_R;
 
-  // Wall above the circle
+  // Wall above the circle — clamp to visible area
+  const wallLeft = Math.max(0, cx - r - 8 * S);
+  const wallRight = Math.min(W, cx + r + 8 * S);
   ctx.fillStyle = '#232d44';
-  ctx.fillRect(cx - r - 8 * S, 0, 2 * r + 16 * S, FM_Y + 4 * S);
+  ctx.fillRect(wallLeft, 0, wallRight - wallLeft, FM_Y + 4 * S);
 
   // Backing fill
   const bg = ctx.createRadialGradient(cx, cy0, r * 0.15, cx, cy0, r);
@@ -248,7 +251,7 @@ function drawCylinderMirror() {
 
 // ── Ruler ─────────────────────────────────────────────────────────────────────
 const RL = 20 * SCALE, RH = 36 * S;
-let ruler = { x: 40, y: H - 50, a: 0 };
+let ruler = { x: CX - RL / 2, y: CY_EYE_Y - 60, a: 0 };
 let drag = false, dox = 0, doy = 0;
 let rot  = false, rot0 = 0, ra0 = 0;
 
@@ -290,6 +293,9 @@ function rulerHit(mx, my) {
   return lx >= -4 && lx <= RL + 4 && ly >= -4 && ly <= RH + 4;
 }
 
+// ── Legend position ───────────────────────────────────────────────────────────
+const LEGEND_Y = CY_Y + CY_HR + 58 * S;
+
 // ── Main draw ─────────────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -299,14 +305,15 @@ function draw() {
   drawCylinderMirror();
   drawCyclops();
 
-  // Legend
-  const ly = H - 50;
-  drawSeg(W - 170, ly,      W - 170 + 24 * S, ly,      INC, 2 * S);
+  // Legend — centered below cyclops label
+  const ly = LEGEND_Y;
+  const lx = CX - 70;
+  drawSeg(lx, ly, lx + 24 * S, ly, INC, 2 * S);
   ctx.fillStyle = '#d8e4f0'; ctx.font = (12 * S) + 'px Arial'; ctx.textAlign = 'left';
-  ctx.fillText('incident ray', W - 170 + 30 * S, ly + 4 * S);
-  drawSeg(W - 170, ly + 16 * S, W - 170 + 24 * S, ly + 16 * S, REF, 2 * S);
+  ctx.fillText('incident ray', lx + 30 * S, ly + 4 * S);
+  drawSeg(lx, ly + 16 * S, lx + 24 * S, ly + 16 * S, REF, 2 * S);
   ctx.fillStyle = '#d8e4f0';
-  ctx.fillText('reflected ray', W - 170 + 30 * S, ly + 4 * S + 16 * S);
+  ctx.fillText('reflected ray', lx + 30 * S, ly + 4 * S + 16 * S);
 
   drawRuler();
 }
