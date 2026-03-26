@@ -56,8 +56,6 @@ button.danger:hover { background: rgba(220, 60, 60, 1); }
 <div class="controls">
   <button id="btnAddRay">Add Ray</button>
   <button id="btnAddCircle">Add Circle</button>
-  <button id="btnZoomIn">Zoom In</button>
-  <button id="btnZoomOut">Zoom Out</button>
   <button id="btnClear" class="danger">Clear All</button>
 </div>
 <canvas id="canvas" width="550" height="300"></canvas>
@@ -77,11 +75,6 @@ R_cm = Math.round(R_cm * 10) / 10;
 
 const AXIS_Y = 100;
 
-let zoom = 1;
-const ZOOM_STEP = 0.25;
-const ZOOM_MIN = 0.5;
-const ZOOM_MAX = 4;
-
 let rays = [];
 let circle = null;
 
@@ -100,36 +93,11 @@ function getMirrorR() { return R_cm * SCALE; }
 function getMirrorCenter() { return { x: MIRROR_X - getMirrorR(), y: AXIS_Y }; }
 function getFocalPoint() { return { x: MIRROR_X - getMirrorR() / 2, y: AXIS_Y }; }
 
-const MIRROR_HALF_ANGLE = 30 * Math.PI / 180;
+const MIRROR_HALF_ANGLE = 40 * Math.PI / 180;
 
 function getMirrorArc() {
   const R = getMirrorR();
   return { cx: MIRROR_X - R, cy: AXIS_Y, R, startAngle: -MIRROR_HALF_ANGLE, endAngle: MIRROR_HALF_ANGLE };
-}
-
-// Convert screen coords to world coords (accounting for zoom)
-function screenToWorld(sx, sy) {
-  const fp = getFocalPoint();
-  return {
-    x: (sx - fp.x) / zoom + fp.x,
-    y: (sy - fp.y) / zoom + fp.y
-  };
-}
-
-// Convert world coords to screen coords
-function worldToScreen(wx, wy) {
-  const fp = getFocalPoint();
-  return {
-    x: (wx - fp.x) * zoom + fp.x,
-    y: (wy - fp.y) * zoom + fp.y
-  };
-}
-
-function applyZoomTransform() {
-  const fp = getFocalPoint();
-  ctx.translate(fp.x, fp.y);
-  ctx.scale(zoom, zoom);
-  ctx.translate(-fp.x, -fp.y);
 }
 
 function drawMirror() {
@@ -137,7 +105,7 @@ function drawMirror() {
   ctx.beginPath();
   ctx.arc(cx, cy, R, startAngle, endAngle, false);
   ctx.strokeStyle = '#ccc';
-  ctx.lineWidth = 4 / zoom;
+  ctx.lineWidth = 4;
   ctx.stroke();
 
   const steps = 20;
@@ -149,18 +117,18 @@ function drawMirror() {
     ctx.moveTo(sx, sy);
     ctx.lineTo(sx + Math.cos(t) * 8, sy + Math.sin(t) * 8);
     ctx.strokeStyle = '#999';
-    ctx.lineWidth = 1 / zoom;
+    ctx.lineWidth = 1;
     ctx.stroke();
   }
 }
 
 function drawAxis() {
   ctx.beginPath();
-  ctx.setLineDash([5 / zoom, 5 / zoom]);
-  ctx.moveTo(-1000, AXIS_Y);
-  ctx.lineTo(2000, AXIS_Y);
+  ctx.setLineDash([5, 5]);
+  ctx.moveTo(0, AXIS_Y);
+  ctx.lineTo(W, AXIS_Y);
   ctx.strokeStyle = '#555';
-  ctx.lineWidth = 1 / zoom;
+  ctx.lineWidth = 1;
   ctx.stroke();
   ctx.setLineDash([]);
 }
@@ -181,14 +149,14 @@ function reflectRay(rayY) {
 }
 
 function drawArrow(toX, toY, angle, color) {
-  const headLen = 12 / zoom, headAngle = Math.PI / 6;
+  const headLen = 12, headAngle = Math.PI / 6;
   ctx.beginPath();
   ctx.moveTo(toX, toY);
   ctx.lineTo(toX - headLen * Math.cos(angle - headAngle), toY - headLen * Math.sin(angle - headAngle));
   ctx.moveTo(toX, toY);
   ctx.lineTo(toX - headLen * Math.cos(angle + headAngle), toY - headLen * Math.sin(angle + headAngle));
   ctx.strokeStyle = color;
-  ctx.lineWidth = 2 / zoom;
+  ctx.lineWidth = 2;
   ctx.stroke();
 }
 
@@ -196,28 +164,28 @@ function drawRays() {
   for (const ray of rays) {
     const result = reflectRay(ray.y);
     ctx.beginPath();
-    ctx.moveTo(-1000, ray.y);
+    ctx.moveTo(0, ray.y);
     ctx.lineTo(result ? result.hitX : MIRROR_X, ray.y);
     ctx.strokeStyle = '#e74c3c';
-    ctx.lineWidth = 2 / zoom;
+    ctx.lineWidth = 2;
     ctx.stroke();
 
     if (result) {
-      const len = 2000;
+      const len = 800;
       ctx.beginPath();
       ctx.moveTo(result.hitX, result.hitY);
       ctx.lineTo(result.hitX + result.rx * len, result.hitY + result.ry * len);
       ctx.strokeStyle = '#e74c3c';
-      ctx.lineWidth = 2 / zoom;
+      ctx.lineWidth = 2;
       ctx.stroke();
 
       if (result.rx > 0) {
         ctx.beginPath();
-        ctx.setLineDash([4 / zoom, 4 / zoom]);
+        ctx.setLineDash([4, 4]);
         ctx.moveTo(result.hitX, result.hitY);
         ctx.lineTo(result.hitX - result.rx * len, result.hitY - result.ry * len);
         ctx.strokeStyle = 'rgba(231,76,60,0.4)';
-        ctx.lineWidth = 1 / zoom;
+        ctx.lineWidth = 1;
         ctx.stroke();
         ctx.setLineDash([]);
       }
@@ -228,11 +196,11 @@ function drawRays() {
     }
 
     ctx.beginPath();
-    ctx.arc(20, ray.y, 6 / zoom, 0, Math.PI * 2);
+    ctx.arc(20, ray.y, 6, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(231,76,60,0.6)';
     ctx.fill();
     ctx.strokeStyle = '#e74c3c';
-    ctx.lineWidth = 1 / zoom;
+    ctx.lineWidth = 1;
     ctx.stroke();
   }
 }
@@ -243,14 +211,14 @@ function drawCircle() {
   if (r <= 0) return;
   ctx.beginPath();
   ctx.arc(circle.x, circle.y, r, 0, Math.PI * 2);
-  ctx.setLineDash([5 / zoom, 5 / zoom]);
+  ctx.setLineDash([5, 5]);
   ctx.strokeStyle = '#e74c3c';
-  ctx.lineWidth = 2 / zoom;
+  ctx.lineWidth = 2;
   ctx.stroke();
   ctx.setLineDash([]);
 
   ctx.beginPath();
-  ctx.arc(circle.x, circle.y, 5 / zoom, 0, Math.PI * 2);
+  ctx.arc(circle.x, circle.y, 5, 0, Math.PI * 2);
   ctx.fillStyle = 'rgba(231,76,60,0.4)';
   ctx.fill();
 }
@@ -266,17 +234,17 @@ function drawRuler() {
   ctx.fillStyle = '#f5e6c8';
   ctx.fillRect(-lengthPx / 2, -rulerH / 2, lengthPx, rulerH);
   ctx.strokeStyle = '#8B7355';
-  ctx.lineWidth = 1 / zoom;
+  ctx.lineWidth = 1;
   ctx.strokeRect(-lengthPx / 2, -rulerH / 2, lengthPx, rulerH);
 
   for (let cm = 0; cm <= ruler.lengthCm; cm++) {
     const x = -lengthPx / 2 + cm * SCALE;
     ctx.beginPath(); ctx.moveTo(x, -rulerH / 2); ctx.lineTo(x, -rulerH / 2 + 10);
-    ctx.strokeStyle = '#333'; ctx.lineWidth = 1 / zoom; ctx.stroke();
+    ctx.strokeStyle = '#333'; ctx.lineWidth = 1; ctx.stroke();
     ctx.beginPath(); ctx.moveTo(x, rulerH / 2); ctx.lineTo(x, rulerH / 2 - 10); ctx.stroke();
 
     if (cm < ruler.lengthCm) {
-      ctx.font = (9 / zoom) + 'px Arial'; ctx.fillStyle = '#333'; ctx.textAlign = 'center';
+      ctx.font = '9px Arial'; ctx.fillStyle = '#333'; ctx.textAlign = 'center';
       ctx.fillText(cm, x + SCALE / 2, 3);
       const halfX = x + SCALE / 2;
       ctx.beginPath(); ctx.moveTo(halfX, -rulerH / 2); ctx.lineTo(halfX, -rulerH / 2 + 6); ctx.stroke();
@@ -298,26 +266,17 @@ function draw() {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, W, H);
-
-  ctx.save();
-  applyZoomTransform();
-
   drawAxis();
   drawMirror();
   drawRays();
   drawCircle();
   drawRuler();
-
-  ctx.restore();
 }
 
 function getMousePos(e) {
   const rect = canvas.getBoundingClientRect();
   const t = e.touches ? e.touches[0] : e;
-  const sx = (t.clientX - rect.left) * W / rect.width;
-  const sy = (t.clientY - rect.top) * H / rect.height;
-  // Convert screen position to world position
-  return screenToWorld(sx, sy);
+  return { x: (t.clientX - rect.left) * W / rect.width, y: (t.clientY - rect.top) * H / rect.height };
 }
 
 function hitTestRuler(mx, my) {
@@ -333,12 +292,12 @@ function onDown(e) {
   e.preventDefault();
   const { x: mx, y: my } = getMousePos(e);
 
-  if (circle && Math.hypot(mx - circle.x, my - circle.y) < 10 / zoom) {
+  if (circle && Math.hypot(mx - circle.x, my - circle.y) < 10) {
     dragTarget = { type: 'circleCenter', offX: mx - circle.x };
     isDragging = true; canvas.classList.add('grabbing'); return;
   }
   for (let i = 0; i < rays.length; i++) {
-    if (Math.hypot(mx - 20, my - rays[i].y) < 12 / zoom) {
+    if (Math.hypot(mx - 20, my - rays[i].y) < 12) {
       dragTarget = { type: 'ray', index: i }; isDragging = true; canvas.classList.add('grabbing'); return;
     }
   }
@@ -390,15 +349,6 @@ btnAddCircle.addEventListener('click', () => {
 document.getElementById('btnClear').addEventListener('click', () => {
   rays = []; circle = null; nextRayY = AXIS_Y + 30;
   btnAddCircle.style.display = '';
-  draw();
-});
-
-document.getElementById('btnZoomIn').addEventListener('click', () => {
-  zoom = Math.min(ZOOM_MAX, zoom + ZOOM_STEP);
-  draw();
-});
-document.getElementById('btnZoomOut').addEventListener('click', () => {
-  zoom = Math.max(ZOOM_MIN, zoom - ZOOM_STEP);
   draw();
 });
 
