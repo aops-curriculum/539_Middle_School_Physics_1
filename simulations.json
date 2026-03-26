@@ -466,6 +466,20 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Light/convex_building_car.html",
+      "title": "Sun Reflection off Glass Skyscraper",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/curved_building_car.html",
+      "title": "Sun Reflection off Glass Skyscraper",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
