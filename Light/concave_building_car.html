@@ -84,51 +84,93 @@ const cabinW = 55;
 const cabinH = 18;
 const carCabinRect = { x: carX + 15, y: carY - 24, w: 28, h: 9 };
 
-// Compute the concave curve. The building's left face bows inward (to the right)
-// forming a concave mirror facing left. curveFrac 0 = flat, 1 = max curve.
-// We use a circular arc. The midpoint of the left edge moves right by maxBow * curveFrac.
-// Each window row gets an x-offset and a surface angle from the tangent of the arc.
-
-function getCurvedWindows(curveFrac) {
-  const maxBow = 80; // max inward bow at center in pixels
-  const bow = maxBow * curveFrac;
+// Get the x-offset of the curved left edge at a given y position
+function getCurveX(y, bow) {
   const bldgH = bldgBottom - bldgTop;
   const midY = (bldgTop + bldgBottom) / 2;
+  const halfH = bldgH / 2;
+  const t = (y - midY) / halfH;
+  return bow * (1 - t * t);
+}
+
+// Get the slope dx/dy of the curve at a given y position
+function getCurveSlope(y, bow) {
+  const bldgH = bldgBottom - bldgTop;
+  const midY = (bldgTop + bldgBottom) / 2;
+  const halfH = bldgH / 2;
+  const t = (y - midY) / halfH;
+  return -2 * bow * t / halfH;
+}
+
+function getCurvedWindows(curveFrac) {
+  const maxBow = 80;
+  const bow = maxBow * curveFrac;
 
   const wins = [];
-  const halfH = bldgH / 2;
 
   for (let r = 0; r < windowRows; r++) {
     const wy = bldgTop + windowGapY + r * (windowH + windowGapY);
     const wCenterY = wy + windowH / 2;
 
-    // Normalized position along building height: -1 at top, +1 at bottom
-    const t = (wCenterY - midY) / halfH;
+    // Inward offset at window center
+    const inward = getCurveX(wCenterY, bow);
 
-    // Parabolic inward offset: max at center (t=0), zero at edges (t=±1)
-    const inward = bow * (1 - t * t);
+    // The x position of the curved building edge at this y
+    const edgeX = bldgBaseLeft + inward;
 
-    // The x position of this window's left face
-    const wx = bldgBaseLeft + inward - windowProtrusion;
+    // Slope of curve at this point: dx/dy
+    const dxdy = getCurveSlope(wCenterY, bow);
 
-    // Surface normal angle: derivative of parabola x = bow*(1 - t^2) => dx/dt = -2*bow*t
-    // In pixel coords: dx/dy = dx/dt * dt/dy = -2*bow*t / halfH
-    // Normal to the curve points left and slightly up/down
-    const dxdy = -2 * bow * t / halfH;
-    // Tangent direction along surface is (dxdy, 1) normalized (going down the wall)
-    // Normal pointing left (outward from building) is (-1, dxdy) normalized
-    const nLen = Math.sqrt(1 + dxdy * dxdy);
-    const nx = -1 / nLen;
-    const ny = dxdy / nLen;
+    // Tangent direction along surface (going downward along wall): (dxdy, 1) normalized
+    const tanLen = Math.sqrt(dxdy * dxdy + 1);
+    const tx = dxdy / tanLen;
+    const ty = 1 / tanLen;
+
+    // Normal pointing outward (to the left): (-ty, tx) = (-1/tanLen, dxdy/tanLen)
+    const nx = -ty;
+    const ny = tx;
+
+    // Angle of the tangent from vertical (rotation angle for the window)
+    // tanAngle is the angle to rotate the window so it's tangent to the curve
+    const tanAngle = Math.atan2(dxdy, 1);
+
+    // The window is centered on the curve edge, tilted along the tangent
+    // Window center point on the building edge
+    const wcx = edgeX;
+    const wcy = wCenterY;
+
+    // Four corners of the tilted window (protruding outward from the edge)
+    // In the window's local frame: width goes along the normal (outward), height along the tangent
+    const halfH = windowH / 2;
+    const proto = windowProtrusion;
+
+    // Top-left (outer-top): go along -tangent by halfH, then along -normal by proto
+    // Top-right (inner-top): go along -tangent by halfH
+    // Bottom-left (outer-bottom): go along +tangent by halfH, then along -normal by proto
+    // Bottom-right (inner-bottom): go along +tangent by halfH
+
+    // Corners: the window face is on the outside (facing left/outward)
+    // The window rectangle: along tangent = windowH, along outward normal = windowProtrusion
+    const corners = [
+      { x: wcx - nx * proto - tx * halfH, y: wcy - ny * proto - ty * halfH }, // outer top
+      { x: wcx - tx * halfH,              y: wcy - ty * halfH },              // inner top
+      { x: wcx + tx * halfH,              y: wcy + ty * halfH },              // inner bottom
+      { x: wcx - nx * proto + tx * halfH, y: wcy - ny * proto + ty * halfH }, // outer bottom
+    ];
 
     wins.push({
-      x: wx,
-      y: wy,
-      w: windowProtrusion,
-      h: windowH,
+      edgeX: edgeX,
+      centerX: wcx,
+      centerY: wcy,
       inward: inward,
       nx: nx,
-      ny: ny
+      ny: ny,
+      tx: tx,
+      ty: ty,
+      angle: tanAngle,
+      corners: corners,
+      halfH: halfH,
+      proto: proto
     });
   }
   return wins;
@@ -137,26 +179,37 @@ function getCurvedWindows(curveFrac) {
 function getWindowSurfaces(wins) {
   const surfaces = [];
   for (const win of wins) {
-    // Left face — the glass, with curved normal
+    const c = win.corners;
+    // Outer face (glass) — from outer-top to outer-bottom
     surfaces.push({
-      x1: win.x, y1: win.y,
-      x2: win.x, y2: win.y + win.h,
+      x1: c[0].x, y1: c[0].y,
+      x2: c[3].x, y2: c[3].y,
       nx: win.nx, ny: win.ny, type: 'glass'
     });
-    // Top face (horizontal, normal pointing up)
+    // Top face — from outer-top to inner-top
     surfaces.push({
-      x1: win.x, y1: win.y,
-      x2: win.x + win.w, y2: win.y,
-      nx: 0, ny: -1, type: 'glass'
+      x1: c[0].x, y1: c[0].y,
+      x2: c[1].x, y2: c[1].y,
+      nx: -win.tx, ny: -win.ty, type: 'glass'
     });
-    // Bottom face (horizontal, normal pointing down)
+    // Bottom face — from inner-bottom to outer-bottom
     surfaces.push({
-      x1: win.x, y1: win.y + win.h,
-      x2: win.x + win.w, y2: win.y + win.h,
-      nx: 0, ny: 1, type: 'glass'
+      x1: c[2].x, y1: c[2].y,
+      x2: c[3].x, y2: c[3].y,
+      nx: win.tx, ny: win.ty, type: 'glass'
     });
   }
-  // Main left wall of building (behind the windows)
+  // Main left wall of building (behind the windows) — use the curved edge segments
+  // Approximate with segments between window positions
+  if (wins.length > 0) {
+    // Wall from top of building to first window
+    surfaces.push({
+      x1: bldgBaseLeft + getCurveX(bldgTop, wins[0].inward > 0 ? wins[0].inward / (1 - Math.pow((bldgTop - (bldgTop + bldgBottom) / 2) / ((bldgBottom - bldgTop) / 2), 2) || 1) : 0), y1: bldgTop,
+      x2: bldgBaseLeft, y2: bldgTop,
+      nx: 0, ny: -1, type: 'wall'
+    });
+  }
+  // Simplified: main wall behind windows
   surfaces.push({
     x1: bldgBaseLeft, y1: bldgTop,
     x2: bldgBaseLeft, y2: bldgBottom,
@@ -211,7 +264,6 @@ function traceRay(ox, oy, dx, dy, allSurfaces) {
     let hitType = null;
     let hitNx = 0, hitNy = 0;
 
-    // Check all building/window surfaces
     for (const surf of allSurfaces) {
       const hit = raySegmentIntersect(cx, cy, rdx, rdy, surf.x1, surf.y1, surf.x2, surf.y2);
       if (hit && (!closest || hit.t < closest.t)) {
@@ -222,7 +274,6 @@ function traceRay(ox, oy, dx, dy, allSurfaces) {
       }
     }
 
-    // Check ground
     if (rdy > 0) {
       const tg = (GROUND_Y - cy) / rdy;
       if (tg > 0.01 && (!closest || tg < closest.t)) {
@@ -232,7 +283,6 @@ function traceRay(ox, oy, dx, dy, allSurfaces) {
       }
     }
 
-    // Check car body
     const carBodyHit = rayRectIntersect(cx, cy, rdx, rdy, carBodyRect);
     if (carBodyHit && (!closest || carBodyHit.t < closest.t)) {
       closest = carBodyHit;
@@ -256,7 +306,6 @@ function traceRay(ox, oy, dx, dy, allSurfaces) {
     segments.push({ x1: cx, y1: cy, x2: closest.x, y2: closest.y, reflected: bounce > 0 });
 
     if (hitType === 'glass') {
-      // Reflect off glass using the surface normal
       const dot = rdx * hitNx + rdy * hitNy;
       rdx = rdx - 2 * dot * hitNx;
       rdy = rdy - 2 * dot * hitNy;
@@ -294,32 +343,26 @@ function drawGround() {
   ctx.fillRect(bldgBaseLeft - 25, GROUND_Y, bldgRight - bldgBaseLeft + 50, 8);
 }
 
-function drawBuilding(wins) {
-  // Main building body
+function drawBuilding(wins, bow) {
+  // Main building body (right portion, always rectangular)
   ctx.fillStyle = '#8a8a8a';
   ctx.fillRect(bldgBaseLeft, bldgTop, bldgRight - bldgBaseLeft, bldgBottom - bldgTop);
 
-  // Draw the concave left wall fill — area between curved windows and bldgBaseLeft
-  if (wins.length > 0) {
-    ctx.fillStyle = '#7a7a7a';
-    ctx.beginPath();
-    // Start at top-left of building
-    ctx.moveTo(bldgBaseLeft, bldgTop);
-    // Go along the curved window line
-    for (let i = 0; i < wins.length; i++) {
-      const w = wins[i];
-      if (i === 0) {
-        ctx.lineTo(w.x, w.y);
-      }
-      ctx.lineTo(w.x, w.y);
-      ctx.lineTo(w.x, w.y + w.h);
-    }
-    const lastW = wins[wins.length - 1];
-    ctx.lineTo(bldgBaseLeft, lastW.y + lastW.h);
-    ctx.lineTo(bldgBaseLeft, bldgTop);
-    ctx.closePath();
-    ctx.fill();
+  // Draw the curved left wall area
+  // Build a path from top to bottom along the curve, then back along bldgBaseLeft
+  const curveSteps = 60;
+  ctx.fillStyle = '#7a7a7a';
+  ctx.beginPath();
+  ctx.moveTo(bldgBaseLeft, bldgTop);
+  for (let i = 0; i <= curveSteps; i++) {
+    const y = bldgTop + (bldgBottom - bldgTop) * i / curveSteps;
+    const offset = getCurveX(y, bow);
+    ctx.lineTo(bldgBaseLeft + offset - windowProtrusion, y);
   }
+  ctx.lineTo(bldgBaseLeft, bldgBottom);
+  ctx.lineTo(bldgBaseLeft, bldgTop);
+  ctx.closePath();
+  ctx.fill();
 
   // Subtle vertical lines for paneling on the flat part
   ctx.strokeStyle = '#7a7a7a';
@@ -334,68 +377,125 @@ function drawBuilding(wins) {
     ctx.stroke();
   }
 
-  // Draw the concave wall surface between windows
+  // Draw the curved wall edge
   ctx.strokeStyle = '#666';
   ctx.lineWidth = 2;
   ctx.beginPath();
-  if (wins.length > 0) {
-    ctx.moveTo(bldgBaseLeft, bldgTop);
-    ctx.lineTo(wins[0].x, wins[0].y);
-    for (let i = 0; i < wins.length; i++) {
-      const w = wins[i];
-      ctx.lineTo(w.x, w.y);
-      ctx.lineTo(w.x, w.y + w.h);
-      if (i < wins.length - 1) {
-        ctx.lineTo(wins[i + 1].x, wins[i + 1].y);
-      }
-    }
-    const lastW = wins[wins.length - 1];
-    ctx.lineTo(bldgBaseLeft, lastW.y + lastW.h);
-    ctx.lineTo(bldgBaseLeft, bldgBottom);
+  for (let i = 0; i <= curveSteps; i++) {
+    const y = bldgTop + (bldgBottom - bldgTop) * i / curveSteps;
+    const offset = getCurveX(y, bow);
+    const x = bldgBaseLeft + offset - windowProtrusion;
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
   }
   ctx.stroke();
 
-  // Windows
-  for (const win of wins) {
-    // Window frame
-    ctx.fillStyle = '#606060';
-    ctx.fillRect(win.x, win.y, win.w, win.h);
+  // Draw wall segments between windows along the curve
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1.5;
+  // Segments between consecutive windows (along the curve, between window gaps)
+  for (let i = 0; i < wins.length - 1; i++) {
+    const w1 = wins[i];
+    const w2 = wins[i + 1];
+    // Draw curve segment from bottom of window i to top of window i+1
+    const y1 = w1.centerY + w1.halfH * w1.ty;
+    const y2 = w2.centerY - w2.halfH * w2.ty;
+    ctx.beginPath();
+    const steps = 8;
+    for (let s = 0; s <= steps; s++) {
+      const y = y1 + (y2 - y1) * s / steps;
+      const offset = getCurveX(y, bow);
+      const x = bldgBaseLeft + offset - windowProtrusion;
+      if (s === 0) ctx.moveTo(x, y);
+      else ctx.lineTo(x, y);
+    }
+    ctx.stroke();
+  }
 
-    // Glass face
-    const glassGrad = ctx.createLinearGradient(win.x, win.y, win.x + win.w, win.y);
+  // Windows — draw tilted
+  for (const win of wins) {
+    const c = win.corners;
+
+    // Window frame (slightly larger)
+    ctx.fillStyle = '#606060';
+    ctx.beginPath();
+    ctx.moveTo(c[0].x - win.nx * 1, c[0].y - win.ny * 1);
+    ctx.lineTo(c[1].x + win.nx * 1, c[1].y + win.ny * 1);
+    ctx.lineTo(c[2].x + win.nx * 1, c[2].y + win.ny * 1);
+    ctx.lineTo(c[3].x - win.nx * 1, c[3].y - win.ny * 1);
+    ctx.closePath();
+    ctx.fill();
+
+    // Glass face — the outer face of the window
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(c[0].x, c[0].y);
+    ctx.lineTo(c[1].x, c[1].y);
+    ctx.lineTo(c[2].x, c[2].y);
+    ctx.lineTo(c[3].x, c[3].y);
+    ctx.closePath();
+    ctx.clip();
+
+    // Glass gradient along the normal direction (outward to inward)
+    const gx1 = win.centerX - win.nx * win.proto;
+    const gy1 = win.centerY - win.ny * win.proto;
+    const gx2 = win.centerX;
+    const gy2 = win.centerY;
+    const glassGrad = ctx.createLinearGradient(gx1, gy1, gx2, gy2);
     glassGrad.addColorStop(0, '#7ec8e3');
     glassGrad.addColorStop(1, '#5ba3c9');
     ctx.fillStyle = glassGrad;
-    ctx.fillRect(win.x, win.y + 1, win.w - 1, win.h - 2);
+    ctx.fill();
 
-    // Highlight
-    ctx.fillStyle = 'rgba(255,255,255,0.25)';
-    ctx.fillRect(win.x, win.y + 1, 2, win.h - 2);
+    // Highlight along outer edge
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(c[0].x, c[0].y);
+    ctx.lineTo(c[3].x, c[3].y);
+    ctx.stroke();
 
-    // Draw the normal direction as a tiny tick for visual feedback
-    const wcx = win.x;
-    const wcy = win.y + win.h / 2;
+    ctx.restore();
+
+    // Window outline
+    ctx.strokeStyle = '#4a4a4a';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(c[0].x, c[0].y);
+    ctx.lineTo(c[1].x, c[1].y);
+    ctx.lineTo(c[2].x, c[2].y);
+    ctx.lineTo(c[3].x, c[3].y);
+    ctx.closePath();
+    ctx.stroke();
+
+    // Normal tick
     ctx.strokeStyle = 'rgba(255,255,255,0.3)';
     ctx.lineWidth = 1;
     ctx.beginPath();
-    ctx.moveTo(wcx, wcy);
-    ctx.lineTo(wcx + win.nx * 10, wcy + win.ny * 10);
+    ctx.moveTo(win.centerX - win.nx * win.proto, win.centerY - win.ny * win.proto);
+    ctx.lineTo(win.centerX - win.nx * win.proto + win.nx * 10, win.centerY - win.ny * win.proto + win.ny * 10);
     ctx.stroke();
-
-    // Outline
-    ctx.strokeStyle = '#4a4a4a';
-    ctx.lineWidth = 0.5;
-    ctx.strokeRect(win.x, win.y, win.w, win.h);
   }
 
-  // Building outline
+  // Building outline — right side and bottom are straight, left follows curve
   ctx.strokeStyle = '#456';
   ctx.lineWidth = 2;
-  ctx.strokeRect(bldgBaseLeft, bldgTop, bldgRight - bldgBaseLeft, bldgBottom - bldgTop);
+  // Right side + top + bottom
+  ctx.beginPath();
+  ctx.moveTo(bldgBaseLeft, bldgBottom);
+  ctx.lineTo(bldgRight, bldgBottom);
+  ctx.lineTo(bldgRight, bldgTop);
+  ctx.lineTo(bldgBaseLeft, bldgTop);
+  ctx.stroke();
 
   // Roof accent
   ctx.fillStyle = '#456';
   ctx.fillRect(bldgBaseLeft, bldgTop, bldgRight - bldgBaseLeft, 4);
+  // Extend roof accent to cover curved part
+  if (bow > 0) {
+    const roofOffset = getCurveX(bldgTop, bow);
+    ctx.fillRect(bldgBaseLeft + roofOffset - windowProtrusion, bldgTop, bldgBaseLeft - (bldgBaseLeft + roofOffset - windowProtrusion), 4);
+  }
 }
 
 function drawCar() {
@@ -517,7 +617,6 @@ function drawRays(angleDeg, allSurfaces) {
     allTraced.push(traceRay(sx, sy, dx, dy, allSurfaces));
   }
 
-  // Draw incoming (unreflected) rays
   ctx.lineWidth = 1.5;
   for (const segs of allTraced) {
     for (const seg of segs) {
@@ -530,7 +629,6 @@ function drawRays(angleDeg, allSurfaces) {
     }
   }
 
-  // Draw reflected rays (brighter)
   ctx.lineWidth = 2;
   for (const segs of allTraced) {
     for (const seg of segs) {
@@ -574,6 +672,8 @@ function drawGlowSpots(angleDeg, allSurfaces) {
 function draw() {
   const angleDeg = parseFloat(angleSlider.value);
   const curveFrac = parseFloat(curveSlider.value) / 100;
+  const maxBow = 80;
+  const bow = maxBow * curveFrac;
 
   const wins = getCurvedWindows(curveFrac);
   const allSurfaces = getWindowSurfaces(wins);
@@ -585,10 +685,9 @@ function draw() {
   drawGround();
   drawGlowSpots(angleDeg, allSurfaces);
   drawRays(angleDeg, allSurfaces);
-  drawBuilding(wins);
+  drawBuilding(wins, bow);
   drawCar();
 
-  // Angle label
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.font = 'bold 13px Arial';
   ctx.textAlign = 'right';
