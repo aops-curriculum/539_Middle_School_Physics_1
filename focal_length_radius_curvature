@@ -60,19 +60,19 @@ button.danger:hover { background: rgba(220, 60, 60, 1); }
   <button id="btnAddCircle">Add Circle</button>
   <button id="btnClear" class="danger">Clear All</button>
 </div>
-<canvas id="canvas" width="600" height="400"></canvas>
+<canvas id="canvas" width="600" height="500"></canvas>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = 600, H = 400;
+const W = 600, H = 500;
 
 // Scale: 1 cm = 40 px
 const SCALE = 40;
 
 // Mirror on the right side
-const MIRROR_X_CM = 13;
-const MIRROR_X = MIRROR_X_CM * SCALE;
+const MIRROR_X_CM = 13; // cm from left edge
+const MIRROR_X = MIRROR_X_CM * SCALE; // px
 
 // Random R between 2 and 10 using crypto
 let R_cm = 2 + (crypto.getRandomValues(new Uint32Array(1))[0] / 0xFFFFFFFF) * 8;
@@ -84,23 +84,28 @@ const AXIS_Y = H / 2;
 // State
 let rays = [];
 let circles = [];
-let mode = 'none';
+let mode = 'none'; // 'none', 'addRay', 'addCircle'
 
 // Ruler state
 let ruler = {
-  x: 200, y: 300, angle: 0, lengthCm: 12, dragging: false, rotating: false,
+  x: 200, y: 350, angle: 0, lengthCm: 12, dragging: false, rotating: false,
   dragOffX: 0, dragOffY: 0, rotStartAngle: 0, rotMouseAngle: 0
 };
 
 // Dragging
-let dragTarget = null;
+let dragTarget = null; // { type, index, ... }
 let isDragging = false;
 
 function getMirrorR() { return R_cm * SCALE; }
 function getMirrorCenter() {
+  // Center of curvature is to the LEFT of mirror surface
   return { x: MIRROR_X - getMirrorR(), y: AXIS_Y };
 }
+function getFocalPoint() {
+  return { x: MIRROR_X - getMirrorR() / 2, y: AXIS_Y };
+}
 
+// Mirror subtends 40 degrees (half-angle = 20 deg)
 const MIRROR_HALF_ANGLE = 20 * Math.PI / 180;
 
 function getMirrorArc() {
@@ -120,6 +125,7 @@ function drawMirror() {
   ctx.lineWidth = 4;
   ctx.stroke();
 
+  // Draw hatching on the back side
   const steps = 15;
   for (let i = 0; i <= steps; i++) {
     const t = startAngle + (endAngle - startAngle) * i / steps;
@@ -149,16 +155,19 @@ function drawAxis() {
 
 function reflectRay(rayY) {
   const { cx, cy, R, startAngle, endAngle } = getMirrorArc();
+
   const dy = rayY - cy;
   if (Math.abs(dy) > R) return null;
   const dx = Math.sqrt(R * R - dy * dy);
   const hitX = cx + dx;
   const hitY = rayY;
+
   const hitAngle = Math.atan2(hitY - cy, hitX - cx);
   if (hitAngle < startAngle || hitAngle > endAngle) return null;
 
   const nx = (cx - hitX) / R;
   const ny = (cy - hitY) / R;
+
   const dot = 1 * nx + 0 * ny;
   const rx = 1 - 2 * dot * nx;
   const ry = 0 - 2 * dot * ny;
@@ -363,6 +372,11 @@ function draw() {
     ctx.textAlign = 'center';
     ctx.fillText('Click on canvas to place a dotted circle', W / 2, 20);
   }
+
+  ctx.font = '11px Arial';
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Rays: ${rays.length}/10`, W - 10, H - 10);
 }
 
 function getMousePos(e) {
