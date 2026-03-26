@@ -317,7 +317,8 @@ function drawCar() {
   ctx.ellipse(carX + carW / 2, GROUND_Y + 2, carW / 2 + 5, 4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#111';
+  // Car body — red
+  ctx.fillStyle = '#c0392b';
   ctx.beginPath();
   ctx.moveTo(carX, carY);
   ctx.lineTo(carX, carY - carH);
@@ -328,7 +329,8 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = '#2a2a3a';
+  // Cabin — darker red
+  ctx.fillStyle = '#922b21';
   ctx.beginPath();
   ctx.moveTo(cabinX, cabinY + cabinH);
   ctx.lineTo(cabinX + 8, cabinY);
@@ -381,7 +383,8 @@ function drawCar() {
   ctx.ellipse(carX, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.strokeStyle = '#333';
+  // Body accent line — subtle dark red
+  ctx.strokeStyle = '#a93226';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   ctx.moveTo(carX + 5, carY - carH / 2);
