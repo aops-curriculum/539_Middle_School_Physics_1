@@ -57,6 +57,8 @@ button.danger:hover { background: rgba(220, 60, 60, 1); }
   <button id="btnAddRay">Add Ray</button>
   <button id="btnAddCircle">Add Circle</button>
   <button id="btnClear" class="danger">Clear All</button>
+  <button id="btnZoomIn">Zoom +</button>
+  <button id="btnZoomOut">Zoom &minus;</button>
 </div>
 <canvas id="canvas" width="550" height="300"></canvas>
 
@@ -75,7 +77,8 @@ R_cm = Math.round(R_cm * 10) / 10;
 
 const AXIS_Y = 100;
 
-let panX = 0, panY = 0;
+let panX = 0, panY = 0, zoom = 1;
+const ZOOM_MIN = 0.25, ZOOM_MAX = 4, ZOOM_STEP = 1.1;
 
 let rays = [];
 let circle = null;
@@ -127,8 +130,8 @@ function drawMirror() {
 function drawAxis() {
   ctx.beginPath();
   ctx.setLineDash([5, 5]);
-  ctx.moveTo(-panX, AXIS_Y);
-  ctx.lineTo(W - panX, AXIS_Y);
+  ctx.moveTo(-panX / zoom, AXIS_Y);
+  ctx.lineTo((W - panX) / zoom, AXIS_Y);
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
   ctx.stroke();
@@ -166,7 +169,7 @@ function drawRays() {
   for (const ray of rays) {
     const result = reflectRay(ray.y);
     ctx.beginPath();
-    ctx.moveTo(-panX - 100, ray.y);
+    ctx.moveTo(-panX / zoom - 100, ray.y);
     ctx.lineTo(result ? result.hitX : MIRROR_X, ray.y);
     ctx.strokeStyle = '#e74c3c';
     ctx.lineWidth = 2;
@@ -271,6 +274,7 @@ function draw() {
 
   ctx.save();
   ctx.translate(panX, panY);
+  ctx.scale(zoom, zoom);
 
   drawAxis();
   drawMirror();
@@ -283,7 +287,7 @@ function draw() {
 
 // Convert screen (canvas pixel) coords to world coords
 function screenToWorld(sx, sy) {
-  return { x: sx - panX, y: sy - panY };
+  return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
 }
 
 function getMousePos(e) {
@@ -360,6 +364,29 @@ canvas.addEventListener('mouseleave', onUp);
 canvas.addEventListener('touchstart', onDown, { passive: false });
 canvas.addEventListener('touchmove', onMove, { passive: false });
 canvas.addEventListener('touchend', onUp);
+
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const screen = getMousePos(e);
+  const oldZoom = zoom;
+  zoom *= e.deltaY < 0 ? ZOOM_STEP : 1 / ZOOM_STEP;
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom));
+  panX = screen.x - ((screen.x - panX) / oldZoom) * zoom;
+  panY = screen.y - ((screen.y - panY) / oldZoom) * zoom;
+  draw();
+}, { passive: false });
+
+function zoomAtCenter(factor) {
+  const cx = W / 2, cy = H / 2;
+  const oldZoom = zoom;
+  zoom = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, zoom * factor));
+  panX = cx - ((cx - panX) / oldZoom) * zoom;
+  panY = cy - ((cy - panY) / oldZoom) * zoom;
+  draw();
+}
+
+document.getElementById('btnZoomIn').addEventListener('click', () => zoomAtCenter(ZOOM_STEP));
+document.getElementById('btnZoomOut').addEventListener('click', () => zoomAtCenter(1 / ZOOM_STEP));
 
 const btnAddCircle = document.getElementById('btnAddCircle');
 
