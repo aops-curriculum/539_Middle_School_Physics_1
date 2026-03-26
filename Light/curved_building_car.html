@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Sun Reflection off Concave Glass Skyscraper</title>
+<title>Sun Reflection off Glass Skyscraper</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body {
@@ -19,7 +19,7 @@ body {
   align-items: center;
   justify-content: center;
   gap: 10px;
-  padding: 6px 16px 4px;
+  padding: 6px 16px 8px;
 }
 .slider-container label {
   font-size: 13px;
@@ -27,7 +27,7 @@ body {
   white-space: nowrap;
 }
 .slider-container input[type="range"] {
-  width: 180px;
+  width: 220px;
   accent-color: #f9a825;
 }
 canvas {
@@ -43,36 +43,88 @@ canvas {
   <label>Sun angle:</label>
   <input type="range" id="angleSlider" min="10" max="80" value="35">
 </div>
-<div class="slider-container">
-  <label>Curvature:</label>
-  <input type="range" id="curvatureSlider" min="0" max="100" value="30">
-</div>
 <canvas id="canvas" width="348" height="400"></canvas>
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const angleSlider = document.getElementById('angleSlider');
-const curvatureSlider = document.getElementById('curvatureSlider');
+const slider = document.getElementById('angleSlider');
 const W = 435;
 const H = 500;
 
 const GROUND_Y = 440;
-const MAX_BOUNCES = 8;
+const NUM_RAYS = 25;
+const MAX_BOUNCES = 6;
 const RAY_MAX_LEN = 1500;
 
-// Building definition
+// Building definition — the front face we see
 const bldgLeft = 360;
 const bldgRight = 510;
 const bldgTop = 60;
 const bldgBottom = GROUND_Y;
-const bldgH = bldgBottom - bldgTop;
-const bldgMidY = (bldgTop + bldgBottom) / 2;
 
-// Max concavity depth (how far the middle of the face bows inward)
-const MAX_DEPTH = 80;
+// Protruding windows on the left side of the building
+// Each window is a small rectangular bump sticking out to the left
+const windowProtrusion = 8;
+const windowRows = 13;
+const windowH = 20;
+const windowGapY = (bldgBottom - bldgTop - windowRows * windowH) / (windowRows + 1);
 
-// Number of arc segments for discretization
-const ARC_SEGMENTS = 60;
+function getWindows() {
+  const wins = [];
+  for (let r = 0; r < windowRows; r++) {
+    const wy = bldgTop + windowGapY + r * (windowH + windowGapY);
+    wins.push({
+      x: bldgLeft - windowProtrusion,
+      y: wy,
+      w: windowProtrusion,
+      h: windowH
+    });
+  }
+  return wins;
+}
+
+const windows = getWindows();
+
+// Build reflective surfaces from protruding windows
+// Each window has: left face, top face, bottom face
+function getWindowSurfaces() {
+  const surfaces = [];
+  for (const win of windows) {
+    // Left face (vertical, normal pointing left)
+    surfaces.push({
+      x1: win.x, y1: win.y,
+      x2: win.x, y2: win.y + win.h,
+      nx: -1, ny: 0, type: 'glass'
+    });
+    // Top face (horizontal, normal pointing up)
+    surfaces.push({
+      x1: win.x, y1: win.y,
+      x2: win.x + win.w, y2: win.y,
+      nx: 0, ny: -1, type: 'glass'
+    });
+    // Bottom face (horizontal, normal pointing down)
+    surfaces.push({
+      x1: win.x, y1: win.y + win.h,
+      x2: win.x + win.w, y2: win.y + win.h,
+      nx: 0, ny: 1, type: 'glass'
+    });
+  }
+  // Left wall of building between windows (non-glass)
+  surfaces.push({
+    x1: bldgLeft, y1: bldgTop,
+    x2: bldgLeft, y2: bldgBottom,
+    nx: -1, ny: 0, type: 'wall'
+  });
+  // Roof
+  surfaces.push({
+    x1: bldgLeft - windowProtrusion, y1: bldgTop,
+    x2: bldgRight, y2: bldgTop,
+    nx: 0, ny: -1, type: 'wall'
+  });
+  return surfaces;
+}
+
+const allSurfaces = getWindowSurfaces();
 
 // Car body definition
 const carX = 80;
@@ -86,52 +138,6 @@ const cabinW = 55;
 const cabinH = 18;
 const carCabinRect = { x: carX + 15, y: carY - 24, w: 28, h: 9 };
 
-// Compute concave arc geometry given a depth parameter
-// depth = how far the middle of the left face recedes to the right (into the building)
-// Top and bottom endpoints stay at (bldgLeft, bldgTop) and (bldgLeft, bldgBottom)
-// Midpoint of the arc is at (bldgLeft + depth, bldgMidY)
-function getArcGeometry(depth) {
-  if (depth < 0.5) {
-    return {
-      flat: true,
-      segments: [{ x1: bldgLeft, y1: bldgTop, x2: bldgLeft, y2: bldgBottom }],
-      points: [{ x: bldgLeft, y: bldgTop }, { x: bldgLeft, y: bldgBottom }],
-      cx: -Infinity, cy: bldgMidY, R: Infinity
-    };
-  }
-
-  const halfH = bldgH / 2;
-  // Radius from sagitta formula: R = (halfH² + depth²) / (2 * depth)
-  const R = (halfH * halfH + depth * depth) / (2 * depth);
-  // Center of circle is to the right of the surface
-  const cxArc = bldgLeft + R;
-  const cyArc = bldgMidY;
-
-  // Angles at top and bottom of arc
-  const angTop = Math.atan2(bldgTop - cyArc, bldgLeft - cxArc);
-  const angBot = Math.atan2(bldgBottom - cyArc, bldgLeft - cxArc);
-
-  const points = [];
-  for (let i = 0; i <= ARC_SEGMENTS; i++) {
-    const t = i / ARC_SEGMENTS;
-    const ang = angTop + t * (angBot - angTop);
-    points.push({
-      x: cxArc + R * Math.cos(ang),
-      y: cyArc + R * Math.sin(ang)
-    });
-  }
-
-  const segments = [];
-  for (let i = 0; i < points.length - 1; i++) {
-    segments.push({
-      x1: points[i].x, y1: points[i].y,
-      x2: points[i + 1].x, y2: points[i + 1].y
-    });
-  }
-
-  return { flat: false, segments, points, cx: cxArc, cy: cyArc, R };
-}
-
 function raySegmentIntersect(ox, oy, dx, dy, x1, y1, x2, y2) {
   const ex = x2 - x1;
   const ey = y2 - y1;
@@ -143,53 +149,6 @@ function raySegmentIntersect(ox, oy, dx, dy, x1, y1, x2, y2) {
     return { t, x: ox + dx * t, y: oy + dy * t, u };
   }
   return null;
-}
-
-// Analytical ray-circle intersection for the concave arc
-function rayArcIntersect(ox, oy, dx, dy, arc) {
-  if (arc.flat) {
-    const seg = arc.segments[0];
-    const hit = raySegmentIntersect(ox, oy, dx, dy, seg.x1, seg.y1, seg.x2, seg.y2);
-    if (hit) {
-      return { t: hit.t, x: hit.x, y: hit.y, nx: -1, ny: 0 };
-    }
-    return null;
-  }
-
-  const { cx: cxA, cy: cyA, R } = arc;
-  const ocx = ox - cxA;
-  const ocy = oy - cyA;
-  const a = dx * dx + dy * dy;
-  const b = 2 * (ocx * dx + ocy * dy);
-  const c = ocx * ocx + ocy * ocy - R * R;
-  const disc = b * b - 4 * a * c;
-  if (disc < 0) return null;
-
-  const sqrtDisc = Math.sqrt(disc);
-  const t1 = (-b - sqrtDisc) / (2 * a);
-  const t2 = (-b + sqrtDisc) / (2 * a);
-
-  let best = null;
-  for (const t of [t1, t2]) {
-    if (t < 0.01) continue;
-    const hx = ox + dx * t;
-    const hy = oy + dy * t;
-
-    // Hit must be within the arc's y-range
-    if (hy < bldgTop - 0.5 || hy > bldgBottom + 0.5) continue;
-
-    // Hit must be on the left side of the circle center (the concave face)
-    if (hx > cxA) continue;
-
-    if (!best || t < best.t) {
-      // Normal points outward from circle center (toward the scene, to the left)
-      const nx = (hx - cxA) / R;
-      const ny = (hy - cyA) / R;
-      best = { t, x: hx, y: hy, nx, ny };
-    }
-  }
-
-  return best;
 }
 
 function rayRectIntersect(ox, oy, dx, dy, rect) {
@@ -209,7 +168,7 @@ function rayRectIntersect(ox, oy, dx, dy, rect) {
   return best;
 }
 
-function traceRay(ox, oy, dx, dy, arc) {
+function traceRay(ox, oy, dx, dy) {
   let segments = [];
   let cx = ox, cy = oy;
   let rdx = dx, rdy = dy;
@@ -218,18 +177,13 @@ function traceRay(ox, oy, dx, dy, arc) {
     let closest = null;
     let hitType = null;
 
-    // Check concave building face (arc)
-    const arcHit = rayArcIntersect(cx, cy, rdx, rdy, arc);
-    if (arcHit) {
-      closest = arcHit;
-      hitType = 'glass';
-    }
-
-    // Check roof
-    const roofHit = raySegmentIntersect(cx, cy, rdx, rdy, bldgLeft - MAX_DEPTH, bldgTop, bldgRight, bldgTop);
-    if (roofHit && (!closest || roofHit.t < closest.t)) {
-      closest = { t: roofHit.t, x: roofHit.x, y: roofHit.y, nx: 0, ny: -1 };
-      hitType = 'wall';
+    // Check all building/window surfaces
+    for (const surf of allSurfaces) {
+      const hit = raySegmentIntersect(cx, cy, rdx, rdy, surf.x1, surf.y1, surf.x2, surf.y2);
+      if (hit && (!closest || hit.t < closest.t)) {
+        closest = { t: hit.t, x: hit.x, y: hit.y, nx: surf.nx, ny: surf.ny };
+        hitType = surf.type;
+      }
     }
 
     // Check ground
@@ -263,7 +217,7 @@ function traceRay(ox, oy, dx, dy, arc) {
     segments.push({ x1: cx, y1: cy, x2: closest.x, y2: closest.y, reflected: bounce > 0 });
 
     if (hitType === 'glass') {
-      // Reflect using surface normal (law of reflection)
+      // Reflect off glass
       const dot = rdx * closest.nx + rdy * closest.ny;
       rdx = rdx - 2 * dot * closest.nx;
       rdy = rdy - 2 * dot * closest.ny;
@@ -298,15 +252,15 @@ function drawGround() {
   ctx.setLineDash([]);
 
   ctx.fillStyle = '#888';
-  ctx.fillRect(bldgLeft - MAX_DEPTH - 25, GROUND_Y, bldgRight - bldgLeft + MAX_DEPTH + 50, 8);
+  ctx.fillRect(bldgLeft - 25, GROUND_Y, bldgRight - bldgLeft + 50, 8);
 }
 
-function drawBuilding(arc) {
-  // Main front face (flat portion)
+function drawBuilding() {
+  // Main front face — plain, featureless
   ctx.fillStyle = '#8a8a8a';
   ctx.fillRect(bldgLeft, bldgTop, bldgRight - bldgLeft, bldgBottom - bldgTop);
 
-  // Vertical panel lines
+  // Subtle vertical lines for paneling
   ctx.strokeStyle = '#7a7a7a';
   ctx.lineWidth = 1;
   const panelCount = 6;
@@ -319,88 +273,37 @@ function drawBuilding(arc) {
     ctx.stroke();
   }
 
-  // Draw the concave face
-  if (arc.flat) {
-    ctx.strokeStyle = '#5ba3c9';
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.moveTo(bldgLeft, bldgTop);
-    ctx.lineTo(bldgLeft, bldgBottom);
-    ctx.stroke();
-  } else {
-    const pts = arc.points;
+  // Protruding windows on the left side
+  for (const win of windows) {
+    // Window frame/structure
+    ctx.fillStyle = '#606060';
+    ctx.fillRect(win.x, win.y, win.w, win.h);
 
-    // Fill concave region between arc and bldgLeft
-    ctx.fillStyle = '#707070';
-    ctx.beginPath();
-    ctx.moveTo(bldgLeft, bldgTop);
-    for (const p of pts) {
-      ctx.lineTo(p.x, p.y);
-    }
-    ctx.lineTo(bldgLeft, bldgBottom);
-    ctx.closePath();
-    ctx.fill();
+    // Glass face (left-facing)
+    const glassGrad = ctx.createLinearGradient(win.x, win.y, win.x + win.w, win.y);
+    glassGrad.addColorStop(0, '#7ec8e3');
+    glassGrad.addColorStop(1, '#5ba3c9');
+    ctx.fillStyle = glassGrad;
+    ctx.fillRect(win.x, win.y + 1, win.w - 1, win.h - 2);
 
-    // Glass surface strips along the arc
-    for (let i = 0; i < pts.length - 1; i++) {
-      if (i % 4 < 2) {
-        ctx.strokeStyle = '#7ec8e3';
-      } else {
-        ctx.strokeStyle = '#5ba3c9';
-      }
-      ctx.lineWidth = 3;
-      ctx.beginPath();
-      ctx.moveTo(pts[i].x, pts[i].y);
-      ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
-      ctx.stroke();
-    }
+    // Highlight on glass
+    ctx.fillStyle = 'rgba(255,255,255,0.25)';
+    ctx.fillRect(win.x, win.y + 1, 2, win.h - 2);
 
-    // Specular highlight
-    ctx.strokeStyle = 'rgba(255,255,255,0.15)';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(pts[0].x, pts[0].y);
-    for (let i = 1; i < pts.length; i++) {
-      ctx.lineTo(pts[i].x, pts[i].y);
-    }
-    ctx.stroke();
-
-    // Horizontal mullion lines
+    // Outline
     ctx.strokeStyle = '#4a4a4a';
     ctx.lineWidth = 0.5;
-    const mullionCount = 15;
-    for (let i = 1; i < mullionCount; i++) {
-      const idx = Math.round(i * (pts.length - 1) / mullionCount);
-      const p = pts[idx];
-      ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(bldgLeft, p.y);
-      ctx.stroke();
-    }
+    ctx.strokeRect(win.x, win.y, win.w, win.h);
   }
 
   // Building outline
   ctx.strokeStyle = '#456';
   ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.moveTo(bldgLeft, bldgTop);
-  ctx.lineTo(bldgRight, bldgTop);
-  ctx.lineTo(bldgRight, bldgBottom);
-  ctx.lineTo(bldgLeft, bldgBottom);
-  if (!arc.flat) {
-    for (let i = arc.points.length - 1; i >= 0; i--) {
-      ctx.lineTo(arc.points[i].x, arc.points[i].y);
-    }
-  } else {
-    ctx.lineTo(bldgLeft, bldgTop);
-  }
-  ctx.closePath();
-  ctx.stroke();
+  ctx.strokeRect(bldgLeft, bldgTop, bldgRight - bldgLeft, bldgBottom - bldgTop);
 
   // Roof accent
   ctx.fillStyle = '#456';
-  const leftMost = arc.flat ? bldgLeft : Math.min(bldgLeft, ...arc.points.map(p => p.x));
-  ctx.fillRect(leftMost, bldgTop, bldgRight - leftMost, 4);
+  ctx.fillRect(bldgLeft, bldgTop, bldgRight - bldgLeft, 4);
 }
 
 function drawCar() {
@@ -409,14 +312,12 @@ function drawCar() {
   ctx.scale(0.5, 0.5);
   ctx.translate(-carX, -carY);
 
-  // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath();
   ctx.ellipse(carX + carW / 2, GROUND_Y + 2, carW / 2 + 5, 4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Car body — black
-  ctx.fillStyle = '#1a1a1a';
+  ctx.fillStyle = '#111';
   ctx.beginPath();
   ctx.moveTo(carX, carY);
   ctx.lineTo(carX, carY - carH);
@@ -427,8 +328,7 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  // Cabin — dark
-  ctx.fillStyle = '#111';
+  ctx.fillStyle = '#2a2a3a';
   ctx.beginPath();
   ctx.moveTo(cabinX, cabinY + cabinH);
   ctx.lineTo(cabinX + 8, cabinY);
@@ -437,7 +337,6 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  // Windshield
   ctx.fillStyle = 'rgba(100, 150, 200, 0.3)';
   ctx.beginPath();
   ctx.moveTo(cabinX + 2, cabinY + cabinH);
@@ -447,7 +346,6 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  // Rear window
   ctx.fillStyle = 'rgba(100, 150, 200, 0.25)';
   ctx.beginPath();
   ctx.moveTo(cabinX + cabinW / 2 + 2, cabinY + cabinH);
@@ -457,7 +355,6 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  // Wheels
   ctx.fillStyle = '#222';
   ctx.beginPath();
   ctx.arc(carX + 25, carY, 10, 0, Math.PI * 2);
@@ -466,8 +363,7 @@ function drawCar() {
   ctx.arc(carX + carW - 25, carY, 10, 0, Math.PI * 2);
   ctx.fill();
 
-  // Hubcaps
-  ctx.fillStyle = '#555';
+  ctx.fillStyle = '#666';
   ctx.beginPath();
   ctx.arc(carX + 25, carY, 5, 0, Math.PI * 2);
   ctx.fill();
@@ -475,19 +371,16 @@ function drawCar() {
   ctx.arc(carX + carW - 25, carY, 5, 0, Math.PI * 2);
   ctx.fill();
 
-  // Headlight
   ctx.fillStyle = '#ff6';
   ctx.beginPath();
   ctx.ellipse(carX + carW, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Taillight
   ctx.fillStyle = '#e33';
   ctx.beginPath();
   ctx.ellipse(carX, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  // Body accent line
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -522,17 +415,17 @@ function getRayStarts(dx, dy) {
   return starts;
 }
 
-function drawRays(angleDeg, arc) {
+function drawRays(angleDeg) {
   const angleRad = angleDeg * Math.PI / 180;
   const dx = Math.cos(angleRad);
   const dy = Math.sin(angleRad);
 
   const allTraced = [];
   for (const [sx, sy] of getRayStarts(dx, dy)) {
-    allTraced.push(traceRay(sx, sy, dx, dy, arc));
+    allTraced.push(traceRay(sx, sy, dx, dy));
   }
 
-  // Incoming (unreflected) rays
+  // Draw incoming (unreflected) rays
   ctx.lineWidth = 1.5;
   for (const segs of allTraced) {
     for (const seg of segs) {
@@ -545,7 +438,7 @@ function drawRays(angleDeg, arc) {
     }
   }
 
-  // Reflected rays (brighter)
+  // Draw reflected rays (brighter)
   ctx.lineWidth = 2;
   for (const segs of allTraced) {
     for (const seg of segs) {
@@ -559,25 +452,53 @@ function drawRays(angleDeg, arc) {
   }
 }
 
-function drawGlowSpots(angleDeg, arc) {
+function findCanvasEntry(ox, oy, dx, dy) {
+  // Find the smallest t>0 where the ray enters the canvas region
+  const margin = 20;
+  const tVals = [];
+  if (Math.abs(dx) > 1e-10) {
+    tVals.push((-margin - ox) / dx);
+    tVals.push((W + margin - ox) / dx);
+  }
+  if (Math.abs(dy) > 1e-10) {
+    tVals.push((-margin - oy) / dy);
+    tVals.push((H + margin - oy) / dy);
+  }
+  let best = null;
+  for (const t of tVals) {
+    if (t < 0) continue;
+    const px = ox + dx * t;
+    const py = oy + dy * t;
+    if (px >= -margin && px <= W + margin && py >= -margin && py <= H + margin) {
+      if (best === null || t < best) best = t;
+    }
+  }
+  return best;
+}
+
+// Glow spot on ground/car where reflected light hits
+function drawGlowSpots(angleDeg) {
   const angleRad = angleDeg * Math.PI / 180;
   const dx = Math.cos(angleRad);
   const dy = Math.sin(angleRad);
 
   for (const [sx, sy] of getRayStarts(dx, dy)) {
-    const segs = traceRay(sx, sy, dx, dy, arc);
+    const segs = traceRay(sx, sy, dx, dy);
+
+    // Find terminal point of reflected rays
     for (let s = 0; s < segs.length; s++) {
       const seg = segs[s];
       if (seg.reflected && s === segs.length - 1) {
+        // Draw a small glow at the endpoint
         const gx = seg.x2;
         const gy = seg.y2;
         if (gx > -10 && gx < W + 10 && gy > -10 && gy < H + 10) {
-          const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, 14);
-          glow.addColorStop(0, 'rgba(255, 255, 180, 0.6)');
+          const glow = ctx.createRadialGradient(gx, gy, 0, gx, gy, 12);
+          glow.addColorStop(0, 'rgba(255, 255, 180, 0.5)');
           glow.addColorStop(1, 'rgba(255, 255, 180, 0)');
           ctx.fillStyle = glow;
           ctx.beginPath();
-          ctx.arc(gx, gy, 14, 0, Math.PI * 2);
+          ctx.arc(gx, gy, 12, 0, Math.PI * 2);
           ctx.fill();
         }
       }
@@ -586,19 +507,15 @@ function drawGlowSpots(angleDeg, arc) {
 }
 
 function draw() {
-  const angleDeg = parseFloat(angleSlider.value);
-  const curvature = parseFloat(curvatureSlider.value);
-  const depth = (curvature / 100) * MAX_DEPTH;
-  const arc = getArcGeometry(depth);
-
+  const angleDeg = parseFloat(slider.value);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, 348, 400);
   ctx.setTransform(0.8, 0, 0, 0.8, 0, 0);
   drawSky();
   drawGround();
-  drawGlowSpots(angleDeg, arc);
-  drawRays(angleDeg, arc);
-  drawBuilding(arc);
+  drawGlowSpots(angleDeg);
+  drawRays(angleDeg);
+  drawBuilding();
   drawCar();
 
   // Angle label
@@ -609,8 +526,7 @@ function draw() {
   ctx.textAlign = 'left';
 }
 
-angleSlider.addEventListener('input', draw);
-curvatureSlider.addEventListener('input', draw);
+slider.addEventListener('input', draw);
 
 draw();
 
