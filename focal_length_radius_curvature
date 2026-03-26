@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concave Mirror</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  font-family: Arial, sans-serif;
+  max-width: 600px;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 10px 0;
+}
+p.instructions {
+  font-size: 14px;
+  color: #aaa;
+  text-align: center;
+  margin: 8px 10px;
+  line-height: 1.4;
+}
+canvas {
+  display: block;
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: grab;
+}
+canvas.grabbing { cursor: grabbing; }
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  margin: 8px 0;
+  align-items: center;
+}
+button {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+}
+button:hover { background: rgba(76, 175, 80, 1); }
+button.danger { background: rgba(220, 60, 60, 0.9); }
+button.danger:hover { background: rgba(220, 60, 60, 1); }
+.slider-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #aaa;
+  font-size: 12px;
+}
+.slider-group input[type=range] {
+  width: 100px;
+}
+</style>
+</head>
+<body>
+<p class="instructions">Click "Add Ray" then click on the canvas to place parallel rays. Drag the ruler to measure. Add a dotted circle and adjust it.</p>
+<div class="controls">
+  <button id="btnAddRay">Add Ray</button>
+  <button id="btnAddCircle">Add Circle</button>
+  <button id="btnClear" class="danger">Clear All</button>
+  <div class="slider-group">
+    <label>R = <span id="rLabel">5.0</span> cm</label>
+    <input type="range" id="sliderR" min="2" max="10" step="0.1" value="5">
+  </div>
+</div>
+<canvas id="canvas" width="600" height="500"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 500;
+
+// Scale: 1 cm = 40 px
+const SCALE = 40;
+
+// Mirror on the right side
+const MIRROR_X_CM = 13; // cm from left edge
+const MIRROR_X = MIRROR_X_CM * SCALE; // px
+
+// Random R between 2 and 10 using crypto
+let R_cm = 2 + (crypto.getRandomValues(new Uint32Array(1))[0] / 0xFFFFFFFF) * 8;
+R_cm = Math.round(R_cm * 10) / 10;
+
+const sliderR = document.getElementById('sliderR');
+const rLabel = document.getElementById('rLabel');
+sliderR.value = R_cm;
+rLabel.textContent = R_cm.toFixed(1);
+
+// Optical axis Y
+const AXIS_Y = H / 2;
+
+// State
+let rays = [];
+let circles = [];
+let mode = 'none'; // 'none', 'addRay', 'addCircle'
+
+// Ruler state
+let ruler = {
+  x: 200, y: 350, angle: 0, lengthCm: 12, dragging: false, rotating: false,
+  dragOffX: 0, dragOffY: 0, rotStartAngle: 0, rotMouseAngle: 0
+};
+
+// Dragging
+let dragTarget = null; // { type, index, ... }
+let isDragging = false;
+
+function getMirrorR() { return R_cm * SCALE; }
+function getMirrorCenter() {
+  // Center of curvature is to the LEFT of mirror surface
+  return { x: MIRROR_X - getMirrorR(), y: AXIS_Y };
+}
+function getFocalPoint() {
+  return { x: MIRROR_X - getMirrorR() / 2, y: AXIS_Y };
+}
+
+// Mirror subtends 40 degrees (half-angle = 20 deg)
+const MIRROR_HALF_ANGLE = 20 * Math.PI / 180;
+
+function getMirrorArc() {
+  const R = getMirrorR();
+  const cx = MIRROR_X - R;
+  const cy = AXIS_Y;
+  // Arc centered at (cx, cy) with radius R
+  // Mirror surface is the right side of the circle
+  // angle 0 = rightward, so mirror arc spans from -halfAngle to +halfAngle
+  const startAngle = -MIRROR_HALF_ANGLE;
+  const endAngle = MIRROR_HALF_ANGLE;
+  return { cx, cy, R, startAngle, endAngle };
+}
+
+function drawMirror() {
+  const { cx, cy, R, startAngle, endAngle } = getMirrorArc();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, startAngle, endAngle, false);
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 4;
+  ctx.stroke();
+
+  // Draw hatching on the back side
+  const steps = 15;
+  for (let i = 0; i <= steps; i++) {
+    const t = startAngle + (endAngle - startAngle) * i / steps;
+    const sx = cx + R * Math.cos(t);
+    const sy = cy + R * Math.sin(t);
+    // Normal points inward (toward center): from surface toward cx,cy
+    const nx = -Math.cos(t);
+    const ny = -Math.sin(t);
+    // Hatch goes outward (away from center)
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx - nx * 8, sy - ny * 8);
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function drawAxis() {
+  ctx.beginPath();
+  ctx.setLineDash([5, 5]);
+  ctx.moveTo(0, AXIS_Y);
+  ctx.lineTo(W, AXIS_Y);
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Mark focal point
+  const fp = getFocalPoint();
+  ctx.beginPath();
+  ctx.arc(fp.x, fp.y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#f1c40f';
+  ctx.fill();
+  ctx.font = 'bold 12px Arial';
+  ctx.fillStyle = '#f1c40f';
+  ctx.fillText('F', fp.x - 4, fp.y + 16);
+
+  // Mark center of curvature
+  const cc = getMirrorCenter();
+  ctx.beginPath();
+  ctx.arc(cc.x, cc.y, 4, 0, Math.PI * 2);
+  ctx.fillStyle = '#e67e22';
+  ctx.fill();
+  ctx.font = 'bold 12px Arial';
+  ctx.fillStyle = '#e67e22';
+  ctx.fillText('C', cc.x - 4, cc.y + 16);
+}
+
+function reflectRay(rayY) {
+  // Ray comes from the left, parallel to axis, at height rayY
+  // It hits the mirror surface
+  const { cx, cy, R, startAngle, endAngle } = getMirrorArc();
+
+  // Find intersection of horizontal line y=rayY with circle (cx,cy,R)
+  const dy = rayY - cy;
+  if (Math.abs(dy) > R) return null;
+  const dx = Math.sqrt(R * R - dy * dy);
+  // We want the rightmost intersection (the mirror surface)
+  const hitX = cx + dx;
+  const hitY = rayY;
+
+  // Check if hit is within the arc
+  const hitAngle = Math.atan2(hitY - cy, hitX - cx);
+  if (hitAngle < startAngle || hitAngle > endAngle) return null;
+
+  // Normal at hit point: points from surface toward center (inward)
+  const nx = (cx - hitX) / R;
+  const ny = (cy - hitY) / R;
+
+  // Incident direction: (1, 0) going right
+  // Reflect: r = d - 2(d·n)n
+  const dot = 1 * nx + 0 * ny;
+  const rx = 1 - 2 * dot * nx;
+  const ry = 0 - 2 * dot * ny;
+
+  return { hitX, hitY, rx, ry };
+}
+
+function drawRays() {
+  for (const ray of rays) {
+    const result = reflectRay(ray.y);
+    // Draw incoming ray
+    ctx.beginPath();
+    if (result) {
+      ctx.moveTo(0, ray.y);
+      ctx.lineTo(result.hitX, result.hitY);
+    } else {
+      ctx.moveTo(0, ray.y);
+      ctx.lineTo(MIRROR_X, ray.y);
+    }
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+
+    if (result) {
+      // Draw reflected ray
+      const len = 800;
+      const endX = result.hitX + result.rx * len;
+      const endY = result.hitY + result.ry * len;
+      ctx.beginPath();
+      ctx.moveTo(result.hitX, result.hitY);
+      ctx.lineTo(endX, endY);
+      ctx.strokeStyle = '#e74c3c';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Draw extension behind mirror (virtual ray) as dashed
+      if (result.rx > 0) {
+        // Reflected ray goes right (diverging), extend backward as dashed
+        const backX = result.hitX - result.rx * len;
+        const backY = result.hitY - result.ry * len;
+        ctx.beginPath();
+        ctx.setLineDash([4, 4]);
+        ctx.moveTo(result.hitX, result.hitY);
+        ctx.lineTo(backX, backY);
+        ctx.strokeStyle = 'rgba(231,76,60,0.4)';
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Arrowhead on incoming ray near hit
+      drawArrow(result.hitX - 30, ray.y, result.hitX - 10, ray.y, '#e74c3c');
+      // Arrowhead on reflected ray
+      const aMag = 40;
+      drawArrow(result.hitX + result.rx * (aMag - 20), result.hitY + result.ry * (aMag - 20),
+                result.hitX + result.rx * aMag, result.hitY + result.ry * aMag, '#e74c3c');
+    }
+
+    // Draw handle
+    ctx.beginPath();
+    ctx.arc(20, ray.y, 6, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(231,76,60,0.6)';
+    ctx.fill();
+    ctx.strokeStyle = '#e74c3c';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function drawArrow(fromX, fromY, toX, toY, color) {
+  const angle = Math.atan2(toY - fromY, toX - fromX);
+  const headLen = 12;
+  const headAngle = Math.PI / 6;
+  ctx.beginPath();
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - headLen * Math.cos(angle - headAngle), toY - headLen * Math.sin(angle - headAngle));
+  ctx.moveTo(toX, toY);
+  ctx.lineTo(toX - headLen * Math.cos(angle + headAngle), toY - headLen * Math.sin(angle + headAngle));
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.stroke();
+}
+
+function drawCircles() {
+  for (let i = 0; i < circles.length; i++) {
+    const c = circles[i];
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.setLineDash([5, 5]);
+    ctx.strokeStyle = '#3498db';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Resize handle
+    const hx = c.x + c.r;
+    const hy = c.y;
+    ctx.beginPath();
+    ctx.arc(hx, hy, 5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(52,152,219,0.6)';
+    ctx.fill();
+    ctx.strokeStyle = '#3498db';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Center handle
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(52,152,219,0.4)';
+    ctx.fill();
+    ctx.strokeStyle = '#3498db';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+function drawRuler() {
+  const lengthPx = ruler.lengthCm * SCALE;
+  const rulerH = 28;
+  ctx.save();
+  ctx.translate(ruler.x, ruler.y);
+  ctx.rotate(ruler.angle);
+  ctx.globalAlpha = 0.8;
+
+  // Background
+  ctx.fillStyle = '#f5e6c8';
+  ctx.fillRect(-lengthPx / 2, -rulerH / 2, lengthPx, rulerH);
+  ctx.strokeStyle = '#8B7355';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(-lengthPx / 2, -rulerH / 2, lengthPx, rulerH);
+
+  // Tick marks and labels
+  for (let cm = 0; cm <= ruler.lengthCm; cm++) {
+    const x = -lengthPx / 2 + cm * SCALE;
+    // cm tick
+    ctx.beginPath();
+    ctx.moveTo(x, -rulerH / 2);
+    ctx.lineTo(x, -rulerH / 2 + 10);
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Bottom tick
+    ctx.beginPath();
+    ctx.moveTo(x, rulerH / 2);
+    ctx.lineTo(x, rulerH / 2 - 10);
+    ctx.stroke();
+
+    // Label
+    if (cm < ruler.lengthCm) {
+      ctx.font = '9px Arial';
+      ctx.fillStyle = '#333';
+      ctx.textAlign = 'center';
+      ctx.fillText(cm, x + SCALE / 2, 3);
+    }
+
+    // Half-cm tick
+    if (cm < ruler.lengthCm) {
+      const halfX = x + SCALE / 2;
+      ctx.beginPath();
+      ctx.moveTo(halfX, -rulerH / 2);
+      ctx.lineTo(halfX, -rulerH / 2 + 6);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(halfX, rulerH / 2);
+      ctx.lineTo(halfX, rulerH / 2 - 6);
+      ctx.stroke();
+    }
+
+    // mm ticks
+    if (cm < ruler.lengthCm) {
+      for (let mm = 1; mm <= 9; mm++) {
+        if (mm === 5) continue;
+        const mmX = x + mm * SCALE / 10;
+        ctx.beginPath();
+        ctx.moveTo(mmX, -rulerH / 2);
+        ctx.lineTo(mmX, -rulerH / 2 + 4);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(mmX, rulerH / 2);
+        ctx.lineTo(mmX, rulerH / 2 - 4);
+        ctx.stroke();
+      }
+    }
+  }
+
+  // Rotation handle at right end
+  ctx.globalAlpha = 1;
+  ctx.beginPath();
+  ctx.arc(lengthPx / 2 + 10, 0, 6, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(76,175,80,0.7)';
+  ctx.fill();
+  ctx.strokeStyle = '#4CAF50';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  drawAxis();
+  drawMirror();
+  drawRays();
+  drawCircles();
+  drawRuler();
+
+  // Mode indicator
+  if (mode === 'addRay') {
+    ctx.font = 'bold 12px Arial';
+    ctx.fillStyle = '#e74c3c';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click on canvas to place a ray (parallel to axis)', W / 2, 20);
+  } else if (mode === 'addCircle') {
+    ctx.font = 'bold 12px Arial';
+    ctx.fillStyle = '#3498db';
+    ctx.textAlign = 'center';
+    ctx.fillText('Click on canvas to place a dotted circle', W / 2, 20);
+  }
+
+  // Ray count
+  ctx.font = '11px Arial';
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'right';
+  ctx.fillText(`Rays: ${rays.length}/10`, W - 10, H - 10);
+}
+
+// Hit testing
+function getMousePos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const scaleX = W / rect.width;
+  const scaleY = H / rect.height;
+  if (e.touches) {
+    return { x: (e.touches[0].clientX - rect.left) * scaleX, y: (e.touches[0].clientY - rect.top) * scaleY };
+  }
+  return { x: (e.clientX - rect.left) * scaleX, y: (e.clientY - rect.top) * scaleY };
+}
+
+function hitTestRuler(mx, my) {
+  const lengthPx = ruler.lengthCm * SCALE;
+  const rulerH = 28;
+  // Transform mouse into ruler local coords
+  const dx = mx - ruler.x;
+  const dy = my - ruler.y;
+  const cos = Math.cos(-ruler.angle);
+  const sin = Math.sin(-ruler.angle);
+  const lx = dx * cos - dy * sin;
+  const ly = dx * sin + dy * cos;
+
+  // Rotation handle
+  if (Math.hypot(lx - (lengthPx / 2 + 10), ly) < 10) return 'rotate';
+  // Body
+  if (lx >= -lengthPx / 2 - 5 && lx <= lengthPx / 2 + 5 && ly >= -rulerH / 2 - 5 && ly <= rulerH / 2 + 5) return 'drag';
+  return null;
+}
+
+function hitTestRayHandle(mx, my) {
+  for (let i = 0; i < rays.length; i++) {
+    if (Math.hypot(mx - 20, my - rays[i].y) < 12) return i;
+  }
+  return -1;
+}
+
+function hitTestCircleCenter(mx, my) {
+  for (let i = 0; i < circles.length; i++) {
+    if (Math.hypot(mx - circles[i].x, my - circles[i].y) < 10) return { index: i, part: 'center' };
+  }
+  return null;
+}
+
+function hitTestCircleResize(mx, my) {
+  for (let i = 0; i < circles.length; i++) {
+    const hx = circles[i].x + circles[i].r;
+    const hy = circles[i].y;
+    if (Math.hypot(mx - hx, my - hy) < 10) return { index: i, part: 'resize' };
+  }
+  return null;
+}
+
+function onDown(e) {
+  e.preventDefault();
+  const pos = getMousePos(e);
+  const mx = pos.x, my = pos.y;
+
+  if (mode === 'addRay') {
+    if (rays.length < 10) {
+      rays.push({ y: my });
+    }
+    mode = 'none';
+    draw();
+    return;
+  }
+
+  if (mode === 'addCircle') {
+    circles.push({ x: mx, y: my, r: 40 });
+    mode = 'none';
+    draw();
+    return;
+  }
+
+  // Check circle resize first (smaller target)
+  const circResize = hitTestCircleResize(mx, my);
+  if (circResize) {
+    dragTarget = { type: 'circleResize', index: circResize.index };
+    isDragging = true;
+    canvas.classList.add('grabbing');
+    return;
+  }
+
+  // Check circle center
+  const circCenter = hitTestCircleCenter(mx, my);
+  if (circCenter) {
+    const c = circles[circCenter.index];
+    dragTarget = { type: 'circleCenter', index: circCenter.index, offX: mx - c.x, offY: my - c.y };
+    isDragging = true;
+    canvas.classList.add('grabbing');
+    return;
+  }
+
+  // Check ray handles
+  const rayIdx = hitTestRayHandle(mx, my);
+  if (rayIdx >= 0) {
+    dragTarget = { type: 'ray', index: rayIdx };
+    isDragging = true;
+    canvas.classList.add('grabbing');
+    return;
+  }
+
+  // Check ruler
+  const rulerHit = hitTestRuler(mx, my);
+  if (rulerHit === 'rotate') {
+    ruler.rotating = true;
+    ruler.rotStartAngle = ruler.angle;
+    ruler.rotMouseAngle = Math.atan2(my - ruler.y, mx - ruler.x);
+    dragTarget = { type: 'rulerRotate' };
+    isDragging = true;
+    canvas.classList.add('grabbing');
+    return;
+  }
+  if (rulerHit === 'drag') {
+    ruler.dragging = true;
+    ruler.dragOffX = mx - ruler.x;
+    ruler.dragOffY = my - ruler.y;
+    dragTarget = { type: 'rulerDrag' };
+    isDragging = true;
+    canvas.classList.add('grabbing');
+    return;
+  }
+}
+
+function onMove(e) {
+  e.preventDefault();
+  if (!isDragging || !dragTarget) return;
+  const pos = getMousePos(e);
+  const mx = pos.x, my = pos.y;
+
+  if (dragTarget.type === 'ray') {
+    rays[dragTarget.index].y = Math.max(10, Math.min(H - 10, my));
+  } else if (dragTarget.type === 'rulerDrag') {
+    ruler.x = mx - ruler.dragOffX;
+    ruler.y = my - ruler.dragOffY;
+  } else if (dragTarget.type === 'rulerRotate') {
+    const currentAngle = Math.atan2(my - ruler.y, mx - ruler.x);
+    ruler.angle = ruler.rotStartAngle + (currentAngle - ruler.rotMouseAngle);
+  } else if (dragTarget.type === 'circleCenter') {
+    circles[dragTarget.index].x = mx - dragTarget.offX;
+    circles[dragTarget.index].y = my - dragTarget.offY;
+  } else if (dragTarget.type === 'circleResize') {
+    const c = circles[dragTarget.index];
+    c.r = Math.max(10, Math.hypot(mx - c.x, my - c.y));
+  }
+  draw();
+}
+
+function onUp(e) {
+  isDragging = false;
+  dragTarget = null;
+  ruler.dragging = false;
+  ruler.rotating = false;
+  canvas.classList.remove('grabbing');
+}
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: false });
+canvas.addEventListener('touchmove', onMove, { passive: false });
+canvas.addEventListener('touchend', onUp);
+
+// Buttons
+document.getElementById('btnAddRay').addEventListener('click', () => {
+  if (rays.length >= 10) return;
+  mode = mode === 'addRay' ? 'none' : 'addRay';
+  draw();
+});
+document.getElementById('btnAddCircle').addEventListener('click', () => {
+  mode = mode === 'addCircle' ? 'none' : 'addCircle';
+  draw();
+});
+document.getElementById('btnClear').addEventListener('click', () => {
+  rays = [];
+  circles = [];
+  mode = 'none';
+  draw();
+});
+
+sliderR.addEventListener('input', () => {
+  R_cm = parseFloat(sliderR.value);
+  rLabel.textContent = R_cm.toFixed(1);
+  draw();
+});
+
+draw();
+
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
+</body>
+</html>
