@@ -489,11 +489,11 @@
       "category": "light"
     },
     {
-      "path": "focal_length_radius_curvature.html",
+      "path": "Light/focal_length_radius_curvature.html",
       "title": "Concave Mirror",
       "description": "New simulation - description pending.",
-      "emoji": "🔬",
-      "category": "other"
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
