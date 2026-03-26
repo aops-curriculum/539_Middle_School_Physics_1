@@ -52,22 +52,23 @@ button.danger:hover { background: rgba(220, 60, 60, 1); }
 </style>
 </head>
 <body>
-<p class="instructions">Drag rays and circles to reposition. Drag the ruler or its green handle to rotate.</p>
+<p class="instructions">Drag rays and circles to reposition. Drag the ruler to slide it.</p>
 <div class="controls">
   <button id="btnAddRay">Add Ray</button>
   <button id="btnAddCircle">Add Circle</button>
   <button id="btnClear" class="danger">Clear All</button>
 </div>
-<canvas id="canvas" width="600" height="350"></canvas>
+<canvas id="canvas" width="550" height="300"></canvas>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = 600, H = 350;
+const W = 550, H = 300;
 
 const SCALE = 40;
 const MIRROR_X_CM = 13;
-const MIRROR_X = MIRROR_X_CM * SCALE;
+const OFFSET_X = 50;
+const MIRROR_X = MIRROR_X_CM * SCALE - OFFSET_X;
 
 let R_cm = 2 + (crypto.getRandomValues(new Uint32Array(1))[0] / 0xFFFFFFFF) * 8;
 R_cm = Math.round(R_cm * 10) / 10;
@@ -76,11 +77,10 @@ const AXIS_Y = 100;
 
 let rays = [];
 let circles = [];
-let mode = 'none';
 
 let ruler = {
-  x: 200, y: 280, angle: 0, lengthCm: 12, dragging: false, rotating: false,
-  dragOffX: 0, dragOffY: 0, rotStartAngle: 0, rotMouseAngle: 0
+  x: 200, y: AXIS_Y + 30, angle: 0, lengthCm: 12, dragging: false,
+  dragOffX: 0, dragOffY: 0
 };
 
 let dragTarget = null;
@@ -91,7 +91,7 @@ function getMirrorR() { return R_cm * SCALE; }
 function getMirrorCenter() { return { x: MIRROR_X - getMirrorR(), y: AXIS_Y }; }
 function getFocalPoint() { return { x: MIRROR_X - getMirrorR() / 2, y: AXIS_Y }; }
 
-const MIRROR_HALF_ANGLE = 20 * Math.PI / 180;
+const MIRROR_HALF_ANGLE = 30 * Math.PI / 180;
 
 function getMirrorArc() {
   const R = getMirrorR();
@@ -106,7 +106,7 @@ function drawMirror() {
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  const steps = 15;
+  const steps = 20;
   for (let i = 0; i <= steps; i++) {
     const t = startAngle + (endAngle - startAngle) * i / steps;
     const sx = cx + R * Math.cos(t);
@@ -205,22 +205,19 @@ function drawRays() {
 
 function drawCircles() {
   for (const c of circles) {
+    const r = MIRROR_X - c.x;
+    if (r <= 0) continue;
     ctx.beginPath();
-    ctx.arc(c.x, c.y, c.r, 0, Math.PI * 2);
+    ctx.arc(c.x, c.y, r, 0, Math.PI * 2);
     ctx.setLineDash([5, 5]);
-    ctx.strokeStyle = '#3498db';
+    ctx.strokeStyle = '#e74c3c';
     ctx.lineWidth = 2;
     ctx.stroke();
     ctx.setLineDash([]);
 
     ctx.beginPath();
-    ctx.arc(c.x + c.r, c.y, 5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(52,152,219,0.6)';
-    ctx.fill();
-
-    ctx.beginPath();
     ctx.arc(c.x, c.y, 5, 0, Math.PI * 2);
-    ctx.fillStyle = 'rgba(52,152,219,0.4)';
+    ctx.fillStyle = 'rgba(231,76,60,0.4)';
     ctx.fill();
   }
 }
@@ -261,13 +258,6 @@ function drawRuler() {
   }
 
   ctx.globalAlpha = 1;
-  ctx.beginPath();
-  ctx.arc(lengthPx / 2 + 10, 0, 6, 0, Math.PI * 2);
-  ctx.fillStyle = 'rgba(76,175,80,0.7)';
-  ctx.fill();
-  ctx.strokeStyle = '#4CAF50';
-  ctx.lineWidth = 1;
-  ctx.stroke();
   ctx.restore();
 }
 
@@ -293,7 +283,6 @@ function hitTestRuler(mx, my) {
   const dx = mx - ruler.x, dy = my - ruler.y;
   const cos = Math.cos(-ruler.angle), sin = Math.sin(-ruler.angle);
   const lx = dx * cos - dy * sin, ly = dx * sin + dy * cos;
-  if (Math.hypot(lx - (lengthPx / 2 + 10), ly) < 10) return 'rotate';
   if (lx >= -lengthPx / 2 - 5 && lx <= lengthPx / 2 + 5 && ly >= -rulerH / 2 - 5 && ly <= rulerH / 2 + 5) return 'drag';
   return null;
 }
@@ -303,11 +292,9 @@ function onDown(e) {
   const { x: mx, y: my } = getMousePos(e);
 
   for (let i = 0; i < circles.length; i++) {
-    if (Math.hypot(mx - circles[i].x - circles[i].r, my - circles[i].y) < 10) {
-      dragTarget = { type: 'circleResize', index: i }; isDragging = true; canvas.classList.add('grabbing'); return;
-    }
     if (Math.hypot(mx - circles[i].x, my - circles[i].y) < 10) {
-      dragTarget = { type: 'circleCenter', index: i, offX: mx - circles[i].x, offY: my - circles[i].y }; isDragging = true; canvas.classList.add('grabbing'); return;
+      dragTarget = { type: 'circleCenter', index: i, offX: mx - circles[i].x };
+      isDragging = true; canvas.classList.add('grabbing'); return;
     }
   }
   for (let i = 0; i < rays.length; i++) {
@@ -316,10 +303,6 @@ function onDown(e) {
     }
   }
   const rulerHit = hitTestRuler(mx, my);
-  if (rulerHit === 'rotate') {
-    ruler.rotStartAngle = ruler.angle; ruler.rotMouseAngle = Math.atan2(my - ruler.y, mx - ruler.x);
-    dragTarget = { type: 'rulerRotate' }; isDragging = true; canvas.classList.add('grabbing'); return;
-  }
   if (rulerHit === 'drag') {
     ruler.dragOffX = mx - ruler.x; ruler.dragOffY = my - ruler.y;
     dragTarget = { type: 'rulerDrag' }; isDragging = true; canvas.classList.add('grabbing'); return;
@@ -332,9 +315,10 @@ function onMove(e) {
   const { x: mx, y: my } = getMousePos(e);
   if (dragTarget.type === 'ray') rays[dragTarget.index].y = Math.max(10, Math.min(H - 10, my));
   else if (dragTarget.type === 'rulerDrag') { ruler.x = mx - ruler.dragOffX; ruler.y = my - ruler.dragOffY; }
-  else if (dragTarget.type === 'rulerRotate') { ruler.angle = ruler.rotStartAngle + Math.atan2(my - ruler.y, mx - ruler.x) - ruler.rotMouseAngle; }
-  else if (dragTarget.type === 'circleCenter') { circles[dragTarget.index].x = mx - dragTarget.offX; circles[dragTarget.index].y = my - dragTarget.offY; }
-  else if (dragTarget.type === 'circleResize') { const c = circles[dragTarget.index]; c.r = Math.max(10, Math.hypot(mx - c.x, my - c.y)); }
+  else if (dragTarget.type === 'circleCenter') {
+    circles[dragTarget.index].x = Math.min(MIRROR_X - 1, mx - dragTarget.offX);
+    circles[dragTarget.index].y = AXIS_Y;
+  }
   draw();
 }
 
@@ -356,7 +340,7 @@ document.getElementById('btnAddRay').addEventListener('click', () => {
   draw();
 });
 document.getElementById('btnAddCircle').addEventListener('click', () => {
-  circles.push({ x: W / 2, y: AXIS_Y, r: 40 });
+  circles.push({ x: MIRROR_X - getMirrorR(), y: AXIS_Y });
   draw();
 });
 document.getElementById('btnClear').addEventListener('click', () => {
