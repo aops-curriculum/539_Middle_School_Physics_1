@@ -62,17 +62,15 @@ const bldgRight = 510;
 const bldgTop = 60;
 const bldgBottom = GROUND_Y;
 
-// Protruding windows on the left side of the building
-// Each window is a small rectangular bump sticking out to the left
+// Windows on the left side of the building (purely visual)
 const windowProtrusion = 8;
 const windowRows = 13;
-const windowH = 20;
-const windowGapY = (bldgBottom - bldgTop - windowRows * windowH) / (windowRows + 1);
+const windowH = (bldgBottom - bldgTop) / windowRows;
 
 function getWindows() {
   const wins = [];
   for (let r = 0; r < windowRows; r++) {
-    const wy = bldgTop + windowGapY + r * (windowH + windowGapY);
+    const wy = bldgTop + r * windowH;
     wins.push({
       x: bldgLeft - windowProtrusion,
       y: wy,
@@ -85,46 +83,11 @@ function getWindows() {
 
 const windows = getWindows();
 
-// Build reflective surfaces from protruding windows
-// Each window has: left face, top face, bottom face
-function getWindowSurfaces() {
-  const surfaces = [];
-  for (const win of windows) {
-    // Left face (vertical, normal pointing left)
-    surfaces.push({
-      x1: win.x, y1: win.y,
-      x2: win.x, y2: win.y + win.h,
-      nx: -1, ny: 0, type: 'glass'
-    });
-    // Top face (horizontal, normal pointing up)
-    surfaces.push({
-      x1: win.x, y1: win.y,
-      x2: win.x + win.w, y2: win.y,
-      nx: 0, ny: -1, type: 'glass'
-    });
-    // Bottom face (horizontal, normal pointing down)
-    surfaces.push({
-      x1: win.x, y1: win.y + win.h,
-      x2: win.x + win.w, y2: win.y + win.h,
-      nx: 0, ny: 1, type: 'glass'
-    });
-  }
-  // Left wall of building between windows (non-glass)
-  surfaces.push({
-    x1: bldgLeft, y1: bldgTop,
-    x2: bldgLeft, y2: bldgBottom,
-    nx: -1, ny: 0, type: 'wall'
-  });
-  // Roof
-  surfaces.push({
-    x1: bldgLeft - windowProtrusion, y1: bldgTop,
-    x2: bldgRight, y2: bldgTop,
-    nx: 0, ny: -1, type: 'wall'
-  });
-  return surfaces;
-}
-
-const allSurfaces = getWindowSurfaces();
+// Reflective surface: the left side of the building is one vertical glass surface
+const allSurfaces = [
+  { x1: bldgLeft, y1: bldgTop, x2: bldgLeft, y2: bldgBottom, nx: -1, ny: 0, type: 'glass' },
+  { x1: bldgLeft, y1: bldgTop, x2: bldgRight, y2: bldgTop, nx: 0, ny: -1, type: 'wall' },
+];
 
 // Car body definition
 const carX = 80;
@@ -299,11 +262,11 @@ function drawBuilding() {
   // Building outline
   ctx.strokeStyle = '#456';
   ctx.lineWidth = 2;
-  ctx.strokeRect(bldgLeft, bldgTop, bldgRight - bldgLeft, bldgBottom - bldgTop);
+  ctx.strokeRect(bldgLeft - windowProtrusion, bldgTop, bldgRight - bldgLeft + windowProtrusion, bldgBottom - bldgTop);
 
   // Roof accent
   ctx.fillStyle = '#456';
-  ctx.fillRect(bldgLeft, bldgTop, bldgRight - bldgLeft, 4);
+  ctx.fillRect(bldgLeft - windowProtrusion, bldgTop, bldgRight - bldgLeft + windowProtrusion, 4);
 }
 
 function drawCar() {
