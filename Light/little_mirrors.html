@@ -28,43 +28,39 @@ function getMirrorBox() { return { x: W / 2 - BOX_W - 5, y: H - BOX_H - 20, w: B
 function getRulerBox()  { return { x: W / 2 + 5,          y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
 
 // Ice cream geometry relative to cone center (cx, cy)
-// Cone triangle: (-22, +5), (+22, +5), (0, +45)  → tip at (0, +45)
-// Bottom scoop: center (0, -12), r=22             → top at (0, -34)
-// Top scoop:    center (0, -47), r=20             → top at (0, -67)
-// Cherry:       center (0, -73), r=6              → top at (0, -79)
-const TIP_DY  =  45;   // y offset of cone tip from cone center
-const TOP_DY  = -79;   // y offset of topmost point (cherry tip) from cone center
-const CONE_SPAN = TIP_DY - TOP_DY;  // 124 px — distance from tip to top in original drawing
+const TIP_DY  =  45;
+const TOP_DY  = -79;
+const CONE_SPAN = TIP_DY - TOP_DY;
 
 // Mirror constants
 const MIRROR_LEN  = 70;
 const MIRROR_HALF = MIRROR_LEN / 2;
-const HANDLE_R    = 8;    // radius of end-handle hit zone
-const BODY_R      = 26;   // radius of center-move hit zone
-const BTN_R       = 10;   // radius of rotate-button hit zone
-const ROT_STEP    = Math.PI / 2880;  // 0.0625 degrees
+const HANDLE_R    = 8;
+const BODY_R      = 26;
+const BTN_R       = 10;
+const ROT_STEP    = Math.PI / 2880;
 
-const SNAP_THRESHOLD = 20;  // px — how close ends must be to snap
+const SNAP_THRESHOLD = 20;
 
 // Ruler constants
 const RULER_DEFAULT_LEN = 120;
 
 // Mirror state
-let mirrors       = [];   // placed mirrors: [{id, cx, cy, angle}, ...]
+let mirrors       = [];
 let nextId        = 0;
-let drag          = null; // 'move' | 'rot1' | 'rot2'
-let snaps         = [];   // [{parentId, parentEndSign, childId, childEndSign}]
+let drag          = null;
+let snaps         = [];
 let coneDrag      = null;
-let rotBtns       = [];   // rebuilt each frame
+let rotBtns       = [];
 let rotHoldMeta   = null;
 let rotHoldDelay  = null;
 let rotHoldIntv   = null;
 
 // Ruler state
-let rulers        = [];   // placed rulers: [{id, cx, cy, angle, len}, ...]
+let rulers        = [];
 let nextRulerId   = 0;
-let rulerDrag     = null; // 'move' | 'stretch1' | 'stretch2'
-let rulRotBtns    = [];   // rebuilt each frame
+let rulerDrag     = null;
+let rulRotBtns    = [];
 let rulRotHold    = null;
 let rulRotDelay   = null;
 let rulRotIntv    = null;
@@ -75,10 +71,9 @@ let showReflAngles = false;
 function startRotateHold(mirrorId, dir) {
   stopRotateHold();
   rotHoldMeta  = { mirrorId, dir };
-  // fire once immediately, then continuously after 350 ms
   applyRotate();
   rotHoldDelay = setTimeout(() => {
-    rotHoldIntv = setInterval(applyRotate, 40); // ~25 steps/sec
+    rotHoldIntv = setInterval(applyRotate, 40);
   }, 350);
 }
 
@@ -125,10 +120,10 @@ function resize() {
   canvas.width  = W;
   canvas.height = H;
   if (!coneInitialized) {
-    cone = { x: Math.round(W * 0.22), y: Math.round(H * 0.50) };
+    cone = { x: Math.round(W * 0.78), y: Math.round(H * 0.50) };
     coneInitialized = true;
   }
-  SCREEN_X = Math.round(W * 0.82);
+  SCREEN_X = Math.round(W * 0.18);
 }
 
 function isOverBox(x, y) {
@@ -234,7 +229,6 @@ function drawIceCream(c2, cx, cy, alpha) {
 
 // ─────────────────────────────────────────────
 //  Ghost ice-cream on the screen
-//  tipScreenPt / topScreenPt are the screen intersections
 // ─────────────────────────────────────────────
 function drawGhostIceCream(tipScreenPt, topScreenPt) {
   const dx   = topScreenPt.x - tipScreenPt.x;
@@ -243,8 +237,6 @@ function drawGhostIceCream(tipScreenPt, topScreenPt) {
   if (dist < 6) return;
 
   const scale       = dist / CONE_SPAN;
-  // In original drawing, tip-to-top vector is (0, TOP_DY - TIP_DY) = (0, -124)
-  // pointing straight up → angle = -π/2
   const origAngle   = -Math.PI / 2;
   const targetAngle = Math.atan2(dy, dx);
   const rotation    = targetAngle - origAngle;
@@ -254,7 +246,6 @@ function drawGhostIceCream(tipScreenPt, topScreenPt) {
   ctx.translate(tipScreenPt.x, tipScreenPt.y);
   ctx.rotate(rotation);
   ctx.scale(scale, scale);
-  // Draw with cone center at (0, -TIP_DY) so tip lands at (0,0)
   drawIceCream(ctx, 0, -TIP_DY);
   ctx.restore();
 }
@@ -276,7 +267,6 @@ function drawMirror(m, showHandles) {
   grd.addColorStop(0.6, '#ccc');
   grd.addColorStop(1,   '#555');
   ctx.fillStyle = grd;
-  // manual rounded rect
   const x0 = -MIRROR_HALF, y0 = -4, mw = MIRROR_LEN, mh = 8, r = 3;
   ctx.beginPath();
   ctx.moveTo(x0 + r, y0);
@@ -324,8 +314,6 @@ function drawMirror(m, showHandles) {
 // ─────────────────────────────────────────────
 //  Snap helpers
 // ─────────────────────────────────────────────
-
-// Position of a mirror's end identified by sign (+1 = end2, -1 = end1)
 function getEndPt(m, sign) {
   return {
     x: m.cx + sign * MIRROR_HALF * Math.cos(m.angle),
@@ -333,31 +321,25 @@ function getEndPt(m, sign) {
   };
 }
 
-// Which end is "top" (lower y on screen) — returns {sign, pt}
 function getTopEnd(m) {
-  const ep = Math.sin(m.angle) >= 0 ? -1 : 1;  // end with lower y
+  const ep = Math.sin(m.angle) >= 0 ? -1 : 1;
   return { sign: ep, pt: getEndPt(m, ep) };
 }
 
-// Which end is "bottom" (higher y on screen) — returns {sign, pt}
 function getBottomEnd(m) {
   const ep = Math.sin(m.angle) >= 0 ? 1 : -1;
   return { sign: ep, pt: getEndPt(m, ep) };
 }
 
-// Move mirror m so that its end identified by `sign` lands at position pt
 function setEndPt(m, sign, pt) {
   m.cx = pt.x - sign * MIRROR_HALF * Math.cos(m.angle);
   m.cy = pt.y - sign * MIRROR_HALF * Math.sin(m.angle);
 }
 
-// After m's angle (or position) changed, re-apply the parent constraint
-// then cascade to children.
 function applySnapConstraints(mirrorId) {
   const m = mirrors.find(m => m.id === mirrorId);
   if (!m) return;
 
-  // Re-anchor m's bottom to parent's top (if m has a parent)
   const ps = snaps.find(s => s.childId === mirrorId);
   if (ps) {
     const parent = mirrors.find(p => p.id === ps.parentId);
@@ -366,23 +348,20 @@ function applySnapConstraints(mirrorId) {
     }
   }
 
-  // Cascade: slide child whose bottom is snapped to m's top
   const cs = snaps.find(s => s.parentId === mirrorId);
   if (cs) {
     const child = mirrors.find(c => c.id === cs.childId);
     if (child) {
       setEndPt(child, cs.childEndSign, getEndPt(m, cs.parentEndSign));
-      applySnapConstraints(child.id);  // recurse down the chain
+      applySnapConstraints(child.id);
     }
   }
 }
 
-// Remove every snap involving mirrorId
 function removeSnapsFor(mirrorId) {
   snaps = snaps.filter(s => s.parentId !== mirrorId && s.childId !== mirrorId);
 }
 
-// True if potentialAncestorId is an ancestor of mirrorId (cycle check)
 function isAncestor(potentialAncestorId, mirrorId) {
   let cur = mirrorId;
   const seen = new Set();
@@ -396,7 +375,6 @@ function isAncestor(potentialAncestorId, mirrorId) {
   return false;
 }
 
-// After dropping mirror D, check every other mirror for snappable proximity
 function detectSnaps(droppedId) {
   const D = mirrors.find(m => m.id === droppedId);
   if (!D) return;
@@ -409,26 +387,24 @@ function detectSnaps(droppedId) {
     const Etop = getTopEnd(E);
     const Ebot = getBottomEnd(E);
 
-    // D's bottom near E's top → E is parent (stationary), D is child (moves)
     if (dist2(Dbot.pt.x, Dbot.pt.y, Etop.pt.x, Etop.pt.y) < SNAP_THRESHOLD) {
       const parentEndFree = !snaps.some(s => s.parentId === E.id && s.parentEndSign === Etop.sign);
       const childFree     = !snaps.some(s => s.childId  === D.id);
       if (parentEndFree && childFree && !isAncestor(D.id, E.id)) {
         snaps.push({ parentId: E.id, parentEndSign: Etop.sign,
                      childId:  D.id, childEndSign:  Dbot.sign });
-        setEndPt(D, Dbot.sign, Etop.pt);  // exact snap
-        return;                            // only one snap per drop
+        setEndPt(D, Dbot.sign, Etop.pt);
+        return;
       }
     }
 
-    // D's top near E's bottom → E is parent (stationary), D is child (moves)
     if (dist2(Dtop.pt.x, Dtop.pt.y, Ebot.pt.x, Ebot.pt.y) < SNAP_THRESHOLD) {
       const parentEndFree = !snaps.some(s => s.parentId === E.id && s.parentEndSign === Ebot.sign);
       const childFree     = !snaps.some(s => s.childId  === D.id);
       if (parentEndFree && childFree && !isAncestor(D.id, E.id)) {
         snaps.push({ parentId: E.id, parentEndSign: Ebot.sign,
                      childId:  D.id, childEndSign:  Dtop.sign });
-        setEndPt(D, Dtop.sign, Ebot.pt);  // move D only
+        setEndPt(D, Dtop.sign, Ebot.pt);
         return;
       }
     }
@@ -436,8 +412,7 @@ function detectSnaps(droppedId) {
 }
 
 // ─────────────────────────────────────────────
-//  Angle of a line in degrees from horizontal, in [0°, 180°).
-//  Horizontal = 0°, vertical = 90°.
+//  Angle helpers
 // ─────────────────────────────────────────────
 function angDegsFromHorizontal(angle) {
   let deg = (angle * 180 / Math.PI) % 180;
@@ -445,12 +420,7 @@ function angDegsFromHorizontal(angle) {
   return deg;
 }
 
-// ─────────────────────────────────────────────
-//  Rotate buttons + angle label next to a placed mirror
-//  Returns the two button centres so the caller can store them.
-// ─────────────────────────────────────────────
 function drawRotateButtons(m) {
-  // Buttons 22 px above the mirror centre, spread ±15 px
   const ccwX = m.cx - 15, ccwY = m.cy - 22;
   const  cwX = m.cx + 15,  cwY = m.cy - 22;
 
@@ -471,7 +441,6 @@ function drawRotateButtons(m) {
     ctx.textBaseline = 'alphabetic';
   }
 
-  // Degree label to the LEFT of the mirror
   const deg = angDegsFromHorizontal(m.angle);
   const label = deg.toFixed(1) + '°';
   ctx.fillStyle    = 'rgba(180,210,255,0.85)';
@@ -540,7 +509,6 @@ function drawRuler(r) {
   ctx.rotate(r.angle);
   ctx.globalAlpha = 0.60;
 
-  // ruler body
   ctx.fillStyle   = '#d4c060';
   ctx.strokeStyle = '#a09030';
   ctx.lineWidth   = 1;
@@ -549,7 +517,6 @@ function drawRuler(r) {
   ctx.fill();
   ctx.stroke();
 
-  // tick marks
   ctx.strokeStyle = '#555';
   ctx.lineWidth   = 0.8;
   for (let px = -half; px <= half + 0.5; px += 10) {
@@ -562,7 +529,6 @@ function drawRuler(r) {
 
   ctx.restore();
 
-  // degree label left of ruler
   ctx.save();
   const deg = angDegsFromHorizontal(r.angle);
   ctx.fillStyle    = 'rgba(230,215,100,0.9)';
@@ -573,7 +539,6 @@ function drawRuler(r) {
   ctx.textBaseline = 'alphabetic';
   ctx.restore();
 
-  // end handles
   for (const [hx, hy] of [
     [r.cx - ca * half, r.cy - sa * half],
     [r.cx + ca * half, r.cy + sa * half]
@@ -650,7 +615,6 @@ function drawReflAngles(active) {
   for (const m of active) {
     const nx = -Math.sin(m.angle), ny = Math.cos(m.angle);
 
-    // dashed normal through mirror centre
     ctx.save();
     ctx.strokeStyle = 'rgba(100,230,100,0.5)';
     ctx.lineWidth   = 1;
@@ -662,13 +626,11 @@ function drawReflAngles(active) {
     ctx.setLineDash([]);
     ctx.restore();
 
-    // angle labels for tip ray (brown) and top ray (red)
     let labelOff = 0;
     for (const [srcPt, color] of [[tipPt, '#CD6020'], [topPt, '#CC0000']]) {
       const toM = normalize({ x: m.cx - srcPt.x, y: m.cy - srcPt.y });
       const dot = toM.x * nx + toM.y * ny;
       const angleDeg = Math.acos(Math.abs(dot)) * 180 / Math.PI;
-      // place label on the incoming-ray side of the normal
       const sideSign = dot < 0 ? 1 : -1;
       ctx.save();
       ctx.fillStyle    = color;
@@ -691,12 +653,12 @@ function drawReflAngles(active) {
 //  Projection screen
 // ─────────────────────────────────────────────
 function drawProjectionScreen() {
-  // subtle glow band to the right of the line
-  const grd = ctx.createLinearGradient(SCREEN_X, 0, SCREEN_X + 50, 0);
+  // subtle glow band to the left of the line
+  const grd = ctx.createLinearGradient(SCREEN_X, 0, SCREEN_X - 50, 0);
   grd.addColorStop(0, 'rgba(240,235,210,0.18)');
   grd.addColorStop(1, 'rgba(240,235,210,0)');
   ctx.fillStyle = grd;
-  ctx.fillRect(SCREEN_X, 0, 50, H);
+  ctx.fillRect(SCREEN_X - 50, 0, 50, H);
 
   // screen line
   ctx.strokeStyle = 'rgba(220,215,190,0.85)';
@@ -711,7 +673,7 @@ function drawProjectionScreen() {
   ctx.fillStyle  = '#7788aa';
   ctx.font       = '13px Arial';
   ctx.textAlign  = 'center';
-  ctx.translate(SCREEN_X + 22, H / 2);
+  ctx.translate(SCREEN_X - 22, H / 2);
   ctx.rotate(-Math.PI / 2);
   ctx.fillText('Screen', 0, 0);
   ctx.restore();
@@ -725,29 +687,25 @@ function normalize(v) {
   return len < 1e-9 ? { x: 0, y: 1 } : { x: v.x / len, y: v.y / len };
 }
 
-// Reflect direction `r` about unit normal `n`
 function reflect(r, n) {
   const dot = r.x * n.x + r.y * n.y;
   return { x: r.x - 2 * dot * n.x, y: r.y - 2 * dot * n.y };
 }
 
 // Intersect ray (from, dir) with the vertical screen at x = SCREEN_X
-// Returns null if the ray doesn't reach the screen in the forward direction
+// Screen is now on the LEFT, so the ray must travel leftward (dir.x < 0)
 function rayScreenHit(from, dir) {
   if (Math.abs(dir.x) < 1e-9) return null;
   const t = (SCREEN_X - from.x) / dir.x;
-  if (t <= 0.5) return null;   // screen is behind or too close
+  if (t <= 0.5) return null;
   return { x: SCREEN_X, y: from.y + t * dir.y };
 }
 
-// Compute reflected ray data for a given source point and mirror
-// Returns { incoming:(to mirror), reflected:(from mirror), screenHit:{x,y}|null }
 function computeRay(sourcePt, m) {
   const normal_candidate = { x: -Math.sin(m.angle), y: Math.cos(m.angle) };
 
   const toMirrorDir = normalize({ x: m.cx - sourcePt.x, y: m.cy - sourcePt.y });
 
-  // Choose the normal that opposes the incoming ray (front face)
   const dot = toMirrorDir.x * normal_candidate.x + toMirrorDir.y * normal_candidate.y;
   const n   = dot < 0 ? normal_candidate : { x: -normal_candidate.x, y: -normal_candidate.y };
 
@@ -758,7 +716,7 @@ function computeRay(sourcePt, m) {
 }
 
 // ─────────────────────────────────────────────
-//  Draw ray segment — clips off-canvas quietly
+//  Draw ray segment
 // ─────────────────────────────────────────────
 function drawSegment(x1, y1, x2, y2) {
   ctx.beginPath();
@@ -777,14 +735,14 @@ function draw() {
 
   drawProjectionScreen();
 
-  // Horizontal dashed axis through the cone centre, screen → left edge
+  // Horizontal dashed axis through the cone centre, screen → right edge
   ctx.save();
   ctx.strokeStyle = 'rgba(180,180,160,0.35)';
   ctx.lineWidth   = 1.5;
   ctx.setLineDash([8, 6]);
   ctx.beginPath();
   ctx.moveTo(SCREEN_X, cone.y);
-  ctx.lineTo(0, cone.y);
+  ctx.lineTo(W, cone.y);
   ctx.stroke();
   ctx.setLineDash([]);
   ctx.restore();
@@ -804,7 +762,7 @@ function draw() {
   }
   if (rulerDrag && rulerDrag.mode === 'move') drawRuler(rulerDrag.ruler);
 
-  // Build list of mirrors to simulate (placed + move-dragged if off box)
+  // Build list of mirrors to simulate
   const active = [...mirrors];
   if (drag && drag.mode === 'move' && !isOverBox(drag.mirror.cx, drag.mirror.cy)) {
     active.push(drag.mirror);
@@ -818,9 +776,7 @@ function draw() {
     // ── Draw tip rays (brown / saddle-brown) ──
     ctx.strokeStyle = '#8B4513';
     ctx.lineWidth   = 1.5;
-    // incoming: tipPt → mirror center
     drawSegment(tipPt.x, tipPt.y, m.cx, m.cy);
-    // reflected: mirror center → screen (or far)
     if (tipRay.screenHit) {
       drawSegment(m.cx, m.cy, tipRay.screenHit.x, tipRay.screenHit.y);
     } else {
@@ -845,7 +801,7 @@ function draw() {
     }
   }
 
-  // Reflection angles overlay (drawn before mirror buttons so labels stay readable)
+  // Reflection angles overlay
   if (showReflAngles) drawReflAngles(active);
 
   // Draw placed mirrors + their rotate buttons (on top of rays)
@@ -857,10 +813,10 @@ function draw() {
     rotBtns.push({ mirrorId: m.id, dir: +1, x:  cwX, y:  cwY });
   }
 
-  // Draw move-dragged mirror (rotation drags keep mirror in mirrors[])
+  // Draw move-dragged mirror
   if (drag && drag.mode === 'move') drawMirror(drag.mirror, true);
 
-  // Snap joint indicators (cyan dots at connection points)
+  // Snap joint indicators
   for (const s of snaps) {
     const parent = mirrors.find(m => m.id === s.parentId);
     if (!parent) continue;
@@ -1016,7 +972,6 @@ function onMove(e) {
       rulerDrag.ruler.cx = pos.x - rulerDrag.offsetX;
       rulerDrag.ruler.cy = pos.y - rulerDrag.offsetY;
     } else if (rulerDrag.mode === 'stretch1') {
-      // end1 moves to pos, end2 stays fixed
       const r = rulers[rulerDrag.rulerIndex];
       if (!r) return;
       const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
@@ -1027,7 +982,6 @@ function onMove(e) {
       r.cx    = (pos.x + ex2.x) / 2;
       r.cy    = (pos.y + ex2.y) / 2;
     } else if (rulerDrag.mode === 'stretch2') {
-      // end2 moves to pos, end1 stays fixed
       const r = rulers[rulerDrag.rulerIndex];
       if (!r) return;
       const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
@@ -1070,7 +1024,6 @@ function onUp(e) {
         rulers.push({ ...rulerDrag.ruler });
       }
     }
-    // stretch modes: ruler stays in rulers[], nothing to do
     rulerDrag = null;
     return;
   }
