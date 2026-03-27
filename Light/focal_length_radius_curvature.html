@@ -60,22 +60,23 @@ button.danger:hover { background: rgba(220, 60, 60, 1); }
   <button id="btnZoomIn">Zoom +</button>
   <button id="btnZoomOut">Zoom &minus;</button>
 </div>
-<canvas id="canvas" width="550" height="300"></canvas>
+<canvas id="canvas" width="550" height="400"></canvas>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = 550, H = 300;
+const W = 550, H = 400;
 
 const SCALE = 40;
-const MIRROR_X_CM = 13;
-const OFFSET_X = 50;
-const MIRROR_X = MIRROR_X_CM * SCALE - OFFSET_X;
 
+// Mirror radius of curvature (randomised)
 let R_cm = 2 + (crypto.getRandomValues(new Uint32Array(1))[0] / 0xFFFFFFFF) * 8;
 R_cm = Math.round(R_cm * 10) / 10;
 
-const AXIS_Y = 100;
+// Vertical optical axis runs through AXIS_X
+const AXIS_X = W / 2;
+// Mirror sits near the bottom; MIRROR_Y is the vertex of the mirror
+const MIRROR_Y = H - 60;
 
 let panX = 0, panY = 0, zoom = 1;
 const ZOOM_MIN = 0.25, ZOOM_MAX = 4, ZOOM_STEP = 1.1;
@@ -84,25 +85,36 @@ let rays = [];
 let circle = null;
 
 let ruler = {
-  x: 200, y: AXIS_Y + 30, angle: 0, lengthCm: 12, dragging: false,
+  x: AXIS_X + 30, y: MIRROR_Y - 160, angle: 0, lengthCm: 12, dragging: false,
   dragOffX: 0, dragOffY: 0
 };
 
 let dragTarget = null;
 let isDragging = false;
-let nextRayY = AXIS_Y + 30;
+let nextRayX = AXIS_X + 30;
 
-const DEFAULT_CIRCLE_X = 200;
+const DEFAULT_CIRCLE_Y = MIRROR_Y - 160;
 
 function getMirrorR() { return R_cm * SCALE; }
-function getMirrorCenter() { return { x: MIRROR_X - getMirrorR(), y: AXIS_Y }; }
-function getFocalPoint() { return { x: MIRROR_X - getMirrorR() / 2, y: AXIS_Y }; }
+// Centre of curvature is above the mirror vertex along the axis
+function getMirrorCenter() { return { x: AXIS_X, y: MIRROR_Y + getMirrorR() }; }
+// Focal point halfway between vertex and centre
+function getFocalPoint() { return { x: AXIS_X, y: MIRROR_Y + getMirrorR() / 2 }; }
 
 const MIRROR_HALF_ANGLE = 30 * Math.PI / 180;
 
 function getMirrorArc() {
   const R = getMirrorR();
-  return { cx: MIRROR_X - R, cy: AXIS_Y, R, startAngle: -MIRROR_HALF_ANGLE, endAngle: MIRROR_HALF_ANGLE };
+  // The arc centre is above the vertex by R. The mirror opens upward.
+  // In canvas coords, "above" = smaller y, so centre is at y = MIRROR_Y + R
+  // but we want the concave side facing up. The vertex is at MIRROR_Y.
+  // Arc centre: (AXIS_X, MIRROR_Y + R). The vertex is at angle -PI/2 from centre.
+  // We sweep ±MIRROR_HALF_ANGLE around -PI/2.
+  const cx = AXIS_X;
+  const cy = MIRROR_Y + R;
+  const startAngle = -Math.PI / 2 - MIRROR_HALF_ANGLE;
+  const endAngle = -Math.PI / 2 + MIRROR_HALF_ANGLE;
+  return { cx, cy, R, startAngle, endAngle };
 }
 
 function drawMirror() {
@@ -113,6 +125,7 @@ function drawMirror() {
   ctx.lineWidth = 4;
   ctx.stroke();
 
+  // Hatching on the outside (below the mirror surface)
   const steps = 20;
   for (let i = 0; i <= steps; i++) {
     const t = startAngle + (endAngle - startAngle) * i / steps;
@@ -130,27 +143,32 @@ function drawMirror() {
 function drawAxis() {
   ctx.beginPath();
   ctx.setLineDash([5, 5]);
-  ctx.moveTo(-panX / zoom, AXIS_Y);
-  ctx.lineTo((W - panX) / zoom, AXIS_Y);
+  ctx.moveTo(AXIS_X, -panY / zoom);
+  ctx.lineTo(AXIS_X, (H - panY) / zoom);
   ctx.strokeStyle = '#555';
   ctx.lineWidth = 1;
   ctx.stroke();
   ctx.setLineDash([]);
 }
 
-function reflectRay(rayY) {
+// Reflect a vertical ray at x = rayX travelling downward (direction (0,1))
+function reflectRay(rayX) {
   const { cx, cy, R, startAngle, endAngle } = getMirrorArc();
-  const dy = rayY - cy;
-  if (Math.abs(dy) > R) return null;
-  const dx = Math.sqrt(R * R - dy * dy);
-  const hitX = cx + dx;
-  const hitAngle = Math.atan2(rayY - cy, hitX - cx);
+  const dx = rayX - cx;
+  if (Math.abs(dx) > R) return null;
+  const dy = -Math.sqrt(R * R - dx * dx); // negative sqrt: upper intersection
+  const hitY = cy + dy;
+  const hitAngle = Math.atan2(dy, dx);
   if (hitAngle < startAngle || hitAngle > endAngle) return null;
 
-  const nx = (cx - hitX) / R;
-  const ny = (cy - rayY) / R;
-  const dot = nx;
-  return { hitX, hitY: rayY, rx: 1 - 2 * dot * nx, ry: -2 * dot * ny };
+  // Normal points inward (toward centre of curvature = toward cx, cy from hit point)
+  const nx = (cx - rayX) / R;
+  const ny = (cy - hitY) / R;
+  // Incoming direction is (0, 1) (downward)
+  const dot = ny; // (0*nx + 1*ny)
+  const rx = 0 - 2 * dot * nx;
+  const ry = 1 - 2 * dot * ny;
+  return { hitX: rayX, hitY, rx, ry };
 }
 
 function drawArrow(toX, toY, angle, color) {
@@ -167,16 +185,19 @@ function drawArrow(toX, toY, angle, color) {
 
 function drawRays() {
   for (const ray of rays) {
-    const result = reflectRay(ray.y);
+    const result = reflectRay(ray.x);
+
+    // Incoming ray (vertical, going down)
     ctx.beginPath();
-    ctx.moveTo(-panX / zoom - 100, ray.y);
-    ctx.lineTo(result ? result.hitX : MIRROR_X, ray.y);
+    ctx.moveTo(ray.x, -panY / zoom - 100);
+    ctx.lineTo(ray.x, result ? result.hitY : MIRROR_Y);
     ctx.strokeStyle = '#e74c3c';
     ctx.lineWidth = 2;
     ctx.stroke();
 
     if (result) {
       const len = 800;
+      // Reflected ray
       ctx.beginPath();
       ctx.moveTo(result.hitX, result.hitY);
       ctx.lineTo(result.hitX + result.rx * len, result.hitY + result.ry * len);
@@ -184,7 +205,9 @@ function drawRays() {
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      if (result.rx > 0) {
+      // Virtual extension (dashed) if reflected ray goes upward (ry < 0 means up in canvas)
+      if (result.ry > 0) {
+        // reflected ray goes downward — show virtual extension backward (upward)
         ctx.beginPath();
         ctx.setLineDash([4, 4]);
         ctx.moveTo(result.hitX, result.hitY);
@@ -195,13 +218,16 @@ function drawRays() {
         ctx.setLineDash([]);
       }
 
-      drawArrow(result.hitX - 10, ray.y, 0, '#e74c3c');
+      // Arrow on incoming ray (pointing down)
+      drawArrow(ray.x, result.hitY - 10, Math.PI / 2, '#e74c3c');
+      // Arrow on reflected ray
       const a = Math.atan2(result.ry, result.rx);
       drawArrow(result.hitX + result.rx * 40, result.hitY + result.ry * 40, a, '#e74c3c');
     }
 
+    // Drag handle
     ctx.beginPath();
-    ctx.arc(ray.handleX, ray.y, 6, 0, Math.PI * 2);
+    ctx.arc(ray.x, ray.handleY, 6, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(231,76,60,0.6)';
     ctx.fill();
     ctx.strokeStyle = '#e74c3c';
@@ -212,7 +238,7 @@ function drawRays() {
 
 function drawCircle() {
   if (!circle) return;
-  const r = MIRROR_X - circle.x;
+  const r = MIRROR_Y - circle.y;
   if (r <= 0) return;
   ctx.beginPath();
   ctx.arc(circle.x, circle.y, r, 0, Math.PI * 2);
@@ -285,7 +311,6 @@ function draw() {
   ctx.restore();
 }
 
-// Convert screen (canvas pixel) coords to world coords
 function screenToWorld(sx, sy) {
   return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
 }
@@ -312,12 +337,12 @@ function onDown(e) {
 
   // Check circle center
   if (circle && Math.hypot(wx - circle.x, wy - circle.y) < 10) {
-    dragTarget = { type: 'circleCenter', offX: wx - circle.x };
+    dragTarget = { type: 'circleCenter', offY: wy - circle.y };
     isDragging = true; canvas.classList.add('grabbing'); return;
   }
   // Check ray handles
   for (let i = 0; i < rays.length; i++) {
-    if (Math.hypot(wx - rays[i].handleX, wy - rays[i].y) < 12) {
+    if (Math.hypot(wx - rays[i].x, wy - rays[i].handleY) < 12) {
       dragTarget = { type: 'ray', index: i }; isDragging = true; canvas.classList.add('grabbing'); return;
     }
   }
@@ -341,13 +366,13 @@ function onMove(e) {
   const { x: wx, y: wy } = screenToWorld(screen.x, screen.y);
 
   if (dragTarget.type === 'ray') {
-    rays[dragTarget.index].y = wy;
+    rays[dragTarget.index].x = wx;
   } else if (dragTarget.type === 'rulerDrag') {
     ruler.x = wx - ruler.dragOffX;
     ruler.y = wy - ruler.dragOffY;
   } else if (dragTarget.type === 'circleCenter') {
-    circle.x = Math.min(MIRROR_X - 1, wx - dragTarget.offX);
-    circle.y = AXIS_Y;
+    circle.y = Math.max(1, wy - dragTarget.offY);
+    circle.x = AXIS_X;
   } else if (dragTarget.type === 'pan') {
     panX = dragTarget.startPanX + (screen.x - dragTarget.startScreenX);
     panY = dragTarget.startPanY + (screen.y - dragTarget.startScreenY);
@@ -392,19 +417,19 @@ const btnAddCircle = document.getElementById('btnAddCircle');
 
 document.getElementById('btnAddRay').addEventListener('click', () => {
   if (rays.length >= 10) return;
-  rays.push({ y: nextRayY, handleX: 220 });
-  nextRayY += 20;
-  if (nextRayY > H - 20) nextRayY = AXIS_Y - 80;
+  rays.push({ x: nextRayX, handleY: 40 });
+  nextRayX += 20;
+  if (nextRayX > W - 20) nextRayX = AXIS_X - 80;
   draw();
 });
 btnAddCircle.addEventListener('click', () => {
   if (circle) return;
-  circle = { x: DEFAULT_CIRCLE_X, y: AXIS_Y };
+  circle = { x: AXIS_X, y: DEFAULT_CIRCLE_Y };
   btnAddCircle.style.display = 'none';
   draw();
 });
 document.getElementById('btnClear').addEventListener('click', () => {
-  rays = []; circle = null; nextRayY = AXIS_Y + 30;
+  rays = []; circle = null; nextRayX = AXIS_X + 30;
   btnAddCircle.style.display = '';
   draw();
 });
