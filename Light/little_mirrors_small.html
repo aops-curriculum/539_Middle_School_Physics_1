@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Little Mirrors (Small)</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #1a1a2e; font-family: Arial, sans-serif; }
+    canvas { display: block; touch-action: none; user-select: none; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+let W, H;
+let cone;      // {x, y} cone center on screen
+let SCREEN_X;  // x position of the vertical projection screen
+
+// Supply box — dynamically positioned at bottom-centre
+const BOX_W = 110, BOX_H = 110;
+function getMirrorBox() { return { x: W / 2 - BOX_W / 2, y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
+
+// Ice cream geometry relative to cone center (cx, cy)
+const TIP_DY  =  22.5;
+const TOP_DY  = -39.5;
+const CONE_SPAN = TIP_DY - TOP_DY;
+
+// Mirror constants — half the length of the original
+const MIRROR_LEN  = 17.5;
+const MIRROR_HALF = MIRROR_LEN / 2;
+const HANDLE_R    = 6;
+const BODY_R      = 14;
+
+const SNAP_THRESHOLD = 12;
+
+// Mirror state
+let mirrors       = [];
+let nextId        = 0;
+let drag          = null;
+let snaps         = [];
+let coneDrag      = null;
+
+// ─────────────────────────────────────────────
+//  Layout helpers
+// ─────────────────────────────────────────────
+let coneInitialized = false;
+
+function resize() {
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = W;
+  canvas.height = H;
+  if (!coneInitialized) {
+    cone = { x: Math.round(W * 0.78), y: Math.round(H * 0.50) };
+    coneInitialized = true;
+  }
+  SCREEN_X = Math.round(W * 0.18);
+}
+
+function isOverBox(x, y) {
+  const B = getMirrorBox();
+  return x >= B.x && x <= B.x + B.w && y >= B.y && y <= B.y + B.h;
+}
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+// ─────────────────────────────────────────────
+//  Ice-cream drawing (half size via scale transform)
+// ─────────────────────────────────────────────
+function drawIceCream(c2, cx, cy, alpha) {
+  c2.save();
+  if (alpha !== undefined) c2.globalAlpha = alpha;
+
+  // Apply half-size scaling around the cone center
+  c2.translate(cx, cy);
+  c2.scale(0.5, 0.5);
+  c2.translate(-cx, -cy);
+
+  // ── Cone ──
+  c2.fillStyle   = '#C68642';
+  c2.strokeStyle = '#A0522D';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.moveTo(cx - 22, cy + 5);
+  c2.lineTo(cx + 22, cy + 5);
+  c2.lineTo(cx,      cy + 45);
+  c2.closePath();
+  c2.fill();
+  c2.stroke();
+
+  // waffle lines (horizontal)
+  c2.strokeStyle = 'rgba(120,60,10,0.45)';
+  c2.lineWidth   = 0.7;
+  for (let row = 0; row < 4; row++) {
+    const fy = cy + 8 + row * 9;
+    const t  = (fy - (cy + 5)) / 40;
+    const hw = 22 * (1 - t);
+    c2.beginPath();
+    c2.moveTo(cx - hw, fy);
+    c2.lineTo(cx + hw, fy);
+    c2.stroke();
+  }
+  // waffle lines (diagonal left)
+  c2.strokeStyle = 'rgba(120,60,10,0.30)';
+  c2.lineWidth   = 0.6;
+  for (let d = -3; d <= 3; d++) {
+    const startX = cx + d * 10;
+    c2.beginPath();
+    c2.moveTo(startX - 22, cy + 5);
+    c2.lineTo(cx,          cy + 45);
+    c2.stroke();
+  }
+
+  // ── Bottom scoop (vanilla cream) ──
+  c2.fillStyle   = '#FFF8DC';
+  c2.strokeStyle = '#D4C07A';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.arc(cx, cy - 12, 22, 0, Math.PI * 2);
+  c2.fill();
+  c2.stroke();
+
+  // ── Top scoop (strawberry) ──
+  c2.fillStyle   = '#FFB6C1';
+  c2.strokeStyle = '#E07088';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.arc(cx, cy - 47, 20, 0, Math.PI * 2);
+  c2.fill();
+  c2.stroke();
+
+  // slight highlight on top scoop
+  c2.fillStyle = 'rgba(255,255,255,0.20)';
+  c2.beginPath();
+  c2.arc(cx - 6, cy - 54, 8, 0, Math.PI * 2);
+  c2.fill();
+
+  // ── Cherry ──
+  c2.fillStyle   = '#CC0022';
+  c2.strokeStyle = '#880011';
+  c2.lineWidth   = 1;
+  c2.beginPath();
+  c2.arc(cx, cy - 73, 6, 0, Math.PI * 2);
+  c2.fill();
+  c2.stroke();
+
+  // cherry stem
+  c2.strokeStyle = '#228833';
+  c2.lineWidth   = 1.5;
+  c2.beginPath();
+  c2.moveTo(cx, cy - 73);
+  c2.quadraticCurveTo(cx + 6, cy - 82, cx + 3, cy - 88);
+  c2.stroke();
+
+  c2.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Ghost ice-cream on the screen
+// ─────────────────────────────────────────────
+function drawGhostIceCream(tipScreenPt, topScreenPt) {
+  const dx   = topScreenPt.x - tipScreenPt.x;
+  const dy   = topScreenPt.y - tipScreenPt.y;
+  const dist = Math.hypot(dx, dy);
+  if (dist < 6) return;
+
+  const scale       = dist / CONE_SPAN;
+  const origAngle   = -Math.PI / 2;
+  const targetAngle = Math.atan2(dy, dx);
+  const rotation    = targetAngle - origAngle;
+
+  ctx.save();
+  ctx.globalAlpha = 0.1;
+  ctx.translate(tipScreenPt.x, tipScreenPt.y);
+  ctx.rotate(rotation);
+  ctx.scale(scale, scale);
+  drawIceCream(ctx, 0, -TIP_DY);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Mirror drawing
+// ─────────────────────────────────────────────
+function drawMirror(m, showHandles) {
+  const ca = Math.cos(m.angle), sa = Math.sin(m.angle);
+
+  ctx.save();
+  ctx.translate(m.cx, m.cy);
+  ctx.rotate(m.angle);
+
+  // mirror body — silver bar
+  const grd = ctx.createLinearGradient(0, -2, 0, 2);
+  grd.addColorStop(0,   '#777');
+  grd.addColorStop(0.3, '#fff');
+  grd.addColorStop(0.6, '#ccc');
+  grd.addColorStop(1,   '#555');
+  ctx.fillStyle = grd;
+  const x0 = -MIRROR_HALF, y0 = -2, mw = MIRROR_LEN, mh = 4, r = 2;
+  ctx.beginPath();
+  ctx.moveTo(x0 + r, y0);
+  ctx.lineTo(x0 + mw - r, y0);
+  ctx.arcTo(x0 + mw, y0,      x0 + mw, y0 + r,      r);
+  ctx.lineTo(x0 + mw, y0 + mh - r);
+  ctx.arcTo(x0 + mw, y0 + mh, x0 + mw - r, y0 + mh, r);
+  ctx.lineTo(x0 + r, y0 + mh);
+  ctx.arcTo(x0, y0 + mh, x0, y0 + mh - r, r);
+  ctx.lineTo(x0, y0 + r);
+  ctx.arcTo(x0, y0, x0 + r, y0, r);
+  ctx.closePath();
+  ctx.fill();
+
+  // highlight streak
+  ctx.strokeStyle = 'rgba(255,255,255,0.7)';
+  ctx.lineWidth   = 0.7;
+  ctx.beginPath();
+  ctx.moveTo(-MIRROR_HALF + 2, -0.5);
+  ctx.lineTo( MIRROR_HALF - 2, -0.5);
+  ctx.stroke();
+
+  ctx.restore();
+
+  if (showHandles) {
+    for (const [hx, hy, sign] of [
+      [m.cx - ca * MIRROR_HALF, m.cy - sa * MIRROR_HALF, -1],
+      [m.cx + ca * MIRROR_HALF, m.cy + sa * MIRROR_HALF, +1]
+    ]) {
+      const isSnapped = snaps.some(s =>
+        (s.parentId === m.id && s.parentEndSign === sign) ||
+        (s.childId  === m.id && s.childEndSign  === sign)
+      );
+      ctx.fillStyle   = isSnapped ? '#e94560' : '#4a90d9';
+      ctx.strokeStyle = '#fff';
+      ctx.lineWidth   = 1.5;
+      ctx.beginPath();
+      ctx.arc(hx, hy, HANDLE_R - 2, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Snap helpers
+// ─────────────────────────────────────────────
+function getEndPt(m, sign) {
+  return {
+    x: m.cx + sign * MIRROR_HALF * Math.cos(m.angle),
+    y: m.cy + sign * MIRROR_HALF * Math.sin(m.angle)
+  };
+}
+
+function getTopEnd(m) {
+  const ep = Math.sin(m.angle) >= 0 ? -1 : 1;
+  return { sign: ep, pt: getEndPt(m, ep) };
+}
+
+function getBottomEnd(m) {
+  const ep = Math.sin(m.angle) >= 0 ? 1 : -1;
+  return { sign: ep, pt: getEndPt(m, ep) };
+}
+
+function setEndPt(m, sign, pt) {
+  m.cx = pt.x - sign * MIRROR_HALF * Math.cos(m.angle);
+  m.cy = pt.y - sign * MIRROR_HALF * Math.sin(m.angle);
+}
+
+function applySnapConstraints(mirrorId) {
+  const m = mirrors.find(m => m.id === mirrorId);
+  if (!m) return;
+
+  const ps = snaps.find(s => s.childId === mirrorId);
+  if (ps) {
+    const parent = mirrors.find(p => p.id === ps.parentId);
+    if (parent) {
+      setEndPt(m, ps.childEndSign, getEndPt(parent, ps.parentEndSign));
+    }
+  }
+
+  const cs = snaps.find(s => s.parentId === mirrorId);
+  if (cs) {
+    const child = mirrors.find(c => c.id === cs.childId);
+    if (child) {
+      setEndPt(child, cs.childEndSign, getEndPt(m, cs.parentEndSign));
+      applySnapConstraints(child.id);
+    }
+  }
+}
+
+function removeSnapsFor(mirrorId) {
+  snaps = snaps.filter(s => s.parentId !== mirrorId && s.childId !== mirrorId);
+}
+
+function isAncestor(potentialAncestorId, mirrorId) {
+  let cur = mirrorId;
+  const seen = new Set();
+  while (cur !== null) {
+    if (cur === potentialAncestorId) return true;
+    if (seen.has(cur)) break;
+    seen.add(cur);
+    const ps = snaps.find(s => s.childId === cur);
+    cur = ps ? ps.parentId : null;
+  }
+  return false;
+}
+
+function detectSnaps(droppedId) {
+  const D = mirrors.find(m => m.id === droppedId);
+  if (!D) return;
+
+  const Dtop = getTopEnd(D);
+  const Dbot = getBottomEnd(D);
+
+  for (const E of mirrors) {
+    if (E.id === droppedId) continue;
+    const Etop = getTopEnd(E);
+    const Ebot = getBottomEnd(E);
+
+    if (dist2(Dbot.pt.x, Dbot.pt.y, Etop.pt.x, Etop.pt.y) < SNAP_THRESHOLD) {
+      const parentEndFree = !snaps.some(s => s.parentId === E.id && s.parentEndSign === Etop.sign);
+      const childFree     = !snaps.some(s => s.childId  === D.id);
+      if (parentEndFree && childFree && !isAncestor(D.id, E.id)) {
+        snaps.push({ parentId: E.id, parentEndSign: Etop.sign,
+                     childId:  D.id, childEndSign:  Dbot.sign });
+        setEndPt(D, Dbot.sign, Etop.pt);
+        return;
+      }
+    }
+
+    if (dist2(Dtop.pt.x, Dtop.pt.y, Ebot.pt.x, Ebot.pt.y) < SNAP_THRESHOLD) {
+      const parentEndFree = !snaps.some(s => s.parentId === E.id && s.parentEndSign === Ebot.sign);
+      const childFree     = !snaps.some(s => s.childId  === D.id);
+      if (parentEndFree && childFree && !isAncestor(D.id, E.id)) {
+        snaps.push({ parentId: E.id, parentEndSign: Ebot.sign,
+                     childId:  D.id, childEndSign:  Dtop.sign });
+        setEndPt(D, Dtop.sign, Ebot.pt);
+        return;
+      }
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+//  Shared rounded-rect path helper
+// ─────────────────────────────────────────────
+function drawRoundedRect(bx, by, bw, bh, br) {
+  ctx.beginPath();
+  ctx.moveTo(bx + br, by);
+  ctx.lineTo(bx + bw - br, by);
+  ctx.arcTo(bx + bw, by,      bx + bw, by + br,      br);
+  ctx.lineTo(bx + bw, by + bh - br);
+  ctx.arcTo(bx + bw, by + bh, bx + bw - br, by + bh, br);
+  ctx.lineTo(bx + br, by + bh);
+  ctx.arcTo(bx,      by + bh, bx,      by + bh - br, br);
+  ctx.lineTo(bx,      by + br);
+  ctx.arcTo(bx,      by,      bx + br, by,            br);
+  ctx.closePath();
+}
+
+// ─────────────────────────────────────────────
+//  Mirror supply box
+// ─────────────────────────────────────────────
+function drawMirrorBox() {
+  const B = getMirrorBox();
+  ctx.fillStyle   = 'rgba(16,33,62,0.92)';
+  ctx.strokeStyle = '#4a90d9';
+  ctx.lineWidth   = 2;
+  drawRoundedRect(B.x, B.y, B.w, B.h, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle  = '#8899aa';
+  ctx.font       = 'bold 12px Arial';
+  ctx.textAlign  = 'center';
+  ctx.fillText('Mirrors', B.x + B.w / 2, B.y + 18);
+
+  const previewM = { cx: B.x + B.w / 2, cy: B.y + B.h / 2 + 8, angle: Math.PI / 2 };
+  drawMirror(previewM, false);
+
+  ctx.fillStyle = 'rgba(100,150,200,0.6)';
+  ctx.font      = '10px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('drag to place', B.x + B.w / 2, B.y + B.h - 7);
+}
+
+// ─────────────────────────────────────────────
+//  Projection screen
+// ─────────────────────────────────────────────
+function drawProjectionScreen() {
+  // subtle glow band to the left of the line
+  const grd = ctx.createLinearGradient(SCREEN_X, 0, SCREEN_X - 50, 0);
+  grd.addColorStop(0, 'rgba(240,235,210,0.18)');
+  grd.addColorStop(1, 'rgba(240,235,210,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(SCREEN_X - 50, 0, 50, H);
+
+  // screen line
+  ctx.strokeStyle = 'rgba(220,215,190,0.85)';
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(SCREEN_X, 0);
+  ctx.lineTo(SCREEN_X, H);
+  ctx.stroke();
+
+  // vertical label
+  ctx.save();
+  ctx.fillStyle  = '#7788aa';
+  ctx.font       = '13px Arial';
+  ctx.textAlign  = 'center';
+  ctx.translate(SCREEN_X - 22, H / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Screen', 0, 0);
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  Physics
+// ─────────────────────────────────────────────
+function normalize(v) {
+  const len = Math.hypot(v.x, v.y);
+  return len < 1e-9 ? { x: 0, y: 1 } : { x: v.x / len, y: v.y / len };
+}
+
+function reflect(r, n) {
+  const dot = r.x * n.x + r.y * n.y;
+  return { x: r.x - 2 * dot * n.x, y: r.y - 2 * dot * n.y };
+}
+
+// Intersect ray (from, dir) with the vertical screen at x = SCREEN_X
+function rayScreenHit(from, dir) {
+  if (Math.abs(dir.x) < 1e-9) return null;
+  const t = (SCREEN_X - from.x) / dir.x;
+  if (t <= 0.5) return null;
+  return { x: SCREEN_X, y: from.y + t * dir.y };
+}
+
+function computeRay(sourcePt, m) {
+  const normal_candidate = { x: -Math.sin(m.angle), y: Math.cos(m.angle) };
+
+  const toMirrorDir = normalize({ x: m.cx - sourcePt.x, y: m.cy - sourcePt.y });
+
+  const dot = toMirrorDir.x * normal_candidate.x + toMirrorDir.y * normal_candidate.y;
+  const n   = dot < 0 ? normal_candidate : { x: -normal_candidate.x, y: -normal_candidate.y };
+
+  const reflDir  = reflect(toMirrorDir, n);
+  const screenHit = rayScreenHit({ x: m.cx, y: m.cy }, reflDir);
+
+  return { toMirrorDir, reflDir, screenHit };
+}
+
+// ─────────────────────────────────────────────
+//  Draw ray segment
+// ─────────────────────────────────────────────
+function drawSegment(x1, y1, x2, y2) {
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+}
+
+// ─────────────────────────────────────────────
+//  Main render loop
+// ─────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  drawProjectionScreen();
+
+  // Horizontal dashed axis through the cone centre, screen → right edge
+  ctx.save();
+  ctx.strokeStyle = 'rgba(180,180,160,0.35)';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath();
+  ctx.moveTo(SCREEN_X, cone.y);
+  ctx.lineTo(W, cone.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  drawIceCream(ctx, cone.x, cone.y);
+
+  const tipPt = { x: cone.x, y: cone.y + TIP_DY };
+  const topPt = { x: cone.x, y: cone.y + TOP_DY };
+
+  // Build list of mirrors to simulate
+  const active = [...mirrors];
+  if (drag && drag.mode === 'move' && !isOverBox(drag.mirror.cx, drag.mirror.cy)) {
+    active.push(drag.mirror);
+  }
+
+  // For each mirror: compute rays, draw them, draw ghost image
+  for (const m of active) {
+    const tipRay = computeRay(tipPt, m);
+    const topRay = computeRay(topPt, m);
+
+    // ── Draw tip rays (brown / saddle-brown) ──
+    ctx.strokeStyle = '#8B4513';
+    ctx.lineWidth   = 1.5;
+    drawSegment(tipPt.x, tipPt.y, m.cx, m.cy);
+    if (tipRay.screenHit) {
+      drawSegment(m.cx, m.cy, tipRay.screenHit.x, tipRay.screenHit.y);
+    } else {
+      const far = { x: m.cx + tipRay.reflDir.x * 3000, y: m.cy + tipRay.reflDir.y * 3000 };
+      drawSegment(m.cx, m.cy, far.x, far.y);
+    }
+
+    // ── Draw top rays (red) ──
+    ctx.strokeStyle = '#CC0000';
+    ctx.lineWidth   = 1.5;
+    drawSegment(topPt.x, topPt.y, m.cx, m.cy);
+    if (topRay.screenHit) {
+      drawSegment(m.cx, m.cy, topRay.screenHit.x, topRay.screenHit.y);
+    } else {
+      const far = { x: m.cx + topRay.reflDir.x * 3000, y: m.cy + topRay.reflDir.y * 3000 };
+      drawSegment(m.cx, m.cy, far.x, far.y);
+    }
+
+    // ── Ghost image on screen ──
+    if (tipRay.screenHit && topRay.screenHit) {
+      drawGhostIceCream(tipRay.screenHit, topRay.screenHit);
+    }
+  }
+
+  // Draw placed mirrors (on top of rays)
+  for (const m of mirrors) {
+    drawMirror(m, true);
+  }
+
+  // Draw move-dragged mirror
+  if (drag && drag.mode === 'move') drawMirror(drag.mirror, true);
+
+  // Snap joint indicators
+  for (const s of snaps) {
+    const parent = mirrors.find(m => m.id === s.parentId);
+    if (!parent) continue;
+    const pt = getEndPt(parent, s.parentEndSign);
+    ctx.fillStyle   = '#00e5ff';
+    ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+    ctx.lineWidth   = 1;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+  }
+
+  // Supply box (on top of everything)
+  drawMirrorBox();
+
+  // Small dot markers at tip and top of the original cone
+  ctx.fillStyle = '#8B4513';
+  ctx.beginPath();
+  ctx.arc(tipPt.x, tipPt.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.fillStyle = '#CC0000';
+  ctx.beginPath();
+  ctx.arc(topPt.x, topPt.y, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  requestAnimationFrame(draw);
+}
+
+// ─────────────────────────────────────────────
+//  Hit testing helpers
+// ─────────────────────────────────────────────
+function mirrorEnd1(m) {
+  return { x: m.cx - Math.cos(m.angle) * MIRROR_HALF,
+           y: m.cy - Math.sin(m.angle) * MIRROR_HALF };
+}
+function mirrorEnd2(m) {
+  return { x: m.cx + Math.cos(m.angle) * MIRROR_HALF,
+           y: m.cy + Math.sin(m.angle) * MIRROR_HALF };
+}
+function dist2(ax, ay, bx, by) {
+  return Math.hypot(ax - bx, ay - by);
+}
+
+// ─────────────────────────────────────────────
+//  Event handling
+// ─────────────────────────────────────────────
+function onDown(e) {
+  const pos = getPos(e);
+
+  // 1. Placed mirrors (reverse = topmost first)
+  for (let i = mirrors.length - 1; i >= 0; i--) {
+    const m  = mirrors[i];
+    const e1 = mirrorEnd1(m);
+    const e2 = mirrorEnd2(m);
+
+    if (dist2(pos.x, pos.y, e1.x, e1.y) < HANDLE_R + 4) {
+      drag = { mode: 'rot1', mirrorIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, e2.x, e2.y) < HANDLE_R + 4) {
+      drag = { mode: 'rot2', mirrorIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, m.cx, m.cy) < BODY_R) {
+      removeSnapsFor(m.id);
+      mirrors.splice(i, 1);
+      drag = { mode: 'move', mirror: { ...m },
+               offsetX: pos.x - m.cx, offsetY: pos.y - m.cy };
+      return;
+    }
+  }
+
+  // 2. Ice cream cone
+  if (dist2(pos.x, pos.y, cone.x, cone.y) < 30) {
+    coneDrag = { offsetX: pos.x - cone.x, offsetY: pos.y - cone.y };
+    return;
+  }
+
+  // 3. Mirror supply box → create new mirror
+  if (isOverBox(pos.x, pos.y)) {
+    drag = {
+      mode: 'move',
+      mirror: { id: nextId++, cx: pos.x, cy: pos.y, angle: Math.PI / 2 },
+      offsetX: 0, offsetY: 0
+    };
+  }
+}
+
+function onMove(e) {
+  const pos = getPos(e);
+
+  if (coneDrag) {
+    cone.x = pos.x - coneDrag.offsetX;
+    cone.y = pos.y - coneDrag.offsetY;
+    return;
+  }
+
+  if (!drag) return;
+
+  if (drag.mode === 'move') {
+    drag.mirror.cx = pos.x - drag.offsetX;
+    drag.mirror.cy = pos.y - drag.offsetY;
+  } else if (drag.mode === 'rot1') {
+    const m = mirrors[drag.mirrorIndex];
+    if (!m) return;
+    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx) + Math.PI;
+    applySnapConstraints(m.id);
+  } else if (drag.mode === 'rot2') {
+    const m = mirrors[drag.mirrorIndex];
+    if (!m) return;
+    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx);
+    applySnapConstraints(m.id);
+  }
+}
+
+function onUp(e) {
+  if (coneDrag) { coneDrag = null; return; }
+
+  if (!drag) return;
+
+  if (drag.mode === 'move') {
+    if (!isOverBox(drag.mirror.cx, drag.mirror.cy)) {
+      mirrors.push({ ...drag.mirror });
+      detectSnaps(drag.mirror.id);
+    }
+  }
+  drag = null;
+}
+
+canvas.addEventListener('mousedown',  onDown);
+canvas.addEventListener('mousemove',  onMove);
+canvas.addEventListener('mouseup',    onUp);
+canvas.addEventListener('mouseleave', onUp);
+
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, { passive: false });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, { passive: false });
+canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp(e);   }, { passive: false });
+
+window.addEventListener('resize', resize);
+resize();
+draw();
+</script>
+</body>
+</html>
