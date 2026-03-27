@@ -415,7 +415,7 @@ const btnAddCircle = document.getElementById('btnAddCircle');
 
 document.getElementById('btnAddRay').addEventListener('click', () => {
   if (rays.length >= 10) return;
-  rays.push({ x: nextRayX, handleY: 40 });
+  rays.push({ x: nextRayX, handleY: 190 });
   nextRayX += 20;
   if (nextRayX > W - 20) nextRayX = AXIS_X - 80;
   draw();
