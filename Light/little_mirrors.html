@@ -28,19 +28,19 @@ function getMirrorBox() { return { x: W / 2 - BOX_W - 5, y: H - BOX_H - 20, w: B
 function getRulerBox()  { return { x: W / 2 + 5,          y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
 
 // Ice cream geometry relative to cone center (cx, cy)
-const TIP_DY  =  45;
-const TOP_DY  = -79;
+const TIP_DY  =  22.5;
+const TOP_DY  = -39.5;
 const CONE_SPAN = TIP_DY - TOP_DY;
 
 // Mirror constants
-const MIRROR_LEN  = 70;
+const MIRROR_LEN  = 35;
 const MIRROR_HALF = MIRROR_LEN / 2;
-const HANDLE_R    = 8;
-const BODY_R      = 26;
+const HANDLE_R    = 6;
+const BODY_R      = 16;
 const BTN_R       = 10;
 const ROT_STEP    = Math.PI / 2880;
 
-const SNAP_THRESHOLD = 20;
+const SNAP_THRESHOLD = 15;
 
 // Ruler constants
 const RULER_DEFAULT_LEN = 120;
@@ -142,11 +142,16 @@ function getPos(e) {
 }
 
 // ─────────────────────────────────────────────
-//  Ice-cream drawing
+//  Ice-cream drawing (half size via scale transform)
 // ─────────────────────────────────────────────
 function drawIceCream(c2, cx, cy, alpha) {
   c2.save();
   if (alpha !== undefined) c2.globalAlpha = alpha;
+
+  // Apply half-size scaling around the cone center
+  c2.translate(cx, cy);
+  c2.scale(0.5, 0.5);
+  c2.translate(-cx, -cy);
 
   // ── Cone ──
   c2.fillStyle   = '#C68642';
@@ -261,13 +266,13 @@ function drawMirror(m, showHandles) {
   ctx.rotate(m.angle);
 
   // mirror body — silver bar
-  const grd = ctx.createLinearGradient(0, -4, 0, 4);
+  const grd = ctx.createLinearGradient(0, -2, 0, 2);
   grd.addColorStop(0,   '#777');
   grd.addColorStop(0.3, '#fff');
   grd.addColorStop(0.6, '#ccc');
   grd.addColorStop(1,   '#555');
   ctx.fillStyle = grd;
-  const x0 = -MIRROR_HALF, y0 = -4, mw = MIRROR_LEN, mh = 8, r = 3;
+  const x0 = -MIRROR_HALF, y0 = -2, mw = MIRROR_LEN, mh = 4, r = 2;
   ctx.beginPath();
   ctx.moveTo(x0 + r, y0);
   ctx.lineTo(x0 + mw - r, y0);
@@ -283,10 +288,10 @@ function drawMirror(m, showHandles) {
 
   // highlight streak
   ctx.strokeStyle = 'rgba(255,255,255,0.7)';
-  ctx.lineWidth   = 1;
+  ctx.lineWidth   = 0.7;
   ctx.beginPath();
-  ctx.moveTo(-MIRROR_HALF + 6, -1.5);
-  ctx.lineTo( MIRROR_HALF - 6, -1.5);
+  ctx.moveTo(-MIRROR_HALF + 3, -0.5);
+  ctx.lineTo( MIRROR_HALF - 3, -0.5);
   ctx.stroke();
 
   ctx.restore();
@@ -421,8 +426,8 @@ function angDegsFromHorizontal(angle) {
 }
 
 function drawRotateButtons(m) {
-  const ccwX = m.cx - 15, ccwY = m.cy - 22;
-  const  cwX = m.cx + 15,  cwY = m.cy - 22;
+  const ccwX = m.cx - 15, ccwY = m.cy - 18;
+  const  cwX = m.cx + 15,  cwY = m.cy - 18;
 
   for (const [bx, by, label] of [[ccwX, ccwY, '↺'], [cwX, cwY, '↻']]) {
     ctx.fillStyle    = 'rgba(20,40,80,0.88)';
@@ -825,7 +830,7 @@ function draw() {
     ctx.strokeStyle = 'rgba(0,0,0,0.5)';
     ctx.lineWidth   = 1;
     ctx.beginPath();
-    ctx.arc(pt.x, pt.y, 5, 0, Math.PI * 2);
+    ctx.arc(pt.x, pt.y, 4, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
   }
@@ -837,12 +842,12 @@ function draw() {
   // Small dot markers at tip and top of the original cone
   ctx.fillStyle = '#8B4513';
   ctx.beginPath();
-  ctx.arc(tipPt.x, tipPt.y, 4, 0, Math.PI * 2);
+  ctx.arc(tipPt.x, tipPt.y, 3, 0, Math.PI * 2);
   ctx.fill();
 
   ctx.fillStyle = '#CC0000';
   ctx.beginPath();
-  ctx.arc(topPt.x, topPt.y, 4, 0, Math.PI * 2);
+  ctx.arc(topPt.x, topPt.y, 3, 0, Math.PI * 2);
   ctx.fill();
 
   requestAnimationFrame(draw);
@@ -933,7 +938,7 @@ function onDown(e) {
   }
 
   // 5. Ice cream cone
-  if (dist2(pos.x, pos.y, cone.x, cone.y) < 55) {
+  if (dist2(pos.x, pos.y, cone.x, cone.y) < 30) {
     coneDrag = { offsetX: pos.x - cone.x, offsetY: pos.y - cone.y };
     return;
   }
