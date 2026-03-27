@@ -97,23 +97,21 @@ const DEFAULT_CIRCLE_Y = MIRROR_Y - 160;
 
 function getMirrorR() { return R_cm * SCALE; }
 // Centre of curvature is above the mirror vertex along the axis
-function getMirrorCenter() { return { x: AXIS_X, y: MIRROR_Y + getMirrorR() }; }
+function getMirrorCenter() { return { x: AXIS_X, y: MIRROR_Y - getMirrorR() }; }
 // Focal point halfway between vertex and centre
-function getFocalPoint() { return { x: AXIS_X, y: MIRROR_Y + getMirrorR() / 2 }; }
+function getFocalPoint() { return { x: AXIS_X, y: MIRROR_Y - getMirrorR() / 2 }; }
 
 const MIRROR_HALF_ANGLE = 30 * Math.PI / 180;
 
 function getMirrorArc() {
   const R = getMirrorR();
-  // The arc centre is above the vertex by R. The mirror opens upward.
-  // In canvas coords, "above" = smaller y, so centre is at y = MIRROR_Y + R
-  // but we want the concave side facing up. The vertex is at MIRROR_Y.
-  // Arc centre: (AXIS_X, MIRROR_Y + R). The vertex is at angle -PI/2 from centre.
-  // We sweep ±MIRROR_HALF_ANGLE around -PI/2.
+  // Arc centre is above the vertex by R. The mirror is concave up.
+  // Arc centre: (AXIS_X, MIRROR_Y - R). The vertex is at angle PI/2 from centre.
+  // We sweep ±MIRROR_HALF_ANGLE around PI/2.
   const cx = AXIS_X;
-  const cy = MIRROR_Y + R;
-  const startAngle = -Math.PI / 2 - MIRROR_HALF_ANGLE;
-  const endAngle = -Math.PI / 2 + MIRROR_HALF_ANGLE;
+  const cy = MIRROR_Y - R;
+  const startAngle = Math.PI / 2 - MIRROR_HALF_ANGLE;
+  const endAngle = Math.PI / 2 + MIRROR_HALF_ANGLE;
   return { cx, cy, R, startAngle, endAngle };
 }
 
@@ -125,7 +123,7 @@ function drawMirror() {
   ctx.lineWidth = 4;
   ctx.stroke();
 
-  // Hatching on the outside (below the mirror surface)
+  // Hatching on the outside (below the mirror surface, convex side)
   const steps = 20;
   for (let i = 0; i <= steps; i++) {
     const t = startAngle + (endAngle - startAngle) * i / steps;
@@ -156,7 +154,7 @@ function reflectRay(rayX) {
   const { cx, cy, R, startAngle, endAngle } = getMirrorArc();
   const dx = rayX - cx;
   if (Math.abs(dx) > R) return null;
-  const dy = -Math.sqrt(R * R - dx * dx); // negative sqrt: upper intersection
+  const dy = Math.sqrt(R * R - dx * dx); // positive sqrt: lower intersection
   const hitY = cy + dy;
   const hitAngle = Math.atan2(dy, dx);
   if (hitAngle < startAngle || hitAngle > endAngle) return null;
