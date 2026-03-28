@@ -22,10 +22,9 @@ let W, H;
 let cone;      // {x, y} cone center on screen
 let SCREEN_X;  // x position of the vertical projection screen
 
-// Supply boxes — dynamically positioned at bottom-centre
+// Supply box — dynamically positioned at bottom-centre
 const BOX_W = 110, BOX_H = 110;
-function getMirrorBox() { return { x: W / 2 - BOX_W - 5, y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
-function getRulerBox()  { return { x: W / 2 + 5,          y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
+function getMirrorBox() { return { x: W / 2 - BOX_W / 2, y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
 
 // Ice cream geometry relative to cone center (cx, cy)
 const TIP_DY  =  22.5;
@@ -42,9 +41,6 @@ const ROT_STEP    = Math.PI / 2880;
 
 const SNAP_THRESHOLD = 15;
 
-// Ruler constants
-const RULER_DEFAULT_LEN = 120;
-
 // Mirror state
 let mirrors       = [];
 let nextId        = 0;
@@ -55,15 +51,6 @@ let rotBtns       = [];
 let rotHoldMeta   = null;
 let rotHoldDelay  = null;
 let rotHoldIntv   = null;
-
-// Ruler state
-let rulers        = [];
-let nextRulerId   = 0;
-let rulerDrag     = null;
-let rulRotBtns    = [];
-let rulRotHold    = null;
-let rulRotDelay   = null;
-let rulRotIntv    = null;
 
 // Reflection angles overlay toggle
 let showReflAngles = false;
@@ -105,23 +92,6 @@ function stopRotateHold() {
   rotHoldDelay = rotHoldIntv = rotHoldMeta = null;
 }
 
-function startRulerRotateHold(rulerId, dir) {
-  stopRulerRotateHold();
-  rulRotHold = { rulerId, dir };
-  applyRulerRotate();
-  rulRotDelay = setTimeout(() => { rulRotIntv = setInterval(applyRulerRotate, 40); }, 350);
-}
-function applyRulerRotate() {
-  if (!rulRotHold) return;
-  const r = rulers.find(r => r.id === rulRotHold.rulerId);
-  if (r) r.angle += rulRotHold.dir * ROT_STEP;
-}
-function stopRulerRotateHold() {
-  clearTimeout(rulRotDelay);
-  clearInterval(rulRotIntv);
-  rulRotDelay = rulRotIntv = rulRotHold = null;
-}
-
 // ─────────────────────────────────────────────
 //  Layout helpers
 // ─────────────────────────────────────────────
@@ -141,10 +111,6 @@ function resize() {
 
 function isOverBox(x, y) {
   const B = getMirrorBox();
-  return x >= B.x && x <= B.x + B.w && y >= B.y && y <= B.y + B.h;
-}
-function isOverRulerBox(x, y) {
-  const B = getRulerBox();
   return x >= B.x && x <= B.x + B.w && y >= B.y && y <= B.y + B.h;
 }
 
@@ -516,114 +482,6 @@ function drawMirrorBox() {
 }
 
 // ─────────────────────────────────────────────
-//  Ruler drawing
-// ─────────────────────────────────────────────
-function drawRuler(r) {
-  const half = r.len / 2;
-  const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
-
-  ctx.save();
-  ctx.translate(r.cx, r.cy);
-  ctx.rotate(r.angle);
-  ctx.globalAlpha = 0.60;
-
-  ctx.fillStyle   = '#d4c060';
-  ctx.strokeStyle = '#a09030';
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.rect(-half, -5, r.len, 10);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.strokeStyle = '#555';
-  ctx.lineWidth   = 0.8;
-  for (let px = -half; px <= half + 0.5; px += 10) {
-    const isMajor = (Math.round(px + half) % 50) < 1;
-    ctx.beginPath();
-    ctx.moveTo(px, -5);
-    ctx.lineTo(px, -5 + (isMajor ? 6 : 3));
-    ctx.stroke();
-  }
-
-  ctx.restore();
-
-  ctx.save();
-  const deg = angDegsFromHorizontal(r.angle);
-  ctx.fillStyle    = 'rgba(230,215,100,0.9)';
-  ctx.font         = 'bold 11px Arial';
-  ctx.textAlign    = 'right';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(deg.toFixed(1) + '°', r.cx - half * Math.abs(ca) - 8, r.cy);
-  ctx.textBaseline = 'alphabetic';
-  ctx.restore();
-
-  for (const [hx, hy] of [
-    [r.cx - ca * half, r.cy - sa * half],
-    [r.cx + ca * half, r.cy + sa * half]
-  ]) {
-    ctx.fillStyle   = '#e8c840';
-    ctx.strokeStyle = '#fff';
-    ctx.lineWidth   = 1.5;
-    ctx.beginPath();
-    ctx.arc(hx, hy, HANDLE_R - 2, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-  }
-}
-
-// ─────────────────────────────────────────────
-//  Ruler rotate buttons
-// ─────────────────────────────────────────────
-function drawRulerRotateButtons(r) {
-  const ccwX = r.cx - 15, ccwY = r.cy - 22;
-  const  cwX = r.cx + 15,  cwY = r.cy - 22;
-
-  for (const [bx, by, lbl] of [[ccwX, ccwY, '↺'], [cwX, cwY, '↻']]) {
-    ctx.fillStyle    = 'rgba(50,45,5,0.88)';
-    ctx.strokeStyle  = '#c8a830';
-    ctx.lineWidth    = 1.2;
-    ctx.beginPath();
-    ctx.arc(bx, by, BTN_R, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.stroke();
-    ctx.fillStyle    = '#fff8c0';
-    ctx.font         = '11px Arial';
-    ctx.textAlign    = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(lbl, bx, by + 0.5);
-    ctx.textBaseline = 'alphabetic';
-  }
-
-  return { ccwX, ccwY, cwX, cwY };
-}
-
-// ─────────────────────────────────────────────
-//  Ruler supply box
-// ─────────────────────────────────────────────
-function drawRulerBox() {
-  const B = getRulerBox();
-  ctx.fillStyle   = 'rgba(30,27,8,0.92)';
-  ctx.strokeStyle = '#c8a830';
-  ctx.lineWidth   = 2;
-  drawRoundedRect(B.x, B.y, B.w, B.h, 8);
-  ctx.fill();
-  ctx.stroke();
-
-  ctx.fillStyle  = '#9a8844';
-  ctx.font       = 'bold 12px Arial';
-  ctx.textAlign  = 'center';
-  ctx.fillText('Rulers', B.x + B.w / 2, B.y + 18);
-
-  const previewR = { cx: B.x + B.w / 2, cy: B.y + B.h / 2 + 10, angle: 0, len: 72 };
-  drawRuler(previewR);
-
-  ctx.fillStyle = 'rgba(180,160,70,0.6)';
-  ctx.font      = '10px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('drag to place', B.x + B.w / 2, B.y + B.h - 7);
-}
-
-// ─────────────────────────────────────────────
 //  Reflection angles overlay
 // ─────────────────────────────────────────────
 function drawReflAngles(active) {
@@ -711,7 +569,6 @@ function reflect(r, n) {
 }
 
 // Intersect ray (from, dir) with the vertical screen at x = SCREEN_X
-// Screen is now on the LEFT, so the ray must travel leftward (dir.x < 0)
 function rayScreenHit(from, dir) {
   if (Math.abs(dir.x) < 1e-9) return null;
   const t = (SCREEN_X - from.x) / dir.x;
@@ -1027,16 +884,6 @@ function draw() {
   const tipPt = { x: cone.x,           y: cone.y + TIP_DY };
   const topPt = { x: cone.x,           y: cone.y + TOP_DY };
 
-  // Draw placed rulers + their rotate buttons
-  rulRotBtns = [];
-  for (const r of rulers) {
-    drawRuler(r);
-    const { ccwX, ccwY, cwX, cwY } = drawRulerRotateButtons(r);
-    rulRotBtns.push({ rulerId: r.id, dir: -1, x: ccwX, y: ccwY });
-    rulRotBtns.push({ rulerId: r.id, dir: +1, x:  cwX, y:  cwY });
-  }
-  if (rulerDrag && rulerDrag.mode === 'move') drawRuler(rulerDrag.ruler);
-
   // Build list of mirrors to simulate
   const active = [...mirrors];
   if (drag && drag.mode === 'move' && !isOverBox(drag.mirror.cx, drag.mirror.cy)) {
@@ -1111,9 +958,8 @@ function draw() {
     ctx.stroke();
   }
 
-  // Supply boxes (on top of everything)
+  // Supply box (on top of everything)
   drawMirrorBox();
-  drawRulerBox();
 
   // Small dot markers at tip and top of the original cone
   ctx.fillStyle = '#8B4513';
@@ -1161,15 +1007,7 @@ function onDown(e) {
     }
   }
 
-  // 2. Ruler rotate buttons
-  for (const btn of rulRotBtns) {
-    if (dist2(pos.x, pos.y, btn.x, btn.y) <= BTN_R + 2) {
-      startRulerRotateHold(btn.rulerId, btn.dir);
-      return;
-    }
-  }
-
-  // 3. Placed mirrors (reverse = topmost first)
+  // 2. Placed mirrors (reverse = topmost first)
   for (let i = mirrors.length - 1; i >= 0; i--) {
     const m  = mirrors[i];
     const e1 = mirrorEnd1(m);
@@ -1192,37 +1030,13 @@ function onDown(e) {
     }
   }
 
-  // 4. Placed rulers (reverse = topmost first)
-  for (let i = rulers.length - 1; i >= 0; i--) {
-    const r    = rulers[i];
-    const half = r.len / 2;
-    const ca   = Math.cos(r.angle), sa = Math.sin(r.angle);
-    const ex1  = { x: r.cx - ca * half, y: r.cy - sa * half };
-    const ex2  = { x: r.cx + ca * half, y: r.cy + sa * half };
-
-    if (dist2(pos.x, pos.y, ex1.x, ex1.y) < HANDLE_R + 4) {
-      rulerDrag = { mode: 'stretch1', rulerIndex: i };
-      return;
-    }
-    if (dist2(pos.x, pos.y, ex2.x, ex2.y) < HANDLE_R + 4) {
-      rulerDrag = { mode: 'stretch2', rulerIndex: i };
-      return;
-    }
-    if (dist2(pos.x, pos.y, r.cx, r.cy) < BODY_R) {
-      rulers.splice(i, 1);
-      rulerDrag = { mode: 'move', ruler: { ...r },
-                    offsetX: pos.x - r.cx, offsetY: pos.y - r.cy };
-      return;
-    }
-  }
-
-  // 5. Ice cream cone
+  // 3. Ice cream cone
   if (dist2(pos.x, pos.y, cone.x, cone.y) < 30) {
     coneDrag = { offsetX: pos.x - cone.x, offsetY: pos.y - cone.y };
     return;
   }
 
-  // 6. Mirror supply box → create new mirror
+  // 4. Mirror supply box → create new mirror
   if (isOverBox(pos.x, pos.y)) {
     drag = {
       mode: 'move',
@@ -1230,15 +1044,6 @@ function onDown(e) {
       offsetX: 0, offsetY: 0
     };
     return;
-  }
-
-  // 7. Ruler supply box → create new ruler
-  if (isOverRulerBox(pos.x, pos.y)) {
-    rulerDrag = {
-      mode: 'move',
-      ruler: { id: nextRulerId++, cx: pos.x, cy: pos.y, angle: 0, len: RULER_DEFAULT_LEN },
-      offsetX: 0, offsetY: 0
-    };
   }
 }
 
@@ -1248,34 +1053,6 @@ function onMove(e) {
   if (coneDrag) {
     cone.x = pos.x - coneDrag.offsetX;
     cone.y = pos.y - coneDrag.offsetY;
-    return;
-  }
-
-  if (rulerDrag) {
-    if (rulerDrag.mode === 'move') {
-      rulerDrag.ruler.cx = pos.x - rulerDrag.offsetX;
-      rulerDrag.ruler.cy = pos.y - rulerDrag.offsetY;
-    } else if (rulerDrag.mode === 'stretch1') {
-      const r = rulers[rulerDrag.rulerIndex];
-      if (!r) return;
-      const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
-      const ex2 = { x: r.cx + ca * (r.len / 2), y: r.cy + sa * (r.len / 2) };
-      const newLen = Math.max(30, Math.hypot(ex2.x - pos.x, ex2.y - pos.y));
-      r.angle = Math.atan2(ex2.y - pos.y, ex2.x - pos.x);
-      r.len   = newLen;
-      r.cx    = (pos.x + ex2.x) / 2;
-      r.cy    = (pos.y + ex2.y) / 2;
-    } else if (rulerDrag.mode === 'stretch2') {
-      const r = rulers[rulerDrag.rulerIndex];
-      if (!r) return;
-      const ca = Math.cos(r.angle), sa = Math.sin(r.angle);
-      const ex1 = { x: r.cx - ca * (r.len / 2), y: r.cy - sa * (r.len / 2) };
-      const newLen = Math.max(30, Math.hypot(pos.x - ex1.x, pos.y - ex1.y));
-      r.angle = Math.atan2(pos.y - ex1.y, pos.x - ex1.x);
-      r.len   = newLen;
-      r.cx    = (ex1.x + pos.x) / 2;
-      r.cy    = (ex1.y + pos.y) / 2;
-    }
     return;
   }
 
@@ -1299,18 +1076,7 @@ function onMove(e) {
 
 function onUp(e) {
   stopRotateHold();
-  stopRulerRotateHold();
   if (coneDrag) { coneDrag = null; return; }
-
-  if (rulerDrag) {
-    if (rulerDrag.mode === 'move') {
-      if (!isOverRulerBox(rulerDrag.ruler.cx, rulerDrag.ruler.cy)) {
-        rulers.push({ ...rulerDrag.ruler });
-      }
-    }
-    rulerDrag = null;
-    return;
-  }
 
   if (!drag) return;
 
