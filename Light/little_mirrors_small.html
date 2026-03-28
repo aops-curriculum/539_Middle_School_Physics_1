@@ -24,12 +24,12 @@ const BOX_W = 110, BOX_H = 110;
 function getMirrorBox() { return { x: W / 2 - BOX_W / 2, y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
 
 // Ice cream geometry relative to cone center (cx, cy)
-const TIP_DY  =  22.5;
-const TOP_DY  = -39.5;
+const TIP_DY  =  33.75;   // 45 * 0.75
+const TOP_DY  = -59.25;   // -79 * 0.75
 const CONE_SPAN = TIP_DY - TOP_DY;
 
-// Mirror constants — half the length of the original
-const MIRROR_LEN  = 17.5;
+// Mirror constants — 75% the length of the original small mirrors
+const MIRROR_LEN  = 13.125;
 const MIRROR_HALF = MIRROR_LEN / 2;
 const HANDLE_R    = 6;
 const BODY_R      = 14;
@@ -78,9 +78,9 @@ function drawIceCream(c2, cx, cy, alpha) {
   c2.save();
   if (alpha !== undefined) c2.globalAlpha = alpha;
 
-  // Apply half-size scaling around the cone center
+  // Apply 3/4-size scaling around the cone center
   c2.translate(cx, cy);
-  c2.scale(0.5, 0.5);
+  c2.scale(0.75, 0.75);
   c2.translate(-cx, -cy);
 
   // ── Cone ──
@@ -237,9 +237,9 @@ function drawMirror(m, showHandles) {
       );
       ctx.fillStyle   = isSnapped ? '#e94560' : '#4a90d9';
       ctx.strokeStyle = '#fff';
-      ctx.lineWidth   = 1.5;
+      ctx.lineWidth   = 0.75;
       ctx.beginPath();
-      ctx.arc(hx, hy, HANDLE_R - 2, 0, Math.PI * 2);
+      ctx.arc(hx, hy, 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -596,15 +596,9 @@ function onDown(e) {
     const e1 = mirrorEnd1(m);
     const e2 = mirrorEnd2(m);
 
-    if (dist2(pos.x, pos.y, e1.x, e1.y) < HANDLE_R + 4) {
-      drag = { mode: 'rot1', mirrorIndex: i };
-      return;
-    }
-    if (dist2(pos.x, pos.y, e2.x, e2.y) < HANDLE_R + 4) {
-      drag = { mode: 'rot2', mirrorIndex: i };
-      return;
-    }
-    if (dist2(pos.x, pos.y, m.cx, m.cy) < BODY_R) {
+    if (dist2(pos.x, pos.y, m.cx, m.cy) < BODY_R ||
+        dist2(pos.x, pos.y, e1.x, e1.y) < HANDLE_R + 4 ||
+        dist2(pos.x, pos.y, e2.x, e2.y) < HANDLE_R + 4) {
       removeSnapsFor(m.id);
       mirrors.splice(i, 1);
       drag = { mode: 'move', mirror: { ...m },
@@ -643,16 +637,6 @@ function onMove(e) {
   if (drag.mode === 'move') {
     drag.mirror.cx = pos.x - drag.offsetX;
     drag.mirror.cy = pos.y - drag.offsetY;
-  } else if (drag.mode === 'rot1') {
-    const m = mirrors[drag.mirrorIndex];
-    if (!m) return;
-    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx) + Math.PI;
-    applySnapConstraints(m.id);
-  } else if (drag.mode === 'rot2') {
-    const m = mirrors[drag.mirrorIndex];
-    if (!m) return;
-    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx);
-    applySnapConstraints(m.id);
   }
 }
 
