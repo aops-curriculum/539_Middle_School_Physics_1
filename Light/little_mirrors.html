@@ -68,6 +68,19 @@ let rulRotIntv    = null;
 // Reflection angles overlay toggle
 let showReflAngles = false;
 
+// ─────────────────────────────────────────────
+//  Kepler easter egg state
+// ─────────────────────────────────────────────
+const KEPLER_QUOTES = [
+  "Exquisite alignment! You keep arranging faceted mirrors like this, and someday they'll be launching giant golden telescopes into space to peer at the dawn of time.",
+  "Huzzah, the rays converge! It's an absolute masterpiece of catadioptric trickery. You've wrangled these flat planes into a curve so beautifully I might need to rewrite my entire optics treatise!",
+  "By the heavens, you've actually done it! I'd inspect your handiwork a bit closer, but with my notoriously terrible eyesight, I'd probably just bump my nose on the glass.",
+  "Perfect focus! I haven't seen data line up this beautifully since I finally figured out Mars's elliptical orbit. Take this secret word before Tycho Brahe's ghost tries to steal your credit.",
+  "Magnificent! You've proved that optics is really just geometry with a flair for the dramatic. The conic sections bow to your mirror-placing prowess!"
+];
+const OVERLAP_TOL = 20;
+let keplerState = { active: false, alpha: 0, quote: '' };
+
 function startRotateHold(mirrorId, dir) {
   stopRotateHold();
   rotHoldMeta  = { mirrorId, dir };
@@ -731,6 +744,263 @@ function drawSegment(x1, y1, x2, y2) {
 }
 
 // ─────────────────────────────────────────────
+//  Kepler Easter Egg helpers
+// ─────────────────────────────────────────────
+function checkKeplerCondition(hits) {
+  const valid = hits.filter(h => h.tipHit && h.topHit);
+  if (valid.length < 5) { keplerState.active = false; return; }
+  const tipYs = valid.map(h => h.tipHit.y);
+  const topYs = valid.map(h => h.topHit.y);
+  const aligned = (Math.max(...tipYs) - Math.min(...tipYs)) < OVERLAP_TOL
+               && (Math.max(...topYs) - Math.min(...topYs)) < OVERLAP_TOL;
+  if (aligned && !keplerState.active) {
+    keplerState.active = true;
+    keplerState.quote = KEPLER_QUOTES[Math.floor(Math.random() * KEPLER_QUOTES.length)];
+  } else if (!aligned) {
+    keplerState.active = false;
+  }
+}
+
+function wrapText(text, maxWidth, font) {
+  ctx.save();
+  ctx.font = font;
+  const words = text.split(' ');
+  const lines = [];
+  let line = '';
+  for (const word of words) {
+    const test = line ? line + ' ' + word : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      lines.push(line);
+      line = word;
+    } else {
+      line = test;
+    }
+  }
+  if (line) lines.push(line);
+  ctx.restore();
+  return lines;
+}
+
+function drawKeplerPortrait(px, py, pw, ph, alpha) {
+  const w = pw, h = ph;
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.translate(px, py);
+
+  // Oval gold frame
+  ctx.fillStyle = '#1a1208';
+  ctx.strokeStyle = '#c8a830';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(w/2, h/2, w/2 - 1, h/2 - 1, 0, 0, Math.PI*2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Clip to oval interior and draw figure
+  ctx.save();
+  ctx.beginPath();
+  ctx.ellipse(w/2, h/2, w/2 - 4, h/2 - 4, 0, 0, Math.PI*2);
+  ctx.clip();
+
+  ctx.fillStyle = '#120e06';
+  ctx.fillRect(0, 0, w, h);
+
+  // Coat / dark doublet
+  ctx.fillStyle = '#1a1510';
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  ctx.lineTo(w*0.18, h*0.73); ctx.lineTo(w*0.45, h*0.78);
+  ctx.lineTo(w*0.55, h*0.78); ctx.lineTo(w*0.82, h*0.73);
+  ctx.lineTo(w, h);
+  ctx.closePath(); ctx.fill();
+
+  // Ruff collar — alternating loops
+  ctx.fillStyle = '#e8e0c8'; ctx.strokeStyle = '#c0b090'; ctx.lineWidth = 0.5;
+  for (let i = 0; i < 9; i++) {
+    const t = (i + 0.5) / 9;
+    const rx = w*0.10 + t*w*0.80;
+    const ry = h*0.73 + (i % 2 === 0 ? -h*0.03 : h*0.01);
+    ctx.beginPath();
+    ctx.ellipse(rx, ry, w*0.065, h*0.048, 0, 0, Math.PI*2);
+    ctx.fill(); ctx.stroke();
+  }
+
+  // Neck
+  ctx.fillStyle = '#c89060';
+  ctx.fillRect(w*0.42, h*0.575, w*0.16, h*0.17);
+
+  // Face
+  ctx.fillStyle = '#c89060';
+  ctx.beginPath();
+  ctx.ellipse(w/2, h*0.40, w*0.23, h*0.21, 0, 0, Math.PI*2);
+  ctx.fill();
+
+  // Side hair / top hair
+  ctx.fillStyle = '#2a1808';
+  ctx.beginPath(); ctx.ellipse(w*0.26, h*0.42, w*0.09, h*0.13, -0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w*0.74, h*0.42, w*0.09, h*0.13,  0.3, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w/2, h*0.24, w*0.24, h*0.08, 0, 0, Math.PI*2); ctx.fill();
+
+  // Wide-brimmed hat — crown
+  ctx.fillStyle = '#150e05';
+  ctx.beginPath();
+  ctx.moveTo(w*0.23, h*0.22); ctx.lineTo(w*0.21, h*0.06);
+  ctx.lineTo(w*0.79, h*0.06); ctx.lineTo(w*0.77, h*0.22);
+  ctx.closePath(); ctx.fill();
+  // brim
+  ctx.beginPath(); ctx.ellipse(w/2, h*0.22, w*0.46, h*0.06, 0, 0, Math.PI*2); ctx.fill();
+  // top
+  ctx.beginPath(); ctx.ellipse(w/2, h*0.06, w*0.28, h*0.035, 0, 0, Math.PI*2); ctx.fill();
+
+  // Eye whites
+  ctx.fillStyle = '#f0e0c0';
+  ctx.beginPath(); ctx.ellipse(w*0.39, h*0.38, w*0.06,  h*0.030, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w*0.61, h*0.38, w*0.06,  h*0.030, 0, 0, Math.PI*2); ctx.fill();
+  // Irises
+  ctx.fillStyle = '#241808';
+  ctx.beginPath(); ctx.ellipse(w*0.39, h*0.38, w*0.035, h*0.025, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w*0.61, h*0.38, w*0.035, h*0.025, 0, 0, Math.PI*2); ctx.fill();
+  // Highlights
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.beginPath(); ctx.arc(w*0.378, h*0.372, w*0.014, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(w*0.598, h*0.372, w*0.014, 0, Math.PI*2); ctx.fill();
+
+  // Eyebrows
+  ctx.strokeStyle = '#2a1808'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(w*0.32, h*0.34); ctx.quadraticCurveTo(w*0.40, h*0.31, w*0.46, h*0.34); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(w*0.54, h*0.34); ctx.quadraticCurveTo(w*0.60, h*0.31, w*0.68, h*0.34); ctx.stroke();
+
+  // Nose
+  ctx.strokeStyle = '#a07040'; ctx.lineWidth = 1.2;
+  ctx.beginPath(); ctx.moveTo(w*0.50, h*0.37); ctx.quadraticCurveTo(w*0.545, h*0.43, w*0.50, h*0.45); ctx.stroke();
+  ctx.fillStyle = '#a07040';
+  ctx.beginPath(); ctx.ellipse(w*0.465, h*0.45, w*0.023, h*0.011, 0, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.ellipse(w*0.535, h*0.45, w*0.023, h*0.011, 0, 0, Math.PI*2); ctx.fill();
+
+  // Mouth
+  ctx.strokeStyle = '#8a5030'; ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(w*0.42, h*0.47); ctx.quadraticCurveTo(w*0.50, h*0.495, w*0.58, h*0.47); ctx.stroke();
+
+  // Mustache
+  ctx.fillStyle = '#2a1808';
+  ctx.beginPath();
+  ctx.moveTo(w*0.38, h*0.465); ctx.quadraticCurveTo(w*0.50, h*0.498, w*0.62, h*0.465);
+  ctx.quadraticCurveTo(w*0.50, h*0.454, w*0.38, h*0.465); ctx.fill();
+
+  // Goatee / pointed beard
+  ctx.fillStyle = '#2a1808';
+  ctx.beginPath();
+  ctx.moveTo(w*0.38, h*0.50); ctx.quadraticCurveTo(w*0.34, h*0.585, w*0.50, h*0.63);
+  ctx.quadraticCurveTo(w*0.66, h*0.585, w*0.62, h*0.50);
+  ctx.quadraticCurveTo(w*0.50, h*0.575, w*0.38, h*0.50); ctx.fill();
+
+  ctx.restore();  // remove clip
+  ctx.restore();  // remove translate + globalAlpha
+}
+
+function drawKeplerOverlay(alpha, quote) {
+  const PW = 108, PH = 150;
+  const bubbleW = Math.min(330, W - PW - 60);
+  const quoteFont = '13px Georgia, serif';
+  const lineH = 18;
+  const lines = wrapText(quote, bubbleW - 24, quoteFont);
+  const bubbleH = lines.length * lineH + 94;
+
+  const totalW = PW + 18 + bubbleW;
+  const startX = Math.max(10, W / 2 - totalW / 2);
+  const startY = 10;
+
+  const px = startX;
+  const py = startY + 22;
+
+  const bx = px + PW + 18;
+  const by = py;
+  const br = 10;
+
+  const tailOff = Math.max(br + 18, Math.min(bubbleH - br - 18, PH * 0.50));
+  const tailY   = by + tailOff;
+
+  // "Johannes Kepler says" label
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.fillStyle = '#f0d890';
+  ctx.font = 'italic bold 14px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.shadowColor = 'rgba(0,0,0,0.8)';
+  ctx.shadowBlur = 5;
+  ctx.fillText('Johannes Kepler says', px + PW / 2, startY + 15);
+  ctx.restore();
+
+  // Portrait
+  drawKeplerPortrait(px, py, PW, PH, alpha);
+
+  // Speech bubble (rounded rect with left-pointing tail)
+  ctx.save();
+  ctx.globalAlpha = alpha * 0.97;
+  ctx.fillStyle = '#f5f0de';
+  ctx.strokeStyle = '#8b7030';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = 'rgba(0,0,0,0.45)';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.moveTo(bx + br, by);
+  ctx.lineTo(bx + bubbleW - br, by);
+  ctx.arcTo(bx + bubbleW, by,           bx + bubbleW, by + br,           br);
+  ctx.lineTo(bx + bubbleW, by + bubbleH - br);
+  ctx.arcTo(bx + bubbleW, by + bubbleH, bx + bubbleW - br, by + bubbleH, br);
+  ctx.lineTo(bx + br, by + bubbleH);
+  ctx.arcTo(bx, by + bubbleH, bx, by + bubbleH - br, br);
+  ctx.lineTo(bx, tailY + 13);
+  ctx.lineTo(bx - 18, tailY);
+  ctx.lineTo(bx, tailY - 13);
+  ctx.lineTo(bx, by + br);
+  ctx.arcTo(bx, by, bx + br, by, br);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+
+  // Text inside bubble
+  ctx.save();
+  ctx.globalAlpha = alpha;
+  ctx.textBaseline = 'top';
+  let ty = by + 12;
+
+  ctx.fillStyle = '#2a1a08';
+  ctx.font = quoteFont;
+  ctx.textAlign = 'left';
+  for (const line of lines) {
+    ctx.fillText(line, bx + 12, ty);
+    ty += lineH;
+  }
+
+  // Separator
+  ty += 6;
+  ctx.strokeStyle = '#c0a050';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(bx + 12, ty); ctx.lineTo(bx + bubbleW - 12, ty);
+  ctx.stroke();
+  ty += 10;
+
+  // "The password is:"
+  ctx.fillStyle = '#4a3010';
+  ctx.font = 'italic 13px Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('The password is:', bx + bubbleW / 2, ty);
+  ty += 22;
+
+  // "dioptrics"
+  ctx.fillStyle = '#5a1800';
+  ctx.font = 'bold 26px "Palatino Linotype", Palatino, Georgia, serif';
+  ctx.textAlign = 'center';
+  ctx.fillText('dioptrics', bx + bubbleW / 2, ty);
+
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
 //  Main render loop
 // ─────────────────────────────────────────────
 function draw() {
@@ -774,6 +1044,7 @@ function draw() {
   }
 
   // For each mirror: compute rays, draw them, draw ghost image
+  const allHits = [];
   for (const m of active) {
     const tipRay = computeRay(tipPt, m);
     const topRay = computeRay(topPt, m);
@@ -804,7 +1075,12 @@ function draw() {
     if (tipRay.screenHit && topRay.screenHit) {
       drawGhostIceCream(tipRay.screenHit, topRay.screenHit);
     }
+    allHits.push({ tipHit: tipRay.screenHit, topHit: topRay.screenHit });
   }
+
+  // Kepler check + smooth fade
+  checkKeplerCondition(allHits);
+  keplerState.alpha += ((keplerState.active ? 1 : 0) - keplerState.alpha) * 0.06;
 
   // Reflection angles overlay
   if (showReflAngles) drawReflAngles(active);
@@ -849,6 +1125,9 @@ function draw() {
   ctx.beginPath();
   ctx.arc(topPt.x, topPt.y, 3, 0, Math.PI * 2);
   ctx.fill();
+
+  // Kepler overlay (on top of everything)
+  if (keplerState.alpha > 0.005) drawKeplerOverlay(keplerState.alpha, keplerState.quote);
 
   requestAnimationFrame(draw);
 }
