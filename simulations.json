@@ -503,18 +503,18 @@
       "category": "light"
     },
     {
-      "path": "R_f_need_equation.html",
-      "title": "Concave Mirror – Radius &amp; Focal Length",
-      "description": "New simulation - description pending.",
-      "emoji": "🔬",
-      "category": "other"
-    },
-    {
       "path": "cone_shrinking.html",
       "title": "Concave Mirror – Ray Diagram",
       "description": "New simulation - description pending.",
       "emoji": "🔬",
       "category": "other"
+    },
+    {
+      "path": "Light/R_f_need_equation.html",
+      "title": "Concave Mirror – Radius &amp; Focal Length",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
