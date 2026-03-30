@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concave Mirror – Radius &amp; Focal Length</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  max-width: 600px;
+  margin: 0 auto;
+  background: #1a1a2e;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  -webkit-user-select: none;
+  color: #fff;
+  padding: 12px 0 18px 0;
+}
+.text-block {
+  text-align: center;
+  font-size: 17px;
+  line-height: 1.7;
+  padding: 10px 16px 0 16px;
+}
+.slider-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin: 8px 0 2px 0;
+}
+.slider-row input[type=range] {
+  width: 180px;
+  accent-color: #3498db;
+  cursor: pointer;
+}
+.math { font-style: italic; }
+.unit { font-style: normal; }
+canvas {
+  display: block;
+  margin: 10px auto 0 auto;
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: default;
+}
+.instructions {
+  text-align: center;
+  font-size: 14px;
+  color: #aaa;
+  margin: 8px 0 2px 0;
+}
+</style>
+</head>
+<body>
+
+<div class="instructions">Drag the slider to change the radius of curvature.</div>
+
+<div class="text-block">
+  <div class="slider-row">
+    <input type="range" id="rSlider" min="20" max="120" value="60" step="1">
+  </div>
+  <div id="caption"></div>
+</div>
+
+<canvas id="canvas" width="600" height="420"></canvas>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 420;
+const slider = document.getElementById('rSlider');
+const captionEl = document.getElementById('caption');
+
+// Scale: 1 cm = 2.8 px  (so R=120cm ≈ 336px which fits)
+const SCALE = 2.8;
+const SCALE_BAR_CM = 10;
+
+function getR() { return parseFloat(slider.value); }
+
+function updateCaption() {
+  const R = getR();
+  const f = (R / 2).toFixed(0);
+  const Rstr = R.toFixed(0);
+  captionEl.innerHTML =
+    'A spherical concave mirror has radius of curvature <i>R</i>&nbsp;=&nbsp;' + Rstr + '&nbsp;cm. ' +
+    'The focal length is <i>f</i>&nbsp;=&nbsp;' + f + '&nbsp;cm.';
+}
+
+function drawArrowhead(ctx, x, y, angle, len) {
+  len = len || 10;
+  const a = Math.PI / 6;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - len * Math.cos(angle - a), y - len * Math.sin(angle - a));
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - len * Math.cos(angle + a), y - len * Math.sin(angle + a));
+  ctx.stroke();
+}
+
+function draw() {
+  const R_cm = getR();
+  const f_cm = R_cm / 2;
+  const R_px = R_cm * SCALE;
+  const f_px = f_cm * SCALE;
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Mirror center of curvature position (C)
+  // Mirror vertex on the right, center of curvature to the left
+  const mirrorVx = W - 80;          // vertex of mirror (rightmost point)
+  const axisY = H / 2 - 20;         // optical axis y
+  const Cx = mirrorVx - R_px;       // center of curvature x
+  const Fx = mirrorVx - f_px;       // focal point x
+
+  // --- Optical axis ---
+  ctx.strokeStyle = 'rgba(255,255,255,0.18)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6, 6]);
+  ctx.beginPath();
+  ctx.moveTo(20, axisY);
+  ctx.lineTo(W - 20, axisY);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // --- Dashed circle for the full sphere ---
+  ctx.strokeStyle = 'rgba(52,152,219,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.arc(Cx, axisY, R_px, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // --- Draw concave mirror arc (40 degrees) ---
+  const halfAngle = (40 / 2) * Math.PI / 180; // 20 deg each side
+  // Arc is part of circle centered at Cx,axisY with radius R_px
+  // The mirror is on the right side of the center, so angle 0 (pointing right)
+  const arcStart = -halfAngle;
+  const arcEnd = halfAngle;
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 5;
+  ctx.beginPath();
+  ctx.arc(Cx, axisY, R_px, arcStart, arcEnd);
+  ctx.stroke();
+
+  // Add a slight reflective sheen
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(Cx, axisY, R_px - 3, arcStart * 0.7, arcEnd * 0.7);
+  ctx.stroke();
+
+  // --- Parallel rays reflecting to focal point ---
+  const numRays = 5;
+  const maxY = R_px * Math.sin(halfAngle);
+  for (let i = 0; i < numRays; i++) {
+    // evenly spaced rays (skip center for clarity, or include it)
+    const t = (i / (numRays - 1)) * 2 - 1; // -1 to 1
+    const rayY_offset = t * maxY * 0.9;
+    const rayY = axisY + rayY_offset;
+
+    // Incoming ray: horizontal from the left to the mirror surface
+    // Find intersection with the mirror arc (circle centered Cx, axisY, radius R_px)
+    // For horizontal ray at y = rayY:
+    // (x - Cx)^2 + (rayY - axisY)^2 = R_px^2
+    const dy = rayY - axisY;
+    const dxSq = R_px * R_px - dy * dy;
+    if (dxSq < 0) continue;
+    const hitX = Cx + Math.sqrt(dxSq); // rightmost intersection
+    const hitY = rayY;
+
+    // Check that this point is within the arc
+    const angleAtHit = Math.atan2(hitY - axisY, hitX - Cx);
+    if (Math.abs(angleAtHit) > halfAngle) continue;
+
+    // Draw incoming ray
+    ctx.strokeStyle = 'rgba(231,76,60,0.8)';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(20, rayY);
+    ctx.lineTo(hitX, hitY);
+    ctx.stroke();
+
+    // Draw arrowhead on incoming ray near mirror
+    const arrX = hitX - 30;
+    drawArrowhead(ctx, arrX, rayY, 0, 10);
+
+    // Reflected ray: from hit point to focal point, and extend a bit beyond
+    // Normal at hit point points from hit toward center: direction (Cx - hitX, axisY - hitY)
+    const nx = Cx - hitX;
+    const ny = axisY - hitY;
+    const nLen = Math.sqrt(nx * nx + ny * ny);
+    const nnx = nx / nLen;
+    const nny = ny / nLen;
+
+    // Incoming direction: (1, 0) — horizontal to the right
+    // Reflect: r = d - 2(d·n)n
+    const dot = 1 * nnx + 0 * nny;
+    const rx = 1 - 2 * dot * nnx;
+    const ry = 0 - 2 * dot * nny;
+
+    // Draw reflected ray from hit to well past focal point
+    const reflectLen = R_px * 1.2;
+    ctx.strokeStyle = 'rgba(231,76,60,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(hitX, hitY);
+    ctx.lineTo(hitX + rx * reflectLen, hitY + ry * reflectLen);
+    ctx.stroke();
+  }
+
+  // --- Mark center of curvature C ---
+  ctx.fillStyle = '#3498db';
+  ctx.beginPath();
+  ctx.arc(Cx, axisY, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#3498db';
+  ctx.font = 'bold 14px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('C', Cx, axisY + 18);
+
+  // --- Mark focal point F ---
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.arc(Fx, axisY, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#e74c3c';
+  ctx.font = 'bold 14px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('F', Fx, axisY + 18);
+
+  // --- Mark vertex V ---
+  ctx.fillStyle = '#ccc';
+  ctx.beginPath();
+  ctx.arc(mirrorVx, axisY, 3, 0, Math.PI * 2);
+  ctx.fill();
+
+  // --- Dynamic f label (bracket from F to V) ---
+  const labelY_f = axisY + 36;
+  ctx.strokeStyle = '#e74c3c';
+  ctx.lineWidth = 2;
+  // Horizontal line
+  ctx.beginPath();
+  ctx.moveTo(Fx, labelY_f);
+  ctx.lineTo(mirrorVx, labelY_f);
+  ctx.stroke();
+  // Tick marks
+  ctx.beginPath();
+  ctx.moveTo(Fx, labelY_f - 4);
+  ctx.lineTo(Fx, labelY_f + 4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(mirrorVx, labelY_f - 4);
+  ctx.lineTo(mirrorVx, labelY_f + 4);
+  ctx.stroke();
+  // Label
+  ctx.fillStyle = '#e74c3c';
+  const fLabel = 'f = ' + f_cm.toFixed(0) + ' cm';
+  const fLabelSize = Math.min(14, Math.max(10, f_px * 0.09));
+  ctx.font = 'bold ' + fLabelSize.toFixed(0) + 'px Arial';
+  ctx.textAlign = 'center';
+  const fMidX = (Fx + mirrorVx) / 2;
+  if (f_px > 50) {
+    ctx.fillText(fLabel, fMidX, labelY_f - 6);
+  } else {
+    ctx.fillText(fLabel, fMidX, labelY_f + 18);
+  }
+
+  // --- Dynamic R label (bracket from C to V) ---
+  const labelY_R = axisY + 58;
+  ctx.strokeStyle = '#3498db';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(Cx, labelY_R);
+  ctx.lineTo(mirrorVx, labelY_R);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(Cx, labelY_R - 4);
+  ctx.lineTo(Cx, labelY_R + 4);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(mirrorVx, labelY_R - 4);
+  ctx.lineTo(mirrorVx, labelY_R + 4);
+  ctx.stroke();
+  ctx.fillStyle = '#3498db';
+  const rLabel = 'R = ' + R_cm.toFixed(0) + ' cm';
+  const rLabelSize = Math.min(14, Math.max(10, R_px * 0.05));
+  ctx.font = 'bold ' + rLabelSize.toFixed(0) + 'px Arial';
+  ctx.textAlign = 'center';
+  const rMidX = (Cx + mirrorVx) / 2;
+  if (R_px > 90) {
+    ctx.fillText(rLabel, rMidX, labelY_R - 6);
+  } else {
+    ctx.fillText(rLabel, rMidX, labelY_R + 18);
+  }
+
+  // --- Scale bar (fixed, does not change) ---
+  const scaleLen = SCALE_BAR_CM * SCALE;
+  const scaleX = 30;
+  const scaleY = H - 22;
+  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(scaleX, scaleY);
+  ctx.lineTo(scaleX + scaleLen, scaleY);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(scaleX, scaleY - 5);
+  ctx.lineTo(scaleX, scaleY + 5);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(scaleX + scaleLen, scaleY - 5);
+  ctx.lineTo(scaleX + scaleLen, scaleY + 5);
+  ctx.stroke();
+  ctx.fillStyle = 'rgba(255,255,255,0.6)';
+  ctx.font = '12px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(SCALE_BAR_CM + ' cm', scaleX + scaleLen / 2, scaleY - 8);
+}
+
+function update() {
+  updateCaption();
+  draw();
+}
+
+slider.addEventListener('input', update);
+update();
+
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
+</body>
+</html>
