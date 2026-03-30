@@ -508,6 +508,13 @@
       "description": "New simulation - description pending.",
       "emoji": "🔬",
       "category": "other"
+    },
+    {
+      "path": "cone_shrinking.html",
+      "title": "Concave Mirror – Ray Diagram",
+      "description": "New simulation - description pending.",
+      "emoji": "🔬",
+      "category": "other"
     }
   ]
 }
