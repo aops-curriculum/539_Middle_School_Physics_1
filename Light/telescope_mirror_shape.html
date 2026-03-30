@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Telescope Mirror Types</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  font-family: Arial, sans-serif;
+  max-width: 600px;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 10px 0;
+}
+.instructions {
+  font-size: 14px;
+  color: #aaa;
+  text-align: center;
+  margin: 8px 0;
+}
+canvas {
+  border: 1px solid #333;
+  border-radius: 6px;
+  display: block;
+  margin: 0 auto;
+  cursor: grab;
+}
+canvas.grabbing { cursor: grabbing; }
+.controls {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin: 8px 0;
+}
+button {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+}
+button:hover { background: rgba(76, 175, 80, 1); }
+button.active { background: rgba(33, 150, 243, 0.9); }
+button.ray-btn { background: rgba(231, 76, 60, 0.9); }
+button.ray-btn:hover { background: rgba(231, 76, 60, 1); }
+button.clear-btn { background: rgba(150, 150, 150, 0.9); }
+button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
+</style>
+</head>
+<body>
+<p class="instructions">Drag left/right to tilt the telescope. Add rays and compare mirror types.</p>
+<canvas id="canvas" width="600" height="600"></canvas>
+<div class="controls">
+  <button class="ray-btn" id="addRay">Add Ray</button>
+  <button class="clear-btn" id="clearRays">Clear Rays</button>
+  <button id="btnParabolic" class="active">Parabolic</button>
+  <button id="btnSpherical">Spherical</button>
+  <button id="btnElliptical">Elliptical</button>
+  <button id="btnHyperbolic">Hyperbolic</button>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 600;
+
+// Telescope parameters
+const tubeLength = 240;
+const R = tubeLength; // radius of curvature = tube length, so f = R/2 = tubeLength/2
+const tubeWidth = tubeLength / 2; // f/2 aperture
+const halfW = tubeWidth / 2;
+
+// State
+let telescopeAngle = 0; // radians from vertical
+let mirrorType = 'parabolic';
+let rays = []; // each ray: { offset: fraction -1..1 of half-aperture }
+let dragging = false;
+let dragStartX = 0;
+let dragStartAngle = 0;
+let draggedRay = null;
+let dragRayStartOffset = 0;
+let dragRayStartX = 0;
+
+// Telescope base position
+const baseX = W / 2;
+const baseY = H - 100;
+
+// Star position
+const starX = W / 2;
+const starY = 35;
+
+// Mirror shape functions: return y (sag) as function of x for given type
+// x is lateral distance from axis, R is radius of curvature
+// Convention: y=0 at mirror vertex, y increases toward open end of tube
+// For a concave mirror, sag is negative (curves away from incoming light)
+
+function mirrorSag(x, type) {
+  // Returns the sag (depth) of the mirror at lateral distance x from axis
+  // Positive sag means the surface is "behind" the vertex (concave)
+  const r = Math.abs(x);
+  switch(type) {
+    case 'spherical': {
+      // Circle: y = R - sqrt(R^2 - x^2)
+      if (r >= R) return R;
+      return R - Math.sqrt(R * R - r * r);
+    }
+    case 'parabolic': {
+      // Parabola: y = x^2 / (2R)  where R is radius of curvature at vertex
+      return (r * r) / (2 * R);
+    }
+    case 'elliptical': {
+      // Ellipse with semi-major a along axis, semi-minor b perpendicular
+      // We want radius of curvature at vertex = R = a^2/b  (for oblate-ish)
+      // Actually for a prolate ellipse rotated: R_vertex = b^2/a
+      // Let's pick a = 0.8*R (shorter than sphere), b chosen so R_curv = R at vertex
+      // R_curv at vertex of ellipse (along major axis a): R_curv = b^2/a
+      // So b^2 = R * a, b = sqrt(R * a)
+      const a = 0.85 * R;
+      const b = Math.sqrt(R * a);
+      if (r >= b) return a;
+      // Ellipse: (y-a)^2/a^2 + x^2/b^2 = 1 => y = a - a*sqrt(1 - x^2/b^2)
+      return a - a * Math.sqrt(1 - (r * r) / (b * b));
+    }
+    case 'hyperbolic': {
+      // Hyperbola: (y+a)^2/a^2 - x^2/b^2 = 1
+      // At vertex (x=0): y=0. R_curv at vertex = b^2/a
+      // Pick a = 1.2*R to get stronger overcorrection
+      // b^2 = R * a
+      const a = 1.15 * R;
+      const b2 = R * a;
+      // y = -a + a*sqrt(1 + x^2/b^2) = a*(sqrt(1+x^2/b^2) - 1)
+      return a * (Math.sqrt(1 + (r * r) / b2) - 1);
+    }
+  }
+  return 0;
+}
+
+function mirrorNormalAngle(x, type) {
+  // Returns angle of the outward normal at position x on the mirror
+  // We compute dy/dx numerically
+  const dx = 0.01;
+  const y1 = mirrorSag(x - dx, type);
+  const y2 = mirrorSag(x + dx, type);
+  const dydx = (y2 - y1) / (2 * dx);
+  // Surface tangent direction is (1, dydx), normal is (-dydx, 1) (pointing "outward" toward incoming light)
+  return Math.atan2(-dydx, 1);
+}
+
+function drawStar(x, y, size) {
+  ctx.save();
+  ctx.fillStyle = '#FFD700';
+  ctx.shadowColor = '#FFD700';
+  ctx.shadowBlur = 15;
+  const spikes = 4;
+  const outerR = size;
+  const innerR = size * 0.4;
+  ctx.beginPath();
+  for (let i = 0; i < spikes * 2; i++) {
+    const r = i % 2 === 0 ? outerR : innerR;
+    const angle = (i * Math.PI / spikes) - Math.PI / 2;
+    const px = x + r * Math.cos(angle);
+    const py = y + r * Math.sin(angle);
+    if (i === 0) ctx.moveTo(px, py);
+    else ctx.lineTo(px, py);
+  }
+  ctx.closePath();
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background - dark sky
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Stars background
+  ctx.fillStyle = 'rgba(255,255,255,0.3)';
+  const seed = [23,67,134,198,256,312,389,421,478,534,45,89,167,234,290,356,412,467,523,578];
+  for (let i = 0; i < 20; i++) {
+    ctx.beginPath();
+    ctx.arc(seed[i] % W, (seed[i] * 3 + 17) % (H - 150), 1, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw the main star
+  drawStar(starX, starY, 12);
+
+  // Telescope coordinate system:
+  // Origin at baseX, baseY (bottom of tube / mirror center)
+  // Axis goes upward; angle tilts from vertical
+  const cosA = Math.cos(telescopeAngle);
+  const sinA = Math.sin(telescopeAngle);
+
+  // Transform from telescope coords (along-axis u, perpendicular v) to canvas
+  // u: along tube axis (0 = mirror, positive toward opening)
+  // v: perpendicular (-halfW to +halfW)
+  function toCanvas(u, v) {
+    // Telescope axis direction (from base toward sky): (-sinA, -cosA) for u
+    // Perpendicular: (cosA, -sinA) for v (rotated 90 CW... let me think)
+    // If angle=0: axis points up, so u direction = (0, -1), v direction = (1, 0)
+    // If angle>0 (tilt right): axis rotates clockwise
+    const ax = -sinA, ay = -cosA; // axis direction (up along tube)
+    const px = cosA, py = -sinA;  // perpendicular direction (right)
+    return {
+      x: baseX + u * ax + v * px,
+      y: baseY + u * ay + v * py
+    };
+  }
+
+  // Draw tube
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 3;
+
+  const topLeft = toCanvas(tubeLength, -halfW);
+  const botLeft = toCanvas(0, -halfW);
+  const topRight = toCanvas(tubeLength, halfW);
+  const botRight = toCanvas(0, halfW);
+
+  ctx.beginPath();
+  ctx.moveTo(topLeft.x, topLeft.y);
+  ctx.lineTo(botLeft.x, botLeft.y);
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(topRight.x, topRight.y);
+  ctx.lineTo(botRight.x, botRight.y);
+  ctx.stroke();
+
+  // Draw mirror at bottom
+  ctx.strokeStyle = '#3498db';
+  ctx.lineWidth = 4;
+  ctx.beginPath();
+  const mirrorSteps = 60;
+  for (let i = 0; i <= mirrorSteps; i++) {
+    const v = -halfW + (i / mirrorSteps) * tubeWidth;
+    const sag = mirrorSag(v, mirrorType);
+    const p = toCanvas(-sag, v);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+
+  // Mirror backing
+  ctx.strokeStyle = '#2a6fa8';
+  ctx.lineWidth = 2;
+  const backOffset = 4;
+  ctx.beginPath();
+  for (let i = 0; i <= mirrorSteps; i++) {
+    const v = -halfW + (i / mirrorSteps) * tubeWidth;
+    const sag = mirrorSag(v, mirrorType);
+    const p = toCanvas(-sag - backOffset, v);
+    if (i === 0) ctx.moveTo(p.x, p.y);
+    else ctx.lineTo(p.x, p.y);
+  }
+  ctx.stroke();
+
+  // Draw rays
+  // The star is far away so rays come in parallel at the star's angle
+  // Ray angle is 20 degrees from vertical = angle of incoming ray direction
+  // The star is at top center, rays come "from" the star direction
+  // Since star is effectively at infinity, all rays are parallel
+  // Direction of incoming rays: from star toward telescope
+  // Star angle relative to telescope axis determines the angle
+
+  const rayAngleDeg = 20; // degrees from vertical
+  const rayAngle = rayAngleDeg * Math.PI / 180;
+  // Incoming ray direction in world coords: tilted rayAngle from straight down
+  // Actually, rays come from the star. Star is above. Rays travel downward.
+  // "20 degrees from vertical" - let's make it a slight angle
+  // Direction vector of incoming ray (downward, slightly tilted)
+  const incomingDirWorld = { x: Math.sin(rayAngle), y: Math.cos(rayAngle) };
+  // Normalized: already unit vector since sin^2 + cos^2 = 1
+
+  for (let ri = 0; ri < rays.length; ri++) {
+    const ray = rays[ri];
+    // The ray enters the tube opening. The offset determines where it enters.
+    // offset is a value from -1 to 1 representing position across the aperture
+
+    // Convert incoming ray direction to telescope coords
+    // Telescope axes: u-axis = (-sinA, -cosA), v-axis = (cosA, -sinA)
+    // Incoming direction in canvas: (incomingDirWorld.x, incomingDirWorld.y) pointing downward
+    // Project onto telescope axes
+    const ax = -sinA, ay = -cosA;
+    const px = cosA, py = -sinA;
+    const dirU = incomingDirWorld.x * ax + incomingDirWorld.y * ay; // component along tube axis (should be negative = going toward mirror)
+    const dirV = incomingDirWorld.x * px + incomingDirWorld.y * py; // component perpendicular
+
+    // The ray hits some point on the mirror.
+    // We parameterize the ray. It enters from far above and hits the mirror.
+    // Let's find where the ray intersects the mirror.
+
+    // In telescope coords, ray enters at some v position at u = tubeLength (top of tube)
+    // and travels with direction (dirU, dirV) per unit parameter
+    // Actually, the ray extends infinitely. Let's define it by where it crosses the aperture plane.
+    // The offset slides the ray laterally. v_aperture = ray.offset * halfW
+    // At the aperture (u = tubeLength): v = v_aperture
+    // Ray in telescope coords: u(t) = tubeLength + dirU * t, v(t) = v_aperture + dirV * t
+
+    const v_ap = ray.offset * halfW;
+
+    // Find intersection with mirror: u(t) = -mirrorSag(v(t), mirrorType)
+    // tubeLength + dirU * t = -mirrorSag(v_ap + dirV * t, mirrorType)
+    // Solve numerically
+    let t_hit = -1;
+    let v_hit = v_ap;
+    let u_hit = 0;
+
+    // Newton's method / bisection
+    // At t=0: u=tubeLength (above mirror), at large t: u goes negative
+    // Mirror is near u=0
+    if (Math.abs(dirU) > 0.001) {
+      // Approximate: t when u=0: t0 = -tubeLength/dirU
+      let tLow = 0;
+      let tHigh = -tubeLength / dirU * 2;
+      if (tHigh < tLow) { let tmp = tLow; tLow = tHigh; tHigh = tmp; }
+
+      for (let iter = 0; iter < 50; iter++) {
+        const tMid = (tLow + tHigh) / 2;
+        const uMid = tubeLength + dirU * tMid;
+        const vMid = v_ap + dirV * tMid;
+        const mirrorU = -mirrorSag(vMid, mirrorType);
+        if (uMid > mirrorU) {
+          tLow = tMid;
+        } else {
+          tHigh = tMid;
+        }
+      }
+      t_hit = (tLow + tHigh) / 2;
+      v_hit = v_ap + dirV * t_hit;
+      u_hit = tubeLength + dirU * t_hit;
+    }
+
+    // Check if hit is within the mirror aperture
+    if (Math.abs(v_hit) > halfW) continue;
+
+    // Draw incoming ray from above the telescope to the mirror hit point
+    // Start the ray from well above the tube
+    const startT = -200 / Math.max(0.01, Math.abs(dirU)); // extend back
+    // Actually let's just draw from a far point to the mirror
+    const entryExt = 200; // extend ray above telescope
+    const rayStartU = tubeLength + entryExt;
+    const rayStartV = v_ap + dirV * (entryExt / Math.abs(dirU)) * (dirU > 0 ? -1 : 1);
+    // Simpler: just go back along the ray
+    const backT = -entryExt / Math.max(0.3, Math.abs(dirU));
+    const startU = tubeLength + dirU * backT;
+    const startV = v_ap + dirV * backT;
+
+    const startP = toCanvas(startU, startV);
+    const hitP = toCanvas(u_hit, v_hit);
+
+    ctx.strokeStyle = 'rgba(231, 76, 60, 0.85)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(startP.x, startP.y);
+    ctx.lineTo(hitP.x, hitP.y);
+    ctx.stroke();
+
+    // Reflect the ray off the mirror
+    // Normal at the hit point in telescope coords
+    // Mirror surface: u = -mirrorSag(v, type)
+    // du/dv = -d(mirrorSag)/dv
+    const dv = 0.05;
+    const sagPlus = mirrorSag(v_hit + dv, mirrorType);
+    const sagMinus = mirrorSag(v_hit - dv, mirrorType);
+    const dsagdv = (sagPlus - sagMinus) / (2 * dv);
+    // Surface tangent in telescope coords (u, v): (-dsagdv, 1) (not normalized)
+    // Normal: perpendicular to tangent, pointing "outward" (toward incoming light, i.e., +u direction)
+    // tangent = (-dsagdv, 1), normal = (1, dsagdv) (rotated 90° CW)
+    const nLen = Math.sqrt(1 + dsagdv * dsagdv);
+    const nu = 1 / nLen;
+    const nv = dsagdv / nLen;
+
+    // Incoming direction in telescope coords (normalized)
+    const dLen = Math.sqrt(dirU * dirU + dirV * dirV);
+    const du_n = dirU / dLen;
+    const dv_n = dirV / dLen;
+
+    // Reflect: r = d - 2(d·n)n
+    const dot = du_n * nu + dv_n * nv;
+    const ru = du_n - 2 * dot * nu;
+    const rv = dv_n - 2 * dot * nv;
+
+    // Trace reflected ray until it hits tube wall or exits top
+    // Parameterize: u(s) = u_hit + ru*s, v(s) = v_hit + rv*s
+    // Hits tube wall when |v(s)| = halfW, or exits when u(s) = tubeLength
+    let s_end = 500;
+    if (Math.abs(rv) > 0.0001) {
+      const s_left = (-halfW - v_hit) / rv;
+      const s_right = (halfW - v_hit) / rv;
+      if (s_left > 0.1) s_end = Math.min(s_end, s_left);
+      if (s_right > 0.1) s_end = Math.min(s_end, s_right);
+    }
+    if (ru > 0.0001) {
+      const s_top = (tubeLength - u_hit) / ru;
+      if (s_top > 0.1) s_end = Math.min(s_end, s_top);
+    }
+    // Also limit to a reasonable distance beyond tube
+    s_end = Math.min(s_end, tubeLength * 2);
+
+    const endU = u_hit + ru * s_end;
+    const endV = v_hit + rv * s_end;
+    const endP = toCanvas(endU, endV);
+
+    ctx.strokeStyle = 'rgba(231, 76, 60, 0.7)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(hitP.x, hitP.y);
+    ctx.lineTo(endP.x, endP.y);
+    ctx.stroke();
+
+    // Draw a small dot at the hit point
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.9)';
+    ctx.beginPath();
+    ctx.arc(hitP.x, hitP.y, 2, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Draw focal region marker (dashed line at f = R/2 = tubeLength/2)
+  const focalDist = tubeLength / 2;
+  const fLeft = toCanvas(focalDist, -halfW - 10);
+  const fRight = toCanvas(focalDist, halfW + 10);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(fLeft.x, fLeft.y);
+  ctx.lineTo(fRight.x, fRight.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Label
+  const fLabel = toCanvas(focalDist, halfW + 20);
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.font = 'bold 11px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('focal plane', fLabel.x, fLabel.y);
+
+  // Mirror type label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 16px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText(mirrorType.charAt(0).toUpperCase() + mirrorType.slice(1) + ' Mirror', W / 2, H - 30);
+
+  // Aberration note
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#aaa';
+  if (mirrorType === 'parabolic') {
+    ctx.fillText('Parallel rays focus perfectly at focal point', W / 2, H - 12);
+  } else if (mirrorType === 'spherical') {
+    ctx.fillText('Spherical aberration: marginal rays focus closer to mirror', W / 2, H - 12);
+  } else if (mirrorType === 'elliptical') {
+    ctx.fillText('Undercorrected: between spherical and parabolic', W / 2, H - 12);
+  } else if (mirrorType === 'hyperbolic') {
+    ctx.fillText('Overcorrected: marginal rays focus farther from mirror', W / 2, H - 12);
+  }
+}
+
+// Event handling
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const touch = e.touches ? e.touches[0] : e;
+  return {
+    x: touch.clientX - rect.left,
+    y: touch.clientY - rect.top
+  };
+}
+
+function findRayAtPos(canvasPos) {
+  // Check if the click is near any existing ray's incoming segment at the aperture
+  const cosA = Math.cos(telescopeAngle);
+  const sinA = Math.sin(telescopeAngle);
+
+  const rayAngle = 20 * Math.PI / 180;
+  const incomingDirWorld = { x: Math.sin(rayAngle), y: Math.cos(rayAngle) };
+  const ax = -sinA, ay = -cosA;
+  const px = cosA, py = -sinA;
+
+  for (let i = 0; i < rays.length; i++) {
+    const ray = rays[i];
+    const v_ap = ray.offset * halfW;
+
+    // Position at the aperture plane in canvas coords
+    const apP = {
+      x: baseX + tubeLength * ax + v_ap * px,
+      y: baseY + tubeLength * ay + v_ap * py
+    };
+
+    const dist = Math.sqrt((canvasPos.x - apP.x) ** 2 + (canvasPos.y - apP.y) ** 2);
+    if (dist < 20) return i;
+  }
+  return -1;
+}
+
+function onDown(e) {
+  e.preventDefault();
+  const pos = getPos(e);
+
+  // Check if clicking on a ray
+  const rayIdx = findRayAtPos(pos);
+  if (rayIdx >= 0) {
+    draggedRay = rayIdx;
+    dragRayStartOffset = rays[rayIdx].offset;
+    dragRayStartX = pos.x;
+    canvas.classList.add('grabbing');
+    return;
+  }
+
+  dragging = true;
+  dragStartX = pos.x;
+  dragStartAngle = telescopeAngle;
+  canvas.classList.add('grabbing');
+}
+
+function onMove(e) {
+  e.preventDefault();
+  const pos = getPos(e);
+
+  if (draggedRay !== null) {
+    // Move ray side to side - change offset
+    const dx = pos.x - dragRayStartX;
+    // Convert dx to offset change - project onto the perpendicular axis of the telescope
+    const cosA = Math.cos(telescopeAngle);
+    const perpScale = cosA; // how much horizontal movement maps to v
+    const dOffset = (dx * perpScale) / halfW;
+    rays[draggedRay].offset = Math.max(-0.95, Math.min(0.95, dragRayStartOffset + dOffset));
+    draw();
+    return;
+  }
+
+  if (!dragging) return;
+  const dx = pos.x - dragStartX;
+  telescopeAngle = dragStartAngle + dx * 0.003;
+  telescopeAngle = Math.max(-0.6, Math.min(0.6, telescopeAngle));
+  draw();
+}
+
+function onUp(e) {
+  dragging = false;
+  draggedRay = null;
+  canvas.classList.remove('grabbing');
+}
+
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: false });
+canvas.addEventListener('touchmove', onMove, { passive: false });
+canvas.addEventListener('touchend', onUp);
+
+// Buttons
+document.getElementById('addRay').addEventListener('click', () => {
+  // Add a ray at a random offset
+  const offset = (Math.random() * 1.6 - 0.8);
+  rays.push({ offset: Math.max(-0.95, Math.min(0.95, offset)) });
+  draw();
+});
+
+document.getElementById('clearRays').addEventListener('click', () => {
+  rays = [];
+  draw();
+});
+
+const mirrorButtons = {
+  'btnSpherical': 'spherical',
+  'btnParabolic': 'parabolic',
+  'btnElliptical': 'elliptical',
+  'btnHyperbolic': 'hyperbolic'
+};
+
+Object.keys(mirrorButtons).forEach(id => {
+  document.getElementById(id).addEventListener('click', () => {
+    mirrorType = mirrorButtons[id];
+    Object.keys(mirrorButtons).forEach(bid => {
+      document.getElementById(bid).classList.remove('active');
+    });
+    document.getElementById(id).classList.add('active');
+    draw();
+  });
+});
+
+// Initial rays
+rays.push({ offset: -0.7 });
+rays.push({ offset: -0.35 });
+rays.push({ offset: 0.0 });
+rays.push({ offset: 0.35 });
+rays.push({ offset: 0.7 });
+
+draw();
+
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
+</body>
+</html>
