@@ -36,6 +36,13 @@ body {
 }
 .math { font-style: italic; }
 .unit { font-style: normal; }
+.val-box {
+  display: inline-block;
+  border: 2px solid #fff;
+  border-radius: 4px;
+  padding: 1px 7px;
+  margin: 0 1px;
+}
 canvas {
   display: block;
   margin: 10px auto 0 auto;
@@ -82,8 +89,8 @@ function updateCaption() {
   const f = (R / 2).toFixed(0);
   const Rstr = R.toFixed(0);
   captionEl.innerHTML =
-    'A spherical concave mirror has radius of curvature <i>R</i>&nbsp;=&nbsp;' + Rstr + '&nbsp;cm. ' +
-    'The focal length is <i>f</i>&nbsp;=&nbsp;' + f + '&nbsp;cm.';
+    'A spherical concave mirror has radius of curvature <span class="val-box"><i>R</i>&nbsp;=&nbsp;' + Rstr + '&nbsp;cm</span>. ' +
+    'The focal length is <span class="val-box"><i>f</i>&nbsp;=&nbsp;' + f + '&nbsp;cm</span>.';
 }
 
 function drawArrowhead(ctx, x, y, angle, len) {
