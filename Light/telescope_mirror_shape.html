@@ -56,7 +56,7 @@ button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
 </style>
 </head>
 <body>
-<p class="instructions">Drag left/right to tilt the telescope. Add rays and compare mirror types.</p>
+<p class="instructions">Drag left/right to tilt the telescope. Switch mirror types to compare how they focus starlight.</p>
 <canvas id="canvas" width="600" height="600"></canvas>
 <div class="controls">
   <button class="ray-btn" id="addRay">Add Ray</button>
@@ -74,9 +74,21 @@ const W = 600, H = 600;
 
 // Telescope parameters
 const tubeLength = 240;
-const R = tubeLength;
 const tubeWidth = tubeLength / 2;
 const halfW = tubeWidth / 2;
+
+// Vertex radius of curvature — all mirrors share the same Rc
+// so they have identical paraxial focal length (Rc/2).
+// Rc is deliberately small relative to halfW to make aberrations visible.
+const Rc = 90;
+
+// Conic constants: K=0 sphere, K=-1 parabola, -1<K<0 ellipse, K<-1 hyperbola
+const conicK = {
+  spherical: 0,
+  parabolic: -1,
+  elliptical: -0.5,
+  hyperbolic: -2
+};
 
 // State
 let telescopeAngle = 0;
@@ -94,37 +106,31 @@ let nextRayOffset = 0; // tracks which offset to assign next
 const baseX = W / 2;
 const baseY = H - 80;
 
-// Star position — off to the upper-right so rays come at an angle
-const starX = W - 80;
-const starY = 40;
+// Star position — directly above so rays are nearly on-axis when telescope
+// points straight up, making it easy to see that the parabola focuses perfectly.
+const starX = W / 2;
+const starY = 30;
 
 // Predefined ray offsets so they spread evenly across the aperture
 const defaultOffsets = [-0.8, -0.5, -0.2, 0.1, 0.4, 0.7, -0.65, -0.35, 0.0, 0.25, 0.55, 0.85];
 
-// Mirror sag: positive = surface curves INTO the mirror (concave from the open end)
+// Standard conic sag formula:
+//   sag(r) = r² / ( Rc × (1 + √(1 − (1+K) r²/Rc²)) )
+// All four mirror types share the same vertex radius Rc, so the
+// paraxial focal length (Rc/2) is identical — only the conic constant K differs.
 function mirrorSag(x, type) {
   const r = Math.abs(x);
-  switch (type) {
-    case 'spherical': {
-      if (r >= R) return R;
-      return R - Math.sqrt(R * R - r * r);
-    }
-    case 'parabolic': {
-      return (r * r) / (2 * R);
-    }
-    case 'elliptical': {
-      const a = 0.85 * R;
-      const b = Math.sqrt(R * a);
-      if (r >= b) return a;
-      return a - a * Math.sqrt(1 - (r * r) / (b * b));
-    }
-    case 'hyperbolic': {
-      const a = 1.15 * R;
-      const b2 = R * a;
-      return a * (Math.sqrt(1 + (r * r) / b2) - 1);
-    }
+  const K = conicK[type];
+
+  // Parabolic special case (K = −1): the general formula is 0/0, reduces to r²/(2Rc)
+  if (Math.abs(1 + K) < 1e-10) {
+    return (r * r) / (2 * Rc);
   }
-  return 0;
+
+  const disc = 1 - (1 + K) * r * r / (Rc * Rc);
+  if (disc < 0) return (r * r) / (2 * Rc); // beyond conic range — fall back
+
+  return (r * r) / (Rc * (1 + Math.sqrt(disc)));
 }
 
 function drawStar(x, y, size) {
@@ -253,6 +259,18 @@ function draw() {
   ctx.textAlign = 'left';
   ctx.fillText('optical axis', axisLabelP.x, axisLabelP.y);
 
+  // Mark paraxial focal point
+  const focalU = Rc / 2;
+  const focalP = toCanvas(focalU, 0);
+  ctx.fillStyle = 'rgba(46, 204, 113, 0.6)';
+  ctx.beginPath();
+  ctx.arc(focalP.x, focalP.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(46, 204, 113, 0.45)';
+  ctx.font = '10px Arial';
+  ctx.textAlign = 'left';
+  ctx.fillText('focus', focalP.x + 8, focalP.y + 4);
+
   // --- Rays ---
   // Star direction: compute angle from telescope opening center to star
   const openingCenter = toCanvas(tubeLength, 0);
@@ -376,7 +394,9 @@ function draw() {
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(mirrorType.charAt(0).toUpperCase() + mirrorType.slice(1) + ' Mirror', W / 2, H - 30);
+  const K = conicK[mirrorType];
+  const kLabel = K === 0 ? 'K = 0' : 'K = ' + K;
+  ctx.fillText(mirrorType.charAt(0).toUpperCase() + mirrorType.slice(1) + ' Mirror  (' + kLabel + ')', W / 2, H - 30);
 }
 
 // --- Event handling ---
@@ -485,7 +505,11 @@ Object.keys(mirrorButtons).forEach(id => {
   });
 });
 
-// No initial rays — user adds them via button
+// Start with rays so the focusing pattern is immediately visible
+for (let i = 0; i < 8; i++) {
+  rays.push({ offset: defaultOffsets[i] });
+  nextRayOffset++;
+}
 draw();
 
 window.addEventListener('load', () => {
