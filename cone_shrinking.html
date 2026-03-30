@@ -1,0 +1,468 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Concave Mirror – Ray Diagram</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  font-family: Arial, sans-serif;
+  max-width: 600px;
+  margin: 0 auto;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 16px 0;
+}
+p.instructions {
+  font-size: 14px;
+  color: #aaa;
+  text-align: center;
+  margin-bottom: 10px;
+}
+canvas {
+  display: block;
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: grab;
+}
+canvas.grabbing { cursor: grabbing; }
+</style>
+</head>
+<body>
+<p class="instructions">Drag the ice cream cone left or right to change the object distance.</p>
+<canvas id="c" width="600" height="500"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 500;
+
+// Physics (in cm, then we map to pixels)
+const f = 12;           // focal length cm
+const mirrorR = 2 * f;  // radius of curvature
+
+// Coordinate system: origin at mirror vertex
+// +x points LEFT (toward object), y=0 is optical axis
+// Pixel mapping
+const scale = 7;        // pixels per cm
+const mirrorPx = W - 60; // mirror x in pixels
+const axisPy = H * 0.42; // optical axis y in pixels
+
+function cmToPixel(xcm, ycm) {
+  return [mirrorPx - xcm * scale, axisPy - ycm * scale];
+}
+function pixelToCm(px, py) {
+  return [(mirrorPx - px) / scale, (axisPy - py) / scale];
+}
+
+// Object state
+let objDist = 36; // cm from mirror
+const coneHeight = 10; // cm
+
+// Dragging
+let dragging = false;
+
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return [t.clientX - r.left, t.clientY - r.top];
+}
+
+function hitTest(px) {
+  const [ox] = cmToPixel(objDist, 0);
+  return Math.abs(px - ox) < 30;
+}
+
+canvas.addEventListener('mousedown', e => { const [px] = getPos(e); if (hitTest(px)) { dragging = true; canvas.classList.add('grabbing'); } });
+canvas.addEventListener('mousemove', e => { if (!dragging) return; const [px] = getPos(e); updateObj(px); });
+canvas.addEventListener('mouseup', () => { dragging = false; canvas.classList.remove('grabbing'); });
+canvas.addEventListener('mouseleave', () => { dragging = false; canvas.classList.remove('grabbing'); });
+
+canvas.addEventListener('touchstart', e => { e.preventDefault(); const [px] = getPos(e); if (hitTest(px)) { dragging = true; canvas.classList.add('grabbing'); } }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); if (!dragging) return; const [px] = getPos(e); updateObj(px); }, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); dragging = false; canvas.classList.remove('grabbing'); }, { passive: false });
+
+function updateObj(px) {
+  let d = (mirrorPx - px) / scale;
+  // Clamp: must be to the left of mirror, and keep reasonable range
+  d = Math.max(f + 0.5, Math.min(70, d));
+  objDist = d;
+  draw();
+}
+
+// Drawing helpers
+function drawArrowhead(x, y, angle, len) {
+  len = len || 12;
+  const a = Math.PI / 6;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - len * Math.cos(angle - a), y - len * Math.sin(angle - a));
+  ctx.lineTo(x - len * Math.cos(angle + a), y - len * Math.sin(angle + a));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawIceCreamCone(tipX, tipY, topX, topY, scoopRadius, color, alpha) {
+  ctx.save();
+  ctx.globalAlpha = alpha;
+
+  // Cone body (triangle)
+  const dx = topX - tipX, dy = topY - tipY;
+  const len = Math.sqrt(dx*dx + dy*dy);
+  const nx = -dy / len, ny = dx / len;
+  const halfBase = scoopRadius * 0.85;
+
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(topX + nx * halfBase, topY + ny * halfBase);
+  ctx.lineTo(topX - nx * halfBase, topY - ny * halfBase);
+  ctx.closePath();
+  ctx.fillStyle = '#d4a056';
+  ctx.fill();
+  ctx.strokeStyle = '#a07030';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Waffle pattern on cone
+  ctx.save();
+  ctx.clip();
+  ctx.strokeStyle = '#c08840';
+  ctx.lineWidth = 0.8;
+  const steps = 6;
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    const cx2 = tipX + dx * t, cy2 = tipY + dy * t;
+    const w = halfBase * t;
+    ctx.beginPath();
+    ctx.moveTo(cx2 + nx * w, cy2 + ny * w);
+    ctx.lineTo(cx2 - nx * w, cy2 - ny * w);
+    ctx.stroke();
+  }
+  // Diagonal lines
+  for (let s = -1; s <= 1; s += 2) {
+    for (let i = 1; i < steps; i++) {
+      const t1 = Math.max(0, (i - 1) / steps);
+      const t2 = Math.min(1, (i) / steps);
+      const cx1 = tipX + dx * t1, cy1 = tipY + dy * t1;
+      const cx2 = tipX + dx * t2, cy2 = tipY + dy * t2;
+      const w1 = halfBase * t1 * s, w2 = halfBase * t2 * (-s);
+      ctx.beginPath();
+      ctx.moveTo(cx1 + nx * w1, cy1 + ny * w1);
+      ctx.lineTo(cx2 + nx * w2, cy2 + ny * w2);
+      ctx.stroke();
+    }
+  }
+  ctx.restore();
+
+  // Ice cream scoop
+  ctx.beginPath();
+  ctx.arc(topX, topY, scoopRadius, 0, Math.PI * 2);
+  ctx.fillStyle = color;
+  ctx.fill();
+  ctx.strokeStyle = '#a03030';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Scoop highlight
+  ctx.beginPath();
+  ctx.arc(topX - scoopRadius * 0.25, topY - scoopRadius * 0.25, scoopRadius * 0.4, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.fill();
+
+  ctx.restore();
+}
+
+// Mirror curve drawing (concave = curves away from object on left)
+function drawMirror() {
+  const mH = 180; // mirror half-height in pixels
+  const curveDepth = 18;
+  ctx.save();
+  ctx.lineWidth = 5;
+  ctx.strokeStyle = '#7ec8e3';
+  ctx.beginPath();
+  // Draw as a quadratic curve bowing to the right (concave toward left)
+  ctx.moveTo(mirrorPx, axisPy - mH);
+  ctx.quadraticCurveTo(mirrorPx + curveDepth, axisPy, mirrorPx, axisPy + mH);
+  ctx.stroke();
+
+  // Hatch marks on back of mirror
+  ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#5a9ab5';
+  const segments = 14;
+  for (let i = 0; i <= segments; i++) {
+    const t = i / segments;
+    const y = axisPy - mH + 2 * mH * t;
+    const x = mirrorPx + curveDepth * (1 - Math.pow(2 * t - 1, 2));
+    ctx.beginPath();
+    ctx.moveTo(x, y);
+    ctx.lineTo(x + 10, y - 6);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Optical axis (dashed)
+  ctx.save();
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(10, axisPy);
+  ctx.lineTo(mirrorPx, axisPy);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // Mirror
+  drawMirror();
+
+  // Mark focal point and center
+  const [fpx] = cmToPixel(f, 0);
+  const [cpx] = cmToPixel(mirrorR, 0);
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.beginPath();
+  ctx.arc(fpx, axisPy, 5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#ffcc00';
+  ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('F', fpx, axisPy + 18);
+
+  ctx.fillStyle = '#ffcc00';
+  ctx.beginPath();
+  ctx.arc(cpx, axisPy, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillText('C', cpx, axisPy + 18);
+
+  // Object cone
+  const [objTipPx, objTipPy] = cmToPixel(objDist, 0);
+  const [objTopPx, objTopPy] = cmToPixel(objDist, coneHeight);
+  const scoopR = 12;
+
+  // Thin mirror model uses vertex at mirrorPx, axisPy
+  // Ray 1: from top of object through focus, reflects horizontal
+  // Ray 2: from top of object to vertex, reflects symmetrically
+
+  // Compute image using mirror equation: 1/f = 1/o + 1/i
+  const o = objDist;
+  const i_val = 1 / (1/f - 1/o); // image distance (positive = real, same side)
+  const magnification = -i_val / o;
+  const imageHeight = magnification * coneHeight;
+
+  // Image position
+  const [imgTipPx, imgTipPy] = cmToPixel(i_val, 0);
+  const [imgTopPx, imgTopPy] = cmToPixel(i_val, imageHeight);
+
+  // --- Draw rays ---
+  ctx.save();
+  ctx.lineWidth = 2;
+
+  // Ray 1: Object top → through focus → mirror → reflects horizontal
+  // This ray goes from object top, passes through focus, hits mirror
+  // On reflection, it goes horizontal (parallel to axis)
+  // Line from objectTop through F to the mirror
+  const objTopCm = { x: objDist, y: coneHeight };
+  const focusCm = { x: f, y: 0 };
+
+  // Direction from object top toward focus
+  const d1x = focusCm.x - objTopCm.x;
+  const d1y = focusCm.y - objTopCm.y;
+  // Parameterize: point = objTop + t*(focus - objTop), find where x = 0 (mirror)
+  const t1 = (0 - objTopCm.x) / d1x;
+  const mirrorHit1Y = objTopCm.y + t1 * d1y;
+
+  const [mh1px, mh1py] = cmToPixel(0, mirrorHit1Y);
+
+  // Draw incoming ray (object top to mirror)
+  ctx.strokeStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.moveTo(objTopPx, objTopPy);
+  ctx.lineTo(mh1px, mh1py);
+  ctx.stroke();
+
+  // Draw reflected ray (horizontal from mirror hit point, going left)
+  // Extends far left, but we draw to image location and beyond
+  ctx.strokeStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.moveTo(mh1px, mh1py);
+  const rayEndLeft1 = 10;
+  ctx.lineTo(rayEndLeft1, mh1py);
+  ctx.stroke();
+
+  // Arrowhead on reflected ray 1
+  ctx.fillStyle = '#e74c3c';
+  drawArrowhead(rayEndLeft1 + 80, mh1py, Math.PI, 12);
+
+  // Arrowhead on incoming ray 1
+  const ang1in = Math.atan2(mh1py - objTopPy, mh1px - objTopPx);
+  drawArrowhead((objTopPx + mh1px) / 2, (objTopPy + mh1py) / 2, ang1in, 12);
+
+  // Ray 2: Object top → vertex of mirror → reflects symmetrically
+  // Vertex is at (0,0) in cm. The reflection of a ray hitting the vertex
+  // reflects such that angle of incidence = angle of reflection about the axis.
+  // If ray comes in at angle θ above axis, it leaves at θ below.
+  const [vtxPx, vtxPy] = cmToPixel(0, 0);
+
+  ctx.strokeStyle = '#3498db';
+  ctx.beginPath();
+  ctx.moveTo(objTopPx, objTopPy);
+  ctx.lineTo(vtxPx, vtxPy);
+  ctx.stroke();
+
+  // Arrowhead on incoming ray 2
+  const ang2in = Math.atan2(vtxPy - objTopPy, vtxPx - objTopPx);
+  drawArrowhead((objTopPx + vtxPx) / 2, (objTopPy + vtxPy) / 2, ang2in, 12);
+
+  // Reflected ray from vertex: same angle below axis
+  // Incoming angle to axis: atan2(coneHeight, objDist) above axis
+  // Reflected: same angle below axis → goes to image top
+  // Extend the reflected ray well past the image
+  const reflDirX = -objDist; // going left
+  const reflDirY = -coneHeight; // going below axis (mirrored)
+  const reflLen = Math.sqrt(reflDirX * reflDirX + reflDirY * reflDirY);
+  const reflNx = reflDirX / reflLen, reflNy = reflDirY / reflLen;
+
+  // Extend to left edge
+  const maxExtent = 600;
+  const ray2endPx = vtxPx + reflNx * maxExtent * (scale / scale);
+  const ray2endPy = vtxPy + reflNy * maxExtent;
+
+  // Clip to canvas
+  ctx.strokeStyle = '#3498db';
+  ctx.beginPath();
+  ctx.moveTo(vtxPx, vtxPy);
+  ctx.lineTo(Math.max(10, vtxPx - 500), vtxPy + 500 * (coneHeight / objDist));
+  ctx.stroke();
+
+  // Arrowhead on reflected ray 2
+  const ext2 = 120;
+  const ar2x = vtxPx - ext2 * (objDist / Math.sqrt(objDist*objDist + coneHeight*coneHeight));
+  const ar2y = vtxPy + ext2 * (coneHeight / Math.sqrt(objDist*objDist + coneHeight*coneHeight));
+  const ang2r = Math.atan2(coneHeight / objDist, -1);
+  ctx.fillStyle = '#3498db';
+  drawArrowhead(ar2x, ar2y, Math.PI + Math.atan2(-coneHeight, objDist), 12);
+
+  ctx.restore();
+
+  // Image cone (only if real image, i.e., i_val > 0, and object beyond f)
+  if (i_val > 0 && o > f) {
+    // Image tip is on axis at distance i_val from mirror
+    // Image is inverted, so imageHeight is negative (below axis)
+    const imgScoopR = Math.abs(magnification) * scoopR;
+    drawIceCreamCone(imgTipPx, imgTipPy, imgTopPx, imgTopPy, Math.min(imgScoopR, 40), '#e74c3c', 0.55);
+  }
+
+  // Object cone (draw on top)
+  drawIceCreamCone(objTipPx, objTipPy, objTopPx, objTopPy, scoopR, '#f06070', 1.0);
+
+  // Labels
+  ctx.save();
+  ctx.font = 'bold 15px Arial';
+  ctx.textAlign = 'center';
+
+  // Object distance label
+  const oLabel = Math.round(objDist * 10) / 10;
+  const oLabelStr = `o = ${oLabel.toFixed(1)} cm`;
+  ctx.fillStyle = '#fff';
+  ctx.fillText(oLabelStr, objTipPx, axisPy + 35);
+
+  // Dimension line for object distance
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 3]);
+  ctx.beginPath();
+  ctx.moveTo(objTipPx, axisPy + 40);
+  ctx.lineTo(objTipPx, axisPy + 52);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(mirrorPx, axisPy + 40);
+  ctx.lineTo(mirrorPx, axisPy + 52);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(objTipPx, axisPy + 48);
+  ctx.lineTo(mirrorPx, axisPy + 48);
+  ctx.stroke();
+  // Small ticks
+  ctx.beginPath();
+  ctx.moveTo(objTipPx, axisPy + 44);
+  ctx.lineTo(objTipPx, axisPy + 52);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(mirrorPx, axisPy + 44);
+  ctx.lineTo(mirrorPx, axisPy + 52);
+  ctx.stroke();
+
+  // Image distance label (if real image)
+  if (i_val > 0 && o > f) {
+    const iLabel = Math.round(i_val * 10) / 10;
+    const iLabelStr = `i = ${iLabel.toFixed(1)} cm`;
+    ctx.fillStyle = '#ccc';
+    ctx.font = 'bold 14px Arial';
+    ctx.fillText(iLabelStr, imgTipPx, axisPy + 35);
+
+    // Dimension line for image distance
+    ctx.strokeStyle = '#888';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(imgTipPx, axisPy + 58);
+    ctx.lineTo(imgTipPx, axisPy + 70);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(mirrorPx, axisPy + 58);
+    ctx.lineTo(mirrorPx, axisPy + 70);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(imgTipPx, axisPy + 66);
+    ctx.lineTo(mirrorPx, axisPy + 66);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(imgTipPx, axisPy + 62);
+    ctx.lineTo(imgTipPx, axisPy + 70);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(mirrorPx, axisPy + 62);
+    ctx.lineTo(mirrorPx, axisPy + 70);
+    ctx.stroke();
+  }
+
+  // Title label for focal length
+  ctx.font = 'bold 13px Arial';
+  ctx.fillStyle = '#ffcc00';
+  ctx.textAlign = 'left';
+  ctx.fillText('f = 12 cm', 14, 24);
+
+  // "Object" and "Image" labels
+  ctx.font = 'bold 13px Arial';
+  ctx.fillStyle = '#f06070';
+  ctx.textAlign = 'center';
+  ctx.fillText('Object', objTopPx, objTopPy - scoopR - 8);
+
+  if (i_val > 0 && o > f) {
+    ctx.fillStyle = 'rgba(224,100,100,0.7)';
+    const imgScoopR2 = Math.abs(magnification) * scoopR;
+    ctx.fillText('Image', imgTopPx, imgTopPy + Math.min(imgScoopR2, 40) + 16);
+  }
+
+  ctx.restore();
+}
+
+draw();
+
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
+</body>
+</html>
