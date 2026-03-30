@@ -17,7 +17,7 @@ const ctx = canvas.getContext('2d');
 
 // ── Physics constants (cm) ───────────────────────────────────────────
 const F_CM     = 12;        // focal length
-const H_OBJ_CM = 6;        // object cone height in cm
+const H_OBJ_CM = 12;       // object cone height in cm
 const MIN_O    = F_CM + 6;   // must be beyond f for real image
 const MAX_O    = 60;        // max drag distance
 
@@ -78,7 +78,7 @@ function drawMirror() {
 
   // Mirror only needs to be tall enough for the object rays + margin
   const maxHPx = H_OBJ_CM * SCALE * 2.5;
-  const halfAngle = Math.asin(Math.min(maxHPx / mirrorR, 0.30)) + 0.04;
+  const halfAngle = (Math.asin(Math.min(maxHPx / mirrorR, 0.55)) + 0.04) * 2;
 
   // Reflecting surface
   ctx.save();
