@@ -708,7 +708,7 @@ radiusSlider.addEventListener('change', scheduleRender);
 observerSlider.addEventListener('change', scheduleRender);
 
 function scheduleRender() {
-  if (!sourceImage) return;
+  if (!sourceImage && !showGrid) return;
   clearTimeout(renderTimer);
   canvasInfo.innerHTML = '<span class="rendering-dot"></span>Rendering…';
   renderTimer = setTimeout(doRender, 40);
@@ -738,6 +738,18 @@ showSourceToggle.addEventListener('change', () => {
 
 showGridToggle.addEventListener('change', () => {
   showGrid = showGridToggle.checked;
+  if (!sourceImage) {
+    if (showGrid) {
+      renderGridOnly();
+    } else {
+      outputCanvas.style.display = 'none';
+      placeholder.style.display = 'flex';
+      warpSizePx = 0;
+      pdfBtn.disabled = true;
+      outputCanvas.dataset.zoomed = '';
+    }
+    return;
+  }
   repaintFromCache();
 });
 
@@ -1182,9 +1194,9 @@ function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
 
 function repaintFromCache() {
   if (!warpSizePx) return;
-  if (showMorph && !warpCacheData) return;
+  if (showMorph && !warpCacheData && !showGrid) return;
   const ctx = outputCanvas.getContext('2d');
-  if (showMorph) {
+  if (showMorph && warpCacheData) {
     ctx.putImageData(new ImageData(warpCacheData, warpSizePx, warpSizePx), 0, 0);
   } else {
     ctx.fillStyle = '#ffffff';
@@ -1201,8 +1213,32 @@ function repaintFromCache() {
 // ─────────────────────────────────────────────────────────────────────────────
 // Main render
 // ─────────────────────────────────────────────────────────────────────────────
+function renderGridOnly() {
+  const R = parseFloat(radiusSlider.value);
+  const E = parseFloat(observerSlider.value);
+  const halfCm = Math.max(5 * R + 4, 16);
+  const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
+  outputCanvas.width  = sizePx;
+  outputCanvas.height = sizePx;
+  warpSizePx = sizePx;
+  const ctx = outputCanvas.getContext('2d');
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, sizePx, sizePx);
+  const cx = sizePx / 2, cy = sizePx / 2;
+  drawCylinderRing(ctx, cx, cy, R);
+  drawGrid(ctx, cx, cy, R, E);
+  placeholder.style.display  = 'none';
+  outputCanvas.style.display = 'block';
+  pdfBtn.disabled = false;
+  if (!outputCanvas.dataset.zoomed) { fitZoom(); outputCanvas.dataset.zoomed = true; }
+  canvasInfo.textContent = `Grid preview · R=${R} cm · E=${E} cm`;
+}
+
 function doRender() {
-  if (!sourceImage) return;
+  if (!sourceImage) {
+    if (showGrid) renderGridOnly();
+    return;
+  }
 
   const R = parseFloat(radiusSlider.value);
   const E = parseFloat(observerSlider.value);
