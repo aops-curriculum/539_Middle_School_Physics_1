@@ -5,20 +5,45 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Concave Mirror – Draggable Cone</title>
   <style>
-    body { margin: 0; overflow: hidden; background: #1a1a2e; font-family: Arial, sans-serif; }
-    canvas { display: block; touch-action: none; user-select: none; cursor: default; }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      user-select: none;
+    }
+    p.instructions {
+      font-size: 14px;
+      color: #aaa;
+      text-align: center;
+      padding: 12px 8px 6px;
+    }
+    canvas {
+      display: block;
+      border: 1px solid #333;
+      border-radius: 6px;
+      touch-action: none;
+      cursor: default;
+    }
   </style>
 </head>
 <body>
+<p class="instructions">Drag the ice-cream cone toward or away from the concave mirror to see how the image changes.</p>
 <canvas id="canvas"></canvas>
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
+const W = 600;
+const H = 480;
+canvas.width = W;
+canvas.height = H;
+
 // ── Physics constants (cm) ───────────────────────────────────────────
 const F_CM     = 12;        // focal length
 const H_OBJ_CM = 12;       // object cone height in cm
-const MIN_O    = F_CM + 6;   // must be beyond f for real image
+const MIN_O    = 0.5;       // minimum object distance (just off the mirror)
 const MAX_O    = 60;        // max drag distance
 
 // ── State ────────────────────────────────────────────────────────────
@@ -27,29 +52,28 @@ let dragging = false;
 let dragStartMouseX = 0;
 let dragStartObjDist = 0;
 
-// ── Layout (recomputed on resize) ────────────────────────────────────
-let W, H, SCALE, mirrorX, axisY;
-
-function resize() {
-  W = canvas.width  = window.innerWidth;
-  H = canvas.height = window.innerHeight;
-
-  // Scale: fit MAX_O cm into ~70% of screen width
-  SCALE   = (W * 0.70) / MAX_O;
-  mirrorX = W - 60;
-  axisY   = H * 0.45;
-}
+// ── Layout ───────────────────────────────────────────────────────────
+const SCALE   = (W * 0.65) / MAX_O;
+const mirrorX = W - 50;
+const axisY   = H * 0.45;
 
 // ── Optics ───────────────────────────────────────────────────────────
-function imageDistance(o) { return (o * F_CM) / (o - F_CM); }
-function magnification(o) { return -imageDistance(o) / o; }
+function imageDistance(o) {
+  if (Math.abs(o - F_CM) < 0.01) return Infinity;
+  return (o * F_CM) / (o - F_CM);
+}
+function magnification(o) {
+  const i = imageDistance(o);
+  if (!isFinite(i)) return Infinity;
+  return -i / o;
+}
 
 // cm from mirror → canvas x
 function cmToX(d) { return mirrorX - d * SCALE; }
 
 // ── Drawing helpers ──────────────────────────────────────────────────
 function arrowHead(x, y, angle) {
-  const L = 10, A = Math.PI / 6;
+  const L = 12, A = Math.PI / 6;
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(x - L * Math.cos(angle - A), y - L * Math.sin(angle - A));
@@ -72,11 +96,10 @@ function drawOpticalAxis() {
 }
 
 function drawMirror() {
-  const R_CM   = 2 * F_CM;
+  const R_CM     = 2 * F_CM;
   const mirrorR  = R_CM * SCALE;
   const mirrorCX = mirrorX - mirrorR;
 
-  // Mirror only needs to be tall enough for the object rays + margin
   const maxHPx = H_OBJ_CM * SCALE * 2.5;
   const halfAngle = (Math.asin(Math.min(maxHPx / mirrorR, 0.55)) + 0.04) * 2;
 
@@ -200,8 +223,6 @@ function drawConeAt(tipX, tipY, h, inverted, alpha) {
 }
 
 // ── Ray-circle intersection helper ───────────────────────────────────
-// Returns the intersection point of a ray from P in direction D
-// with a circle centered at C with radius R (rightmost intersection).
 function rayMirrorHit(px, py, dx, dy, cx, cy, r) {
   const ax = px - cx, ay = py - cy;
   const A = dx * dx + dy * dy;
@@ -212,100 +233,243 @@ function rayMirrorHit(px, py, dx, dy, cx, cy, r) {
   const sq = Math.sqrt(disc);
   const t1 = (-B - sq) / (2 * A);
   const t2 = (-B + sq) / (2 * A);
-  // We want the intersection where t > 0 and x is rightmost (closest to mirror vertex)
   const pick = t2 > 0 ? t2 : t1;
   if (pick <= 0) return null;
   return { x: px + pick * dx, y: py + pick * dy };
 }
 
 // ── Rays ─────────────────────────────────────────────────────────────
-// Ray 1 (gold):  object top → through F → mirror  ⟹  reflects horizontally
-// Ray 2 (cyan):  object top → vertex     ⟹  reflects at equal angle below axis
-//
-// Both reflected rays meet at the image top.
 function drawRays() {
   const o = objDist;
   const i = imageDistance(o);
   const m = magnification(o);
   const hObj = H_OBJ_CM * SCALE;
-  const hImg = Math.abs(m) * H_OBJ_CM * SCALE;
-
-  const objX    = cmToX(o);
-  const imgX    = cmToX(i);
+  const objX = cmToX(o);
   const objTopY = axisY - hObj;
-  const imgTopY = axisY + hImg;
   const focusX  = cmToX(F_CM);
 
-  const R_CM   = 2 * F_CM;
+  const R_CM     = 2 * F_CM;
   const mirrorR  = R_CM * SCALE;
   const mirrorCX = mirrorX - mirrorR;
 
-  const maxRayY = H - 20;
+  const isVirtual = o < F_CM;
+  const isAtFocus = Math.abs(o - F_CM) < 0.3;
 
-  // ── Ray 1 (gold): through focus to mirror, reflects horizontally ──
-  // Direction from object top toward focus
-  const dir1x = focusX - objX;
-  const dir1y = axisY  - objTopY;
+  // ── CASE 1: Object beyond focal point → real, inverted image ──────
+  if (!isVirtual && !isAtFocus) {
+    const hImg = Math.abs(m) * H_OBJ_CM * SCALE;
+    const imgX = cmToX(i);
+    const imgTopY = axisY + hImg;
 
-  // Find where ray hits the curved mirror surface
-  const hit1 = rayMirrorHit(objX, objTopY, dir1x, dir1y, mirrorCX, axisY, mirrorR);
+    // Ray 1 (gold): through focus to mirror, reflects horizontally
+    const dir1x = focusX - objX;
+    const dir1y = axisY  - objTopY;
+    const hit1 = rayMirrorHit(objX, objTopY, dir1x, dir1y, mirrorCX, axisY, mirrorR);
 
-  if (hit1 && hit1.y < maxRayY) {
+    if (hit1) {
+      ctx.save();
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth   = 2;
+
+      // Incoming
+      ctx.beginPath();
+      ctx.moveTo(objX, objTopY);
+      ctx.lineTo(hit1.x, hit1.y);
+      ctx.stroke();
+      arrowHead((objX + hit1.x) / 2, (objTopY + hit1.y) / 2,
+                Math.atan2(hit1.y - objTopY, hit1.x - objX));
+
+      // Reflected horizontally
+      const ray1EndX = Math.max(imgX - 30, 20);
+      ctx.beginPath();
+      ctx.moveTo(hit1.x, hit1.y);
+      ctx.lineTo(ray1EndX, hit1.y);
+      ctx.stroke();
+      arrowHead(Math.min(Math.max((hit1.x + ray1EndX) / 2, 30), hit1.x - 30),
+                hit1.y, Math.PI);
+      ctx.restore();
+    }
+
+    // Ray 2 (cyan): to vertex, reflects symmetrically
     ctx.save();
-    ctx.strokeStyle = '#FFD700';
+    ctx.strokeStyle = '#00BFFF';
     ctx.lineWidth   = 2;
 
-    // Incoming: object top → mirror surface
     ctx.beginPath();
     ctx.moveTo(objX, objTopY);
-    ctx.lineTo(hit1.x, hit1.y);
+    ctx.lineTo(mirrorX, axisY);
     ctx.stroke();
-    const a1 = Math.atan2(hit1.y - objTopY, hit1.x - objX);
-    arrowHead((objX + hit1.x) / 2, (objTopY + hit1.y) / 2, a1);
+    arrowHead((objX + mirrorX) / 2, (objTopY + axisY) / 2,
+              Math.atan2(axisY - objTopY, mirrorX - objX));
 
-    // Reflected: horizontal from hit point to the left
-    const ray1EndX = Math.max(imgX - 30, 20);
+    const slope2 = (imgTopY - axisY) / (imgX - mirrorX);
+    let ray2EndX = Math.max(imgX - 30, 20);
+    let ray2EndY = axisY + slope2 * (ray2EndX - mirrorX);
+    if (ray2EndY > H - 20) {
+      ray2EndY = H - 20;
+      ray2EndX = mirrorX + (ray2EndY - axisY) / slope2;
+    }
     ctx.beginPath();
-    ctx.moveTo(hit1.x, hit1.y);
-    ctx.lineTo(ray1EndX, hit1.y);
+    ctx.moveTo(mirrorX, axisY);
+    ctx.lineTo(ray2EndX, ray2EndY);
     ctx.stroke();
-    const ar1x = Math.min(Math.max((hit1.x + ray1EndX) / 2, 30), hit1.x - 30);
-    arrowHead(ar1x, hit1.y, Math.PI);
-
+    arrowHead(Math.min(Math.max((mirrorX + ray2EndX) / 2, 30), mirrorX - 40),
+              axisY + slope2 * (Math.min(Math.max((mirrorX + ray2EndX) / 2, 30), mirrorX - 40) - mirrorX),
+              Math.atan2(ray2EndY - axisY, ray2EndX - mirrorX));
     ctx.restore();
   }
 
-  // ── Ray 2 (cyan): to vertex, reflects symmetrically ───────────────
-  ctx.save();
-  ctx.strokeStyle = '#00BFFF';
-  ctx.lineWidth   = 2;
+  // ── CASE 2: At focal point → reflected rays diverge, no image ─────
+  else if (isAtFocus) {
+    // Ray 1 (gold): parallel to axis → mirror → reflects through F
+    const hit1 = rayMirrorHit(objX, objTopY, 1, 0, mirrorCX, axisY, mirrorR);
+    if (hit1) {
+      ctx.save();
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth   = 2;
+      ctx.beginPath();
+      ctx.moveTo(objX, objTopY);
+      ctx.lineTo(hit1.x, hit1.y);
+      ctx.stroke();
+      arrowHead((objX + hit1.x) / 2, objTopY, 0);
 
-  // Incoming: object top → vertex (vertex is at mirrorX, axisY)
-  ctx.beginPath();
-  ctx.moveTo(objX, objTopY);
-  ctx.lineTo(mirrorX, axisY);
-  ctx.stroke();
-  const a2 = Math.atan2(axisY - objTopY, mirrorX - objX);
-  arrowHead((objX + mirrorX) / 2, (objTopY + axisY) / 2, a2);
+      const rAngle = Math.atan2(axisY - hit1.y, focusX - hit1.x);
+      const ray1EndX = 20;
+      const ray1EndY = hit1.y + (ray1EndX - hit1.x) * Math.tan(rAngle);
+      ctx.beginPath();
+      ctx.moveTo(hit1.x, hit1.y);
+      ctx.lineTo(ray1EndX, ray1EndY);
+      ctx.stroke();
+      arrowHead((hit1.x + ray1EndX) / 2, (hit1.y + ray1EndY) / 2, rAngle + Math.PI);
+      ctx.restore();
+    }
 
-  // Reflected: vertex → image top (extend a bit past, clamp to canvas)
-  const slope2 = (imgTopY - axisY) / (imgX - mirrorX);
-  let ray2EndX = Math.max(imgX - 30, 20);
-  let ray2EndY = axisY + slope2 * (ray2EndX - mirrorX);
-  // Clamp vertically
-  if (ray2EndY > maxRayY) {
-    ray2EndY = maxRayY;
-    ray2EndX = mirrorX + (ray2EndY - axisY) / slope2;
+    // Ray 2 (cyan): to vertex, reflects symmetrically below axis
+    ctx.save();
+    ctx.strokeStyle = '#00BFFF';
+    ctx.lineWidth   = 2;
+    ctx.beginPath();
+    ctx.moveTo(objX, objTopY);
+    ctx.lineTo(mirrorX, axisY);
+    ctx.stroke();
+    arrowHead((objX + mirrorX) / 2, (objTopY + axisY) / 2,
+              Math.atan2(axisY - objTopY, mirrorX - objX));
+
+    const refDy = (objTopY - axisY);
+    let ray2EndX = 20;
+    let ray2EndY = axisY + (-refDy / (mirrorX - objX)) * (ray2EndX - mirrorX);
+    if (ray2EndY > H - 20) {
+      ray2EndY = H - 20;
+      ray2EndX = mirrorX + (ray2EndY - axisY) / ((-refDy) / (mirrorX - objX));
+    }
+    ctx.beginPath();
+    ctx.moveTo(mirrorX, axisY);
+    ctx.lineTo(ray2EndX, ray2EndY);
+    ctx.stroke();
+    arrowHead((mirrorX + ray2EndX) / 2, (axisY + ray2EndY) / 2,
+              Math.atan2(ray2EndY - axisY, ray2EndX - mirrorX));
+    ctx.restore();
   }
-  ctx.beginPath();
-  ctx.moveTo(mirrorX, axisY);
-  ctx.lineTo(ray2EndX, ray2EndY);
-  ctx.stroke();
-  const ra2 = Math.atan2(ray2EndY - axisY, ray2EndX - mirrorX);
-  const ar2x = Math.min(Math.max((mirrorX + ray2EndX) / 2, 30), mirrorX - 40);
-  arrowHead(ar2x, axisY + slope2 * (ar2x - mirrorX), ra2);
 
-  ctx.restore();
+  // ── CASE 3: Object inside focal point → virtual, upright image ────
+  else if (isVirtual) {
+    const absI = Math.abs(i);
+    const absM = Math.abs(m);
+    const hImg = absM * H_OBJ_CM * SCALE;
+
+    // Virtual image position: behind the mirror
+    const imgX = mirrorX + absI * SCALE;
+    const imgTopY = axisY - hImg;
+
+    // Ray 1 (gold): parallel to axis → mirror → reflects through F
+    const hit1 = rayMirrorHit(objX, objTopY, 1, 0, mirrorCX, axisY, mirrorR);
+    if (hit1) {
+      ctx.save();
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth   = 2;
+
+      // Incoming: horizontal
+      ctx.beginPath();
+      ctx.moveTo(objX, objTopY);
+      ctx.lineTo(hit1.x, hit1.y);
+      ctx.stroke();
+      arrowHead((objX + hit1.x) / 2, objTopY, 0);
+
+      // Reflected: through focus, going left
+      const rAngle = Math.atan2(axisY - hit1.y, focusX - hit1.x);
+      const rDx = Math.cos(rAngle);
+      const rDy = Math.sin(rAngle);
+      const t_left = (20 - hit1.x) / rDx;
+      const ray1EndX = 20;
+      const ray1EndY = hit1.y + t_left * rDy;
+      ctx.beginPath();
+      ctx.moveTo(hit1.x, hit1.y);
+      ctx.lineTo(ray1EndX, Math.min(ray1EndY, H - 10));
+      ctx.stroke();
+      arrowHead(Math.max((hit1.x + ray1EndX) / 2, 40),
+                (hit1.y + Math.min(ray1EndY, H - 10)) / 2,
+                Math.atan2(Math.min(ray1EndY, H - 10) - hit1.y, ray1EndX - hit1.x));
+
+      // Dashed extension: backward from hit point toward virtual image
+      ctx.setLineDash([5, 5]);
+      ctx.globalAlpha = 0.5;
+      const extEndX = Math.min(imgX, W - 10);
+      const extEndY = hit1.y + (-rDy / -rDx) * (extEndX - hit1.x);
+      ctx.beginPath();
+      ctx.moveTo(hit1.x, hit1.y);
+      ctx.lineTo(extEndX, extEndY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1.0;
+
+      ctx.restore();
+    }
+
+    // Ray 2 (cyan): to vertex, reflects symmetrically
+    ctx.save();
+    ctx.strokeStyle = '#00BFFF';
+    ctx.lineWidth   = 2;
+
+    // Incoming: object top → vertex
+    ctx.beginPath();
+    ctx.moveTo(objX, objTopY);
+    ctx.lineTo(mirrorX, axisY);
+    ctx.stroke();
+    arrowHead((objX + mirrorX) / 2, (objTopY + axisY) / 2,
+              Math.atan2(axisY - objTopY, mirrorX - objX));
+
+    // Reflected: symmetric about axis
+    const dy_in = objTopY - axisY;
+    const dx_in = mirrorX - objX;
+    const reflSlope = -dy_in / dx_in;
+    let ray2EndX = 20;
+    let ray2EndY = axisY + reflSlope * (ray2EndX - mirrorX);
+    if (ray2EndY > H - 20) {
+      ray2EndY = H - 20;
+      ray2EndX = mirrorX + (ray2EndY - axisY) / reflSlope;
+    }
+    ctx.beginPath();
+    ctx.moveTo(mirrorX, axisY);
+    ctx.lineTo(ray2EndX, ray2EndY);
+    ctx.stroke();
+    arrowHead((mirrorX + ray2EndX) / 2, (axisY + ray2EndY) / 2,
+              Math.atan2(ray2EndY - axisY, ray2EndX - mirrorX));
+
+    // Dashed extension: from vertex backward through virtual image
+    ctx.setLineDash([5, 5]);
+    ctx.globalAlpha = 0.5;
+    const extX = Math.min(imgX, W - 10);
+    const extSlope = (imgTopY - axisY) / (imgX - mirrorX);
+    const extY = axisY + extSlope * (extX - mirrorX);
+    ctx.beginPath();
+    ctx.moveTo(mirrorX, axisY);
+    ctx.lineTo(extX, extY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 1.0;
+
+    ctx.restore();
+  }
 }
 
 // ── Labels ───────────────────────────────────────────────────────────
@@ -315,7 +479,9 @@ function drawLabels() {
   const m    = magnification(o);
   const objX = cmToX(o);
   const hObj = H_OBJ_CM * SCALE;
-  const hImg = Math.abs(m) * H_OBJ_CM * SCALE;
+
+  const isVirtual = o < F_CM;
+  const isAtFocus = Math.abs(o - F_CM) < 0.3;
 
   ctx.save();
 
@@ -341,11 +507,15 @@ function drawLabels() {
   ctx.textBaseline = 'bottom';
   ctx.fillText('C', ccX, axisY - 8);
 
-  // ── Object distance label with bracket ─────────────────────────────
-  // Place bracket well below the image cone so it doesn't overlap
-  const bracketY = axisY + Math.max(hImg + 20, 40);
+  // ── Compute image size for bracket placement ───────────────────────
+  let realImgH = 0;
+  if (!isAtFocus && isFinite(m)) {
+    realImgH = Math.abs(m) * H_OBJ_CM * SCALE;
+  }
+  const bracketY = axisY + Math.max(isVirtual ? 30 : realImgH + 20, 40);
 
-  ctx.font      = '16px Arial';
+  // ── Object distance label with bracket ─────────────────────────────
+  ctx.font      = 'bold 15px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#ddd';
@@ -367,7 +537,6 @@ function drawLabels() {
   ctx.moveTo(mirrorX, axisY + 6); ctx.lineTo(mirrorX, bracketY + 8);
   ctx.stroke();
 
-  // Horizontal lines with gap for text
   const tw = ctx.measureText(oLabel).width / 2 + 6;
   ctx.beginPath();
   ctx.moveTo(objX, bracketY + 6); ctx.lineTo(midX - tw, bracketY + 6);
@@ -376,21 +545,28 @@ function drawLabels() {
   ctx.moveTo(midX + tw, bracketY + 6); ctx.lineTo(mirrorX, bracketY + 6);
   ctx.stroke();
 
-  // ── Image distance label ───────────────────────────────────────────
-  if (i > 0 && i < 150) {
-    const imgX   = cmToX(i);
-    const iVal   = Math.round(i * 10) / 10;
-    const iStr   = (iVal % 1 === 0) ? iVal.toFixed(0) : iVal.toFixed(1);
-    const iLabel = 'i = ' + iStr + ' cm';
+  // ── Image info label ───────────────────────────────────────────────
+  ctx.font = '14px Arial';
+  ctx.textBaseline = 'top';
+  ctx.textAlign = 'center';
 
-    ctx.fillStyle    = 'rgba(180,200,255,0.7)';
-    ctx.font         = '14px Arial';
-    ctx.textBaseline = 'top';
-    ctx.textAlign    = 'center';
+  if (isAtFocus) {
+    ctx.fillStyle = 'rgba(255,180,100,0.7)';
+    ctx.fillText('At focus \u2014 no image (rays are parallel)', W / 2, bracketY + 24);
+  } else if (isFinite(i)) {
+    const iVal = Math.round(Math.abs(i) * 10) / 10;
+    const iStr = (iVal % 1 === 0) ? iVal.toFixed(0) : iVal.toFixed(1);
+    const typeStr = isVirtual ? 'virtual' : 'real';
+    const orientStr = isVirtual ? 'upright' : 'inverted';
+    const absM = Math.abs(m);
+    const mVal = Math.round(absM * 100) / 100;
+    const mStr = mVal.toFixed(2);
+    const sizeStr = absM > 1.01 ? 'enlarged' : absM < 0.99 ? 'reduced' : 'same size';
 
-    const iMidX   = Math.min((imgX + mirrorX) / 2, W - 70);
-    const iLabelY = bracketY + 24;
-    ctx.fillText(iLabel, iMidX, iLabelY);
+    const iLabel = 'i = ' + iStr + ' cm  \u00b7  ' + typeStr + ', ' + orientStr + ', ' + sizeStr + '  (|m| = ' + mStr + ')';
+
+    ctx.fillStyle = isVirtual ? 'rgba(180,255,200,0.7)' : 'rgba(180,200,255,0.7)';
+    ctx.fillText(iLabel, W / 2, bracketY + 24);
   }
 
   // ── Drag hint ──────────────────────────────────────────────────────
@@ -398,7 +574,7 @@ function drawLabels() {
   ctx.font      = '13px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('← drag the cone →', objX, axisY - hObj - 10);
+  ctx.fillText('\u2190 drag the cone \u2192', objX, axisY - hObj - 10);
 
   ctx.restore();
 }
@@ -418,23 +594,46 @@ function draw() {
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, W, H);
 
-  const o    = objDist;
-  const i    = imageDistance(o);
-  const m    = magnification(o);
+  const o = objDist;
+  const i = imageDistance(o);
+  const m = magnification(o);
   const hObj = H_OBJ_CM * SCALE;
-  const hImg = Math.abs(m) * H_OBJ_CM * SCALE;
   const objX = cmToX(o);
-  const imgX = cmToX(i);
+
+  const isVirtual = o < F_CM;
+  const isAtFocus = Math.abs(o - F_CM) < 0.3;
 
   drawOpticalAxis();
 
-  // Draw rays + image only when real image forms and fits reasonably
-  if (o > F_CM && i > 0 && i < 150) {
+  // Draw rays (all cases handled inside drawRays)
+  if (o > 1) {
     drawRays();
-    // Cap image cone height so it doesn't go off canvas
-    const maxImgH = H - axisY - 20;
-    const drawImgH = Math.min(hImg, maxImgH);
-    drawConeAt(imgX, axisY, drawImgH, true, 0.75);
+  }
+
+  // Draw image cone
+  if (!isAtFocus && isFinite(m) && Math.abs(m) > 0.01) {
+    const absM = Math.abs(m);
+    const hImg = absM * H_OBJ_CM * SCALE;
+    const maxImgH = Math.min(hImg, H * 0.7);
+
+    if (isVirtual) {
+      // Virtual image: behind mirror, upright, shown with lower alpha
+      const absI = Math.abs(i);
+      const imgX = mirrorX + absI * SCALE;
+      if (imgX < W + 200 && maxImgH < H * 0.9) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(mirrorX + 5, 0, W - mirrorX, H);
+        ctx.clip();
+        drawConeAt(imgX, axisY, maxImgH, false, 0.5);
+        ctx.restore();
+      }
+    } else if (i > 0 && i < 150) {
+      // Real image: in front of mirror, inverted
+      const imgX = cmToX(i);
+      const cappedH = Math.min(maxImgH, H - axisY - 20);
+      drawConeAt(imgX, axisY, cappedH, true, 0.75);
+    }
   }
 
   drawMirror();
@@ -485,9 +684,12 @@ canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, {
 canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, { passive: false });
 canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp();    }, { passive: false });
 
-window.addEventListener('resize', resize);
-resize();
 draw();
+
+// Report height for iframe embedding
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
 </script>
 </body>
 </html>
