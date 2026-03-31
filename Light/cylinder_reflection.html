@@ -95,6 +95,7 @@
       box-shadow: 0 0 4px rgba(74,144,217,0.5);
     }
     input[type="range"]::-webkit-slider-thumb:hover { background: #60aaff; }
+    input[type="range"]:disabled { opacity: 0.35; cursor: not-allowed; }
 
     /* Toggle switch */
     .toggle-row { display: flex; align-items: center; gap: 10px; }
@@ -448,7 +449,12 @@
         <div class="slider-row">
           <div class="slider-label">
             <span>Observer Distance <em>E</em></span>
-            <span class="val" id="e-val">20.0 cm</span>
+            <span style="display:flex;align-items:center;gap:8px;">
+              <label for="observer-inf-toggle" style="display:flex;align-items:center;gap:4px;font-size:12px;color:var(--text-muted);cursor:pointer;user-select:none;">
+                <input type="checkbox" id="observer-inf-toggle" style="cursor:pointer;"> ∞
+              </label>
+              <span class="val" id="e-val">20.0 cm</span>
+            </span>
           </div>
           <input type="range" id="observer-slider" min="5" max="60" step="0.5" value="20.0">
         </div>
@@ -571,6 +577,9 @@ let bufferMm = 0;
 // Hide the semi-transparent directly-visible region
 let hideDirectView = false;
 
+// Observer at infinity
+let observerAtInfinity = false;
+
 // Canvas drag state
 let isDraggingCanvas = false;
 let dragLastX = 0, dragLastY = 0;
@@ -605,7 +614,8 @@ const pasteBtn            = document.getElementById('paste-btn');
 const showGridToggle      = document.getElementById('show-grid-toggle');
 const bufferSlider        = document.getElementById('buffer-slider');
 const bufferVal           = document.getElementById('buffer-val');
-const hideDirectViewToggle = document.getElementById('hide-direct-view-toggle');
+const hideDirectViewToggle  = document.getElementById('hide-direct-view-toggle');
+const observerInfToggle     = document.getElementById('observer-inf-toggle');
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Image loading
@@ -700,12 +710,24 @@ radiusSlider.addEventListener('input', () => {
   rVal.textContent = parseFloat(radiusSlider.value).toFixed(1) + ' cm';
 });
 observerSlider.addEventListener('input', () => {
-  eVal.textContent = parseFloat(observerSlider.value).toFixed(1) + ' cm';
+  if (!observerAtInfinity)
+    eVal.textContent = parseFloat(observerSlider.value).toFixed(1) + ' cm';
+});
+
+observerInfToggle.addEventListener('change', () => {
+  observerAtInfinity = observerInfToggle.checked;
+  observerSlider.disabled = observerAtInfinity;
+  eVal.textContent = observerAtInfinity ? '∞' : parseFloat(observerSlider.value).toFixed(1) + ' cm';
+  scheduleRender();
 });
 
 // Use 'change' or debounced inputs for full redraw to keep UI responsive
 radiusSlider.addEventListener('change', scheduleRender);
 observerSlider.addEventListener('change', scheduleRender);
+
+function getE() {
+  return observerAtInfinity ? 1e5 : parseFloat(observerSlider.value);
+}
 
 function scheduleRender() {
   if (!sourceImage && !showGrid) return;
@@ -1204,7 +1226,7 @@ function repaintFromCache() {
   }
   const cx = warpSizePx / 2, cy = warpSizePx / 2;
   const R  = parseFloat(radiusSlider.value);
-  const E  = parseFloat(observerSlider.value);
+  const E  = getE();
   drawCylinderRing(ctx, cx, cy, R);
   if (showSource) drawSourceOverlay(ctx, cx, cy, R, E, warpSizePx);
   if (showGrid)   drawGrid(ctx, cx, cy, R, E);
@@ -1215,7 +1237,7 @@ function repaintFromCache() {
 // ─────────────────────────────────────────────────────────────────────────────
 function renderGridOnly() {
   const R = parseFloat(radiusSlider.value);
-  const E = parseFloat(observerSlider.value);
+  const E = getE();
   const halfCm = Math.max(5 * R + 4, 16);
   const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
   outputCanvas.width  = sizePx;
@@ -1231,7 +1253,7 @@ function renderGridOnly() {
   outputCanvas.style.display = 'block';
   pdfBtn.disabled = false;
   if (!outputCanvas.dataset.zoomed) { fitZoom(); outputCanvas.dataset.zoomed = true; }
-  canvasInfo.textContent = `Grid preview · R=${R} cm · E=${E} cm`;
+  canvasInfo.textContent = `Grid preview · R=${R} cm · E=${observerAtInfinity ? '∞' : E + ' cm'}`;
 }
 
 function doRender() {
@@ -1241,7 +1263,7 @@ function doRender() {
   }
 
   const R = parseFloat(radiusSlider.value);
-  const E = parseFloat(observerSlider.value);
+  const E = getE();
 
   // Downscale source for pixel-level work
   const MAX_SRC = 600;
@@ -1290,8 +1312,9 @@ function doRender() {
 
   const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
   const cmSize  = (sizePx / PX_PER_CM).toFixed(1);
+  const eLabel = observerAtInfinity ? '∞' : `${E} cm`;
   canvasInfo.textContent =
-    `${sizePx}×${sizePx} px · ${cmSize}×${cmSize} cm · R=${R} cm · E=${E} cm · ${elapsed}s`;
+    `${sizePx}×${sizePx} px · ${cmSize}×${cmSize} cm · R=${R} cm · E=${eLabel} · ${elapsed}s`;
 
   placeholder.style.display = 'none';
   outputCanvas.style.display = 'block';
@@ -1619,7 +1642,7 @@ async function processGifFrames() {
   progressFill.style.width         = '0%';
 
   const R         = parseFloat(radiusSlider.value);
-  const E         = parseFloat(observerSlider.value);
+  const E         = getE();
   const bufferCm  = bufferMm / 10;
   const scalePct  = parseFloat(gifScaleSlider.value) / 100;
   const halfCm    = Math.max(5 * R + 4, 16);
