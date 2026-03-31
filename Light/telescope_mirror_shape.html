@@ -56,7 +56,7 @@ button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
 </style>
 </head>
 <body>
-<p class="instructions">Drag left/right to tilt the telescope. Switch mirror types to compare how they focus starlight.</p>
+<p class="instructions">Drag to tilt the telescope. Scroll to zoom. Middle-drag or Ctrl+drag to pan.</p>
 <canvas id="canvas" width="600" height="600"></canvas>
 <div class="controls">
   <button class="ray-btn" id="addRay">Add Ray</button>
@@ -68,6 +68,7 @@ button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
   <label style="color:#aaa;font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;">
     <input type="checkbox" id="hideIncident"> Hide incident rays
   </label>
+  <button class="clear-btn" id="resetView">Reset View</button>
 </div>
 
 <script>
@@ -81,11 +82,9 @@ const tubeWidth = tubeLength / 2;
 const halfW = tubeWidth / 2;
 
 // Vertex radius of curvature — all mirrors share the same Rc
-// so they have identical paraxial focal length (Rc/2).
-// Rc must be > halfW for the spherical case; ratio preserved from smaller version.
 const Rc = 135;
 
-// Conic constants: K=0 sphere, K=-1 parabola, -1<K<0 ellipse, K<-1 hyperbola
+// Conic constants
 const conicK = {
   spherical: 0,
   parabolic: -1,
@@ -93,69 +92,88 @@ const conicK = {
   hyperbolic: -2
 };
 
-// Telescope base position
+// Telescope base position (in world coords)
 const baseX = W / 2;
 const baseY = H - 80;
 
-// Fixed incoming ray angle: 20 degrees from vertical, tilted to the right.
-// Star is placed along this direction, far from the telescope.
+// Fixed incoming ray angle: 20 degrees from vertical
 const rayAngle = 20 * Math.PI / 180;
-// Ray direction in canvas coords (from star toward telescope: down-left)
 const inDirWx = -Math.sin(rayAngle);
 const inDirWy = Math.cos(rayAngle);
-// Perpendicular to ray direction in world space (points right when facing star)
-const perpWx = inDirWy;   // cos(rayAngle)
-const perpWy = -inDirWx;  // sin(rayAngle)
-// Star position: far along the incoming direction
+const perpWx = inDirWy;
+const perpWy = -inDirWx;
 const starX = baseX + 520 * Math.sin(rayAngle);
 const starY = baseY - 520 * Math.cos(rayAngle);
 
+// View transform state (zoom & pan)
+let viewZoom = 1;
+let viewPanX = 0; // pan offset in canvas pixels
+let viewPanY = 0;
+
 // State
-let telescopeAngle = -rayAngle; // start aimed at the star
+let telescopeAngle = -rayAngle;
 let mirrorType = 'parabolic';
 let rays = [];
 let dragging = false;
+let dragMode = 'none'; // 'tilt' or 'pan'
 let dragStartX = 0;
+let dragStartY = 0;
 let dragStartAngle = 0;
-let nextRayOffset = 0; // tracks which offset to assign next
+let dragStartPanX = 0;
+let dragStartPanY = 0;
+let nextRayOffset = 0;
 let hideIncident = false;
 
-// Predefined ray offsets so they spread evenly across the aperture
+// Touch state for pinch-to-zoom
+let lastPinchDist = 0;
+let lastPinchMidX = 0;
+let lastPinchMidY = 0;
+
 const defaultOffsets = [-0.8, -0.5, -0.2, 0.1, 0.4, 0.7, -0.65, -0.35, 0.0, 0.25, 0.55, 0.85];
 
-// Standard conic sag formula:
-//   sag(r) = r² / ( Rc × (1 + √(1 − (1+K) r²/Rc²)) )
-// All four mirror types share the same vertex radius Rc, so the
-// paraxial focal length (Rc/2) is identical — only the conic constant K differs.
 function mirrorSag(x, type) {
   const r = Math.abs(x);
   const K = conicK[type];
-
-  // Parabolic special case (K = −1): the general formula is 0/0, reduces to r²/(2Rc)
   if (Math.abs(1 + K) < 1e-10) {
     return (r * r) / (2 * Rc);
   }
-
   const disc = 1 - (1 + K) * r * r / (Rc * Rc);
-  if (disc < 0) return (r * r) / (2 * Rc); // beyond conic range — fall back
-
+  if (disc < 0) return (r * r) / (2 * Rc);
   return (r * r) / (Rc * (1 + Math.sqrt(disc)));
 }
 
-function drawStar(x, y, size) {
+// Convert world coordinates to canvas (screen) coordinates
+function worldToScreen(wx, wy) {
+  return {
+    x: (wx - W / 2) * viewZoom + W / 2 + viewPanX,
+    y: (wy - H / 2) * viewZoom + H / 2 + viewPanY
+  };
+}
+
+// Convert canvas (screen) coordinates to world coordinates
+function screenToWorld(sx, sy) {
+  return {
+    x: (sx - W / 2 - viewPanX) / viewZoom + W / 2,
+    y: (sy - H / 2 - viewPanY) / viewZoom + H / 2
+  };
+}
+
+function drawStar(wx, wy, size) {
+  const s = worldToScreen(wx, wy);
+  const scaledSize = size * viewZoom;
   ctx.save();
   ctx.fillStyle = '#FFD700';
   ctx.shadowColor = '#FFD700';
   ctx.shadowBlur = 15;
   const spikes = 4;
-  const outerR = size;
-  const innerR = size * 0.4;
+  const outerR = scaledSize;
+  const innerR = scaledSize * 0.4;
   ctx.beginPath();
   for (let i = 0; i < spikes * 2; i++) {
     const r = i % 2 === 0 ? outerR : innerR;
     const angle = (i * Math.PI / spikes) - Math.PI / 2;
-    const px = x + r * Math.cos(angle);
-    const py = y + r * Math.sin(angle);
+    const px = s.x + r * Math.cos(angle);
+    const py = s.y + r * Math.sin(angle);
     if (i === 0) ctx.moveTo(px, py);
     else ctx.lineTo(px, py);
   }
@@ -172,7 +190,7 @@ function draw() {
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, W, H);
 
-  // Background stars
+  // Background stars (fixed to screen, not world)
   ctx.fillStyle = 'rgba(255,255,255,0.3)';
   const seed = [23,67,134,198,256,312,389,421,478,534,45,89,167,234,290,356,412,467,523,578];
   for (let i = 0; i < 20; i++) {
@@ -187,10 +205,8 @@ function draw() {
   const cosA = Math.cos(telescopeAngle);
   const sinA = Math.sin(telescopeAngle);
 
-  // Transform from telescope coords to canvas
-  // u: along tube axis (0 = mirror vertex, positive toward opening)
-  // v: perpendicular
-  function toCanvas(u, v) {
+  // Transform from telescope coords to world, then to screen
+  function toWorld(u, v) {
     const ax = -sinA, ay = -cosA;
     const px = cosA, py = -sinA;
     return {
@@ -199,14 +215,19 @@ function draw() {
     };
   }
 
+  function toScreen(u, v) {
+    const w = toWorld(u, v);
+    return worldToScreen(w.x, w.y);
+  }
+
   // Draw tube walls
   ctx.strokeStyle = '#888';
-  ctx.lineWidth = 3;
+  ctx.lineWidth = 3 * viewZoom;
 
-  const topLeft = toCanvas(tubeLength, -halfW);
-  const botLeft = toCanvas(0, -halfW);
-  const topRight = toCanvas(tubeLength, halfW);
-  const botRight = toCanvas(0, halfW);
+  const topLeft = toScreen(tubeLength, -halfW);
+  const botLeft = toScreen(0, -halfW);
+  const topRight = toScreen(tubeLength, halfW);
+  const botRight = toScreen(0, halfW);
 
   ctx.beginPath();
   ctx.moveTo(topLeft.x, topLeft.y);
@@ -218,18 +239,15 @@ function draw() {
   ctx.lineTo(botRight.x, botRight.y);
   ctx.stroke();
 
-  // Draw mirror — concave as seen from inside the tube
-  // Sag is positive, so the mirror surface is at u = +sag (bulging INTO the tube)
-  // The vertex (center) is at u = 0, edges curve forward (toward the opening)
+  // Draw mirror
   ctx.strokeStyle = '#3498db';
-  ctx.lineWidth = 4;
+  ctx.lineWidth = 4 * viewZoom;
   ctx.beginPath();
   const mirrorSteps = 60;
   for (let i = 0; i <= mirrorSteps; i++) {
     const v = -halfW + (i / mirrorSteps) * tubeWidth;
     const sag = mirrorSag(v, mirrorType);
-    // Surface at u = +sag means edges are farther from the back wall = concave dish
-    const p = toCanvas(sag, v);
+    const p = toScreen(sag, v);
     if (i === 0) ctx.moveTo(p.x, p.y);
     else ctx.lineTo(p.x, p.y);
   }
@@ -237,24 +255,24 @@ function draw() {
 
   // Mirror backing
   ctx.strokeStyle = '#2a6fa8';
-  ctx.lineWidth = 2;
+  ctx.lineWidth = 2 * viewZoom;
   const backOffset = 4;
   ctx.beginPath();
   for (let i = 0; i <= mirrorSteps; i++) {
     const v = -halfW + (i / mirrorSteps) * tubeWidth;
     const sag = mirrorSag(v, mirrorType);
-    const p = toCanvas(sag - backOffset, v);
+    const p = toScreen(sag - backOffset, v);
     if (i === 0) ctx.moveTo(p.x, p.y);
     else ctx.lineTo(p.x, p.y);
   }
   ctx.stroke();
 
-  // Draw optical axis (dashed line along tube center)
+  // Draw optical axis
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
-  ctx.lineWidth = 1;
-  ctx.setLineDash([5, 5]);
-  const axisStart = toCanvas(-20, 0);
-  const axisEnd = toCanvas(tubeLength + 40, 0);
+  ctx.lineWidth = 1 * viewZoom;
+  ctx.setLineDash([5 * viewZoom, 5 * viewZoom]);
+  const axisStart = toScreen(-20, 0);
+  const axisEnd = toScreen(tubeLength + 40, 0);
   ctx.beginPath();
   ctx.moveTo(axisStart.x, axisStart.y);
   ctx.lineTo(axisEnd.x, axisEnd.y);
@@ -262,14 +280,13 @@ function draw() {
   ctx.setLineDash([]);
 
   // Axis label
-  const axisLabelP = toCanvas(tubeLength + 45, 8);
+  const axisLabelP = toScreen(tubeLength + 45, 8);
   ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.font = '11px Arial';
+  ctx.font = (11 * Math.min(viewZoom, 2)) + 'px Arial';
   ctx.textAlign = 'left';
   ctx.fillText('optical axis', axisLabelP.x, axisLabelP.y);
 
   // --- Rays ---
-  // Rays are fixed in world space. Project incoming direction into telescope coords.
   const ax = -sinA, ay = -cosA;
   const px = cosA, py = -sinA;
   const dirU = inDirWx * ax + inDirWy * ay;
@@ -279,27 +296,19 @@ function draw() {
     const ray = rays[ri];
     const d_world = ray.offset * halfW;
 
-    // World-space reference point on this ray (at base height)
     const refWx = baseX + d_world * perpWx;
     const refWy = baseY + d_world * perpWy;
 
-    // Convert to telescope coords
     const rdx = refWx - baseX, rdy = refWy - baseY;
     const u_ref = rdx * ax + rdy * ay;
     const v_ref = rdx * px + rdy * py;
 
-    // Determine if the ray enters the tube through the opening using slab test.
-    // Tube AABB in telescope coords: 0 <= u <= tubeLength, -halfW <= v <= halfW.
-    // The opening face is at u = tubeLength. Walls are at v = ±halfW.
-    // The ray enters the tube only if its first intersection with the AABB
-    // is on the opening face (u = tubeLength), not on a wall.
     let entersAperture = false;
     let v_ap = 0;
     let blockedByWall = false;
     let wallHitU = 0, wallHitV = 0;
 
     if (Math.abs(dirU) > 0.0001) {
-      // Slab intervals for u and v
       const t1u = -u_ref / dirU;
       const t2u = (tubeLength - u_ref) / dirU;
       const t_enter_u = Math.min(t1u, t2u);
@@ -312,7 +321,6 @@ function draw() {
         t_enter_v = Math.min(t1v, t2v);
         t_exit_v = Math.max(t1v, t2v);
       } else if (v_ref < -halfW || v_ref > halfW) {
-        // Ray parallel to walls and outside — misses tube
         t_enter_v = Infinity;
         t_exit_v = -Infinity;
       }
@@ -321,14 +329,11 @@ function draw() {
       const t_exit_box = Math.min(t_exit_u, t_exit_v);
 
       if (t_entry < t_exit_box) {
-        // Ray intersects tube AABB. Entry is through the opening only if
-        // the u-coordinate at entry equals tubeLength (not a wall or back).
         const u_at_entry = u_ref + dirU * t_entry;
         if (Math.abs(u_at_entry - tubeLength) < 1) {
           entersAperture = true;
           v_ap = v_ref + dirV * t_entry;
         } else {
-          // Ray is blocked by a tube wall — save the hit point for drawing
           blockedByWall = true;
           wallHitU = u_at_entry;
           wallHitV = v_ref + dirV * t_entry;
@@ -340,8 +345,6 @@ function draw() {
     let u_end = 0, v_end = 0;
 
     if (entersAperture) {
-      // Trace inside tube from opening: u(t)=tubeLength+dirU*t, v(t)=v_ap+dirV*t
-      // Find mirror hit
       let tLow = 0;
       let tHigh = Math.abs(tubeLength / dirU) * 3;
       for (let iter = 0; iter < 50; iter++) {
@@ -353,7 +356,6 @@ function draw() {
       }
       let t_mirror = (tLow + tHigh) / 2;
 
-      // Check tube wall hits (ray might hit wall before mirror)
       let t_wall = Infinity;
       if (Math.abs(dirV) > 0.0001) {
         const tL = (-halfW - v_ap) / dirV;
@@ -363,7 +365,6 @@ function draw() {
       }
 
       if (t_wall < t_mirror) {
-        // Hits tube wall before mirror
         u_end = tubeLength + dirU * t_wall;
         v_end = v_ap + dirV * t_wall;
       } else {
@@ -377,39 +378,32 @@ function draw() {
       }
     }
 
-    // Draw incoming ray in world coords (fixed position regardless of tilt)
+    // Draw incoming ray
     if (!hideIncident) {
-      const startWx = refWx - 600 * inDirWx;
-      const startWy = refWy - 600 * inDirWy;
+      const startW = { x: refWx - 600 * inDirWx, y: refWy - 600 * inDirWy };
+      const startS = worldToScreen(startW.x, startW.y);
 
-      let endWx, endWy;
+      let endS;
       if (entersAperture) {
-        // Stop at mirror hit or tube wall
-        const endP = toCanvas(u_end, v_end);
-        endWx = endP.x;
-        endWy = endP.y;
+        endS = toScreen(u_end, v_end);
       } else if (blockedByWall) {
-        // Stop at tube wall where the ray is blocked
-        const endP = toCanvas(wallHitU, wallHitV);
-        endWx = endP.x;
-        endWy = endP.y;
+        endS = toScreen(wallHitU, wallHitV);
       } else {
-        // Passes by the telescope — draw through
-        endWx = refWx + 600 * inDirWx;
-        endWy = refWy + 600 * inDirWy;
+        const endW = { x: refWx + 600 * inDirWx, y: refWy + 600 * inDirWy };
+        endS = worldToScreen(endW.x, endW.y);
       }
 
       ctx.strokeStyle = 'rgba(231, 76, 60, 0.85)';
-      ctx.lineWidth = 1.5;
+      ctx.lineWidth = 1.5 * viewZoom;
       ctx.beginPath();
-      ctx.moveTo(startWx, startWy);
-      ctx.lineTo(endWx, endWy);
+      ctx.moveTo(startS.x, startS.y);
+      ctx.lineTo(endS.x, endS.y);
       ctx.stroke();
     }
 
     if (!hitsMirror) continue;
 
-    const hitP = toCanvas(u_end, v_end);
+    const hitS = toScreen(u_end, v_end);
 
     // Reflect off mirror
     const dv = 0.05;
@@ -428,7 +422,6 @@ function draw() {
     const ru = du_n - 2 * dot * nu;
     const rv = dv_n - 2 * dot * nv;
 
-    // Trace reflected ray — clip at tube walls and opening
     let s_end = tubeLength * 2;
     if (Math.abs(rv) > 0.0001) {
       const s_left = (-halfW - v_end) / rv;
@@ -443,27 +436,35 @@ function draw() {
 
     const refEndU = u_end + ru * s_end;
     const refEndV = v_end + rv * s_end;
-    const endP = toCanvas(refEndU, refEndV);
+    const endS = toScreen(refEndU, refEndV);
 
     ctx.strokeStyle = 'rgba(231, 76, 60, 0.7)';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 1.5 * viewZoom;
     ctx.beginPath();
-    ctx.moveTo(hitP.x, hitP.y);
-    ctx.lineTo(endP.x, endP.y);
+    ctx.moveTo(hitS.x, hitS.y);
+    ctx.lineTo(endS.x, endS.y);
     ctx.stroke();
 
     // Hit point dot
     ctx.fillStyle = 'rgba(231, 76, 60, 0.9)';
     ctx.beginPath();
-    ctx.arc(hitP.x, hitP.y, 2, 0, Math.PI * 2);
+    ctx.arc(hitS.x, hitS.y, 2 * viewZoom, 0, Math.PI * 2);
     ctx.fill();
   }
 
-  // Mirror type label
+  // Mirror type label (fixed to screen, not world)
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 16px Arial';
   ctx.textAlign = 'center';
   ctx.fillText(mirrorType.charAt(0).toUpperCase() + mirrorType.slice(1) + ' Mirror', W / 2, H - 30);
+
+  // Zoom indicator
+  if (Math.abs(viewZoom - 1) > 0.01 || Math.abs(viewPanX) > 1 || Math.abs(viewPanY) > 1) {
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(viewZoom.toFixed(1) + 'x', 10, 20);
+  }
 }
 
 // --- Event handling ---
@@ -475,37 +476,149 @@ function getPos(e) {
 
 function onDown(e) {
   e.preventDefault();
+  // Handle single-touch or mouse
+  if (e.touches && e.touches.length === 2) return; // let pinch handler deal with it
+
   const pos = getPos(e);
   dragging = true;
   dragStartX = pos.x;
-  dragStartAngle = telescopeAngle;
+  dragStartY = pos.y;
+
+  // Ctrl+click or middle mouse button = pan
+  const isMiddle = e.button === 1;
+  const isCtrl = e.ctrlKey || e.metaKey;
+  if (isMiddle || isCtrl) {
+    dragMode = 'pan';
+    dragStartPanX = viewPanX;
+    dragStartPanY = viewPanY;
+  } else {
+    dragMode = 'tilt';
+    dragStartAngle = telescopeAngle;
+  }
   canvas.classList.add('grabbing');
 }
 
 function onMove(e) {
   e.preventDefault();
   if (!dragging) return;
+  if (e.touches && e.touches.length === 2) return;
+
   const pos = getPos(e);
   const dx = pos.x - dragStartX;
-  telescopeAngle = dragStartAngle - dx * 0.003;
-  telescopeAngle = Math.max(-0.5, Math.min(0.5, telescopeAngle));
+  const dy = pos.y - dragStartY;
+
+  if (dragMode === 'pan') {
+    viewPanX = dragStartPanX + dx;
+    viewPanY = dragStartPanY + dy;
+  } else {
+    telescopeAngle = dragStartAngle - dx * 0.003;
+    telescopeAngle = Math.max(-0.5, Math.min(0.5, telescopeAngle));
+  }
   draw();
 }
 
 function onUp() {
   dragging = false;
+  dragMode = 'none';
   canvas.classList.remove('grabbing');
 }
 
+// Mouse events
 canvas.addEventListener('mousedown', onDown);
 canvas.addEventListener('mousemove', onMove);
 canvas.addEventListener('mouseup', onUp);
 canvas.addEventListener('mouseleave', onUp);
-canvas.addEventListener('touchstart', onDown, { passive: false });
-canvas.addEventListener('touchmove', onMove, { passive: false });
-canvas.addEventListener('touchend', onUp);
 
-// Add Ray button: adds one ray each click
+// Prevent context menu on middle click
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Scroll to zoom
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  const pos = getPos(e);
+
+  // World coords under cursor before zoom
+  const worldBefore = screenToWorld(pos.x, pos.y);
+
+  // Adjust zoom
+  const zoomFactor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
+  viewZoom *= zoomFactor;
+  viewZoom = Math.max(0.3, Math.min(10, viewZoom));
+
+  // World coords under cursor after zoom (with old pan)
+  const screenAfter = worldToScreen(worldBefore.x, worldBefore.y);
+
+  // Adjust pan so the point under cursor stays fixed
+  viewPanX += pos.x - screenAfter.x;
+  viewPanY += pos.y - screenAfter.y;
+
+  draw();
+}, { passive: false });
+
+// Touch events
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    // Start pinch
+    dragging = false;
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const rect = canvas.getBoundingClientRect();
+    const x0 = t0.clientX - rect.left, y0 = t0.clientY - rect.top;
+    const x1 = t1.clientX - rect.left, y1 = t1.clientY - rect.top;
+    lastPinchDist = Math.hypot(x1 - x0, y1 - y0);
+    lastPinchMidX = (x0 + x1) / 2;
+    lastPinchMidY = (y0 + y1) / 2;
+    dragStartPanX = viewPanX;
+    dragStartPanY = viewPanY;
+    dragMode = 'pinch';
+  } else if (e.touches.length === 1) {
+    onDown(e);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (e.touches.length === 2 && dragMode === 'pinch') {
+    const t0 = e.touches[0], t1 = e.touches[1];
+    const rect = canvas.getBoundingClientRect();
+    const x0 = t0.clientX - rect.left, y0 = t0.clientY - rect.top;
+    const x1 = t1.clientX - rect.left, y1 = t1.clientY - rect.top;
+    const dist = Math.hypot(x1 - x0, y1 - y0);
+    const midX = (x0 + x1) / 2;
+    const midY = (y0 + y1) / 2;
+
+    // Zoom around pinch midpoint
+    const worldBefore = screenToWorld(midX, midY);
+    const zoomFactor = dist / lastPinchDist;
+    viewZoom *= zoomFactor;
+    viewZoom = Math.max(0.3, Math.min(10, viewZoom));
+    const screenAfter = worldToScreen(worldBefore.x, worldBefore.y);
+    viewPanX += midX - screenAfter.x;
+    viewPanY += midY - screenAfter.y;
+
+    // Also pan with the midpoint movement
+    viewPanX += midX - lastPinchMidX;
+    viewPanY += midY - lastPinchMidY;
+
+    lastPinchDist = dist;
+    lastPinchMidX = midX;
+    lastPinchMidY = midY;
+    draw();
+  } else if (e.touches.length === 1) {
+    onMove(e);
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  if (e.touches.length < 2) {
+    dragMode = 'none';
+  }
+  if (e.touches.length === 0) {
+    onUp();
+  }
+});
+
+// Add Ray button
 document.getElementById('addRay').addEventListener('click', () => {
   const offset = defaultOffsets[nextRayOffset % defaultOffsets.length];
   nextRayOffset++;
@@ -516,6 +629,14 @@ document.getElementById('addRay').addEventListener('click', () => {
 document.getElementById('clearRays').addEventListener('click', () => {
   rays = [];
   nextRayOffset = 0;
+  draw();
+});
+
+// Reset View button
+document.getElementById('resetView').addEventListener('click', () => {
+  viewZoom = 1;
+  viewPanX = 0;
+  viewPanY = 0;
   draw();
 });
 
@@ -542,7 +663,7 @@ document.getElementById('hideIncident').addEventListener('change', (e) => {
   draw();
 });
 
-// Start with rays so the focusing pattern is immediately visible
+// Start with rays
 for (let i = 0; i < 8; i++) {
   rays.push({ offset: defaultOffsets[i] });
   nextRayOffset++;
