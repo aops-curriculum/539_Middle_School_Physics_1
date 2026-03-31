@@ -36,7 +36,7 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 
 const W = 600;
-const H = 480;
+const H = 360;
 canvas.width = W;
 canvas.height = H;
 
@@ -53,8 +53,9 @@ let dragStartMouseX = 0;
 let dragStartObjDist = 0;
 
 // ── Layout ───────────────────────────────────────────────────────────
-const SCALE   = (W * 0.65) / MAX_O;
-const mirrorX = W - 50;
+const S = 0.75;             // global scale factor
+const SCALE   = (W * 0.65) / MAX_O * S;
+const mirrorX = W - 150;    // shifted 100px left from original W-50
 const axisY   = H * 0.45;
 
 // ── Optics ───────────────────────────────────────────────────────────
@@ -73,7 +74,7 @@ function cmToX(d) { return mirrorX - d * SCALE; }
 
 // ── Drawing helpers ──────────────────────────────────────────────────
 function arrowHead(x, y, angle) {
-  const L = 12, A = Math.PI / 6;
+  const L = 9, A = Math.PI / 6;
   ctx.beginPath();
   ctx.moveTo(x, y);
   ctx.lineTo(x - L * Math.cos(angle - A), y - L * Math.sin(angle - A));
@@ -86,7 +87,7 @@ function drawOpticalAxis() {
   ctx.save();
   ctx.strokeStyle = 'rgba(180,180,160,0.35)';
   ctx.lineWidth   = 1.5;
-  ctx.setLineDash([8, 6]);
+  ctx.setLineDash([6, 5]);
   ctx.beginPath();
   ctx.moveTo(0, axisY);
   ctx.lineTo(W, axisY);
@@ -107,17 +108,17 @@ function drawMirror() {
   ctx.save();
   ctx.beginPath();
   ctx.arc(mirrorCX, axisY, mirrorR, -halfAngle, halfAngle);
-  const grd = ctx.createLinearGradient(mirrorX - 6, 0, mirrorX + 6, 0);
+  const grd = ctx.createLinearGradient(mirrorX - 5, 0, mirrorX + 5, 0);
   grd.addColorStop(0, '#888');
   grd.addColorStop(0.4, '#fff');
   grd.addColorStop(0.7, '#ccc');
   grd.addColorStop(1, '#666');
   ctx.strokeStyle = grd;
-  ctx.lineWidth   = 5;
+  ctx.lineWidth   = 4;
   ctx.stroke();
 
   // Hatching on back
-  const N = 16;
+  const N = 12;
   ctx.strokeStyle = '#556';
   ctx.lineWidth   = 1;
   for (let k = 0; k <= N; k++) {
@@ -126,7 +127,7 @@ function drawMirror() {
     const sy = axisY    + mirrorR * Math.sin(a);
     ctx.beginPath();
     ctx.moveTo(sx, sy);
-    ctx.lineTo(sx + Math.cos(a) * 8, sy + Math.sin(a) * 8);
+    ctx.lineTo(sx + Math.cos(a) * 6, sy + Math.sin(a) * 6);
     ctx.stroke();
   }
   ctx.restore();
@@ -155,7 +156,7 @@ function drawConeAt(tipX, tipY, h, inverted, alpha) {
   ctx.stroke();
 
   // Waffle lines
-  if (h > 28) {
+  if (h > 21) {
     ctx.strokeStyle = 'rgba(120,60,10,0.35)';
     ctx.lineWidth   = 0.7;
     for (let j = 1; j < 4; j++) {
@@ -191,7 +192,7 @@ function drawConeAt(tipX, tipY, h, inverted, alpha) {
   ctx.stroke();
 
   // Highlight on top scoop
-  if (h > 25) {
+  if (h > 19) {
     ctx.fillStyle = 'rgba(255,255,255,0.22)';
     ctx.beginPath();
     ctx.arc(tipX - s2R * 0.38, s2Y - dir * s2R * 0.38, s2R * 0.36, 0, Math.PI * 2);
@@ -199,7 +200,7 @@ function drawConeAt(tipX, tipY, h, inverted, alpha) {
   }
 
   // Cherry
-  const cR = Math.max(2.5, h * 0.07);
+  const cR = Math.max(2, h * 0.07);
   const cY = tipY + dir * h;
   ctx.fillStyle   = '#CC0022';
   ctx.strokeStyle = '#880011';
@@ -210,9 +211,9 @@ function drawConeAt(tipX, tipY, h, inverted, alpha) {
   ctx.stroke();
 
   // Cherry stem
-  if (h > 20) {
+  if (h > 15) {
     ctx.strokeStyle = '#228833';
-    ctx.lineWidth   = 1.2;
+    ctx.lineWidth   = 1;
     ctx.beginPath();
     ctx.moveTo(tipX, cY - dir * cR);
     ctx.quadraticCurveTo(tipX + cR * 2, cY - dir * cR * 3, tipX + cR * 1.3, cY - dir * cR * 5);
@@ -269,7 +270,7 @@ function drawRays() {
     if (hit1) {
       ctx.save();
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth   = 2;
+      ctx.lineWidth   = 1.5;
 
       // Incoming
       ctx.beginPath();
@@ -280,12 +281,12 @@ function drawRays() {
                 Math.atan2(hit1.y - objTopY, hit1.x - objX));
 
       // Reflected horizontally
-      const ray1EndX = Math.max(imgX - 30, 20);
+      const ray1EndX = Math.max(imgX - 22, 15);
       ctx.beginPath();
       ctx.moveTo(hit1.x, hit1.y);
       ctx.lineTo(ray1EndX, hit1.y);
       ctx.stroke();
-      arrowHead(Math.min(Math.max((hit1.x + ray1EndX) / 2, 30), hit1.x - 30),
+      arrowHead(Math.min(Math.max((hit1.x + ray1EndX) / 2, 22), hit1.x - 22),
                 hit1.y, Math.PI);
       ctx.restore();
     }
@@ -293,7 +294,7 @@ function drawRays() {
     // Ray 2 (cyan): to vertex, reflects symmetrically
     ctx.save();
     ctx.strokeStyle = '#00BFFF';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = 1.5;
 
     ctx.beginPath();
     ctx.moveTo(objX, objTopY);
@@ -303,18 +304,18 @@ function drawRays() {
               Math.atan2(axisY - objTopY, mirrorX - objX));
 
     const slope2 = (imgTopY - axisY) / (imgX - mirrorX);
-    let ray2EndX = Math.max(imgX - 30, 20);
+    let ray2EndX = Math.max(imgX - 22, 15);
     let ray2EndY = axisY + slope2 * (ray2EndX - mirrorX);
-    if (ray2EndY > H - 20) {
-      ray2EndY = H - 20;
+    if (ray2EndY > H - 15) {
+      ray2EndY = H - 15;
       ray2EndX = mirrorX + (ray2EndY - axisY) / slope2;
     }
     ctx.beginPath();
     ctx.moveTo(mirrorX, axisY);
     ctx.lineTo(ray2EndX, ray2EndY);
     ctx.stroke();
-    arrowHead(Math.min(Math.max((mirrorX + ray2EndX) / 2, 30), mirrorX - 40),
-              axisY + slope2 * (Math.min(Math.max((mirrorX + ray2EndX) / 2, 30), mirrorX - 40) - mirrorX),
+    arrowHead(Math.min(Math.max((mirrorX + ray2EndX) / 2, 22), mirrorX - 30),
+              axisY + slope2 * (Math.min(Math.max((mirrorX + ray2EndX) / 2, 22), mirrorX - 30) - mirrorX),
               Math.atan2(ray2EndY - axisY, ray2EndX - mirrorX));
     ctx.restore();
   }
@@ -326,7 +327,7 @@ function drawRays() {
     if (hit1) {
       ctx.save();
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth   = 2;
+      ctx.lineWidth   = 1.5;
       ctx.beginPath();
       ctx.moveTo(objX, objTopY);
       ctx.lineTo(hit1.x, hit1.y);
@@ -334,7 +335,7 @@ function drawRays() {
       arrowHead((objX + hit1.x) / 2, objTopY, 0);
 
       const rAngle = Math.atan2(axisY - hit1.y, focusX - hit1.x);
-      const ray1EndX = 20;
+      const ray1EndX = 15;
       const ray1EndY = hit1.y + (ray1EndX - hit1.x) * Math.tan(rAngle);
       ctx.beginPath();
       ctx.moveTo(hit1.x, hit1.y);
@@ -347,7 +348,7 @@ function drawRays() {
     // Ray 2 (cyan): to vertex, reflects symmetrically below axis
     ctx.save();
     ctx.strokeStyle = '#00BFFF';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = 1.5;
     ctx.beginPath();
     ctx.moveTo(objX, objTopY);
     ctx.lineTo(mirrorX, axisY);
@@ -356,10 +357,10 @@ function drawRays() {
               Math.atan2(axisY - objTopY, mirrorX - objX));
 
     const refDy = (objTopY - axisY);
-    let ray2EndX = 20;
+    let ray2EndX = 15;
     let ray2EndY = axisY + (-refDy / (mirrorX - objX)) * (ray2EndX - mirrorX);
-    if (ray2EndY > H - 20) {
-      ray2EndY = H - 20;
+    if (ray2EndY > H - 15) {
+      ray2EndY = H - 15;
       ray2EndX = mirrorX + (ray2EndY - axisY) / ((-refDy) / (mirrorX - objX));
     }
     ctx.beginPath();
@@ -386,7 +387,7 @@ function drawRays() {
     if (hit1) {
       ctx.save();
       ctx.strokeStyle = '#FFD700';
-      ctx.lineWidth   = 2;
+      ctx.lineWidth   = 1.5;
 
       // Incoming: horizontal
       ctx.beginPath();
@@ -399,21 +400,21 @@ function drawRays() {
       const rAngle = Math.atan2(axisY - hit1.y, focusX - hit1.x);
       const rDx = Math.cos(rAngle);
       const rDy = Math.sin(rAngle);
-      const t_left = (20 - hit1.x) / rDx;
-      const ray1EndX = 20;
+      const t_left = (15 - hit1.x) / rDx;
+      const ray1EndX = 15;
       const ray1EndY = hit1.y + t_left * rDy;
       ctx.beginPath();
       ctx.moveTo(hit1.x, hit1.y);
-      ctx.lineTo(ray1EndX, Math.min(ray1EndY, H - 10));
+      ctx.lineTo(ray1EndX, Math.min(ray1EndY, H - 8));
       ctx.stroke();
-      arrowHead(Math.max((hit1.x + ray1EndX) / 2, 40),
-                (hit1.y + Math.min(ray1EndY, H - 10)) / 2,
-                Math.atan2(Math.min(ray1EndY, H - 10) - hit1.y, ray1EndX - hit1.x));
+      arrowHead(Math.max((hit1.x + ray1EndX) / 2, 30),
+                (hit1.y + Math.min(ray1EndY, H - 8)) / 2,
+                Math.atan2(Math.min(ray1EndY, H - 8) - hit1.y, ray1EndX - hit1.x));
 
       // Dashed extension: backward from hit point toward virtual image
-      ctx.setLineDash([5, 5]);
+      ctx.setLineDash([4, 4]);
       ctx.globalAlpha = 0.5;
-      const extEndX = Math.min(imgX, W - 10);
+      const extEndX = Math.min(imgX, W - 8);
       const extEndY = hit1.y + (-rDy / -rDx) * (extEndX - hit1.x);
       ctx.beginPath();
       ctx.moveTo(hit1.x, hit1.y);
@@ -428,7 +429,7 @@ function drawRays() {
     // Ray 2 (cyan): to vertex, reflects symmetrically
     ctx.save();
     ctx.strokeStyle = '#00BFFF';
-    ctx.lineWidth   = 2;
+    ctx.lineWidth   = 1.5;
 
     // Incoming: object top → vertex
     ctx.beginPath();
@@ -442,10 +443,10 @@ function drawRays() {
     const dy_in = objTopY - axisY;
     const dx_in = mirrorX - objX;
     const reflSlope = -dy_in / dx_in;
-    let ray2EndX = 20;
+    let ray2EndX = 15;
     let ray2EndY = axisY + reflSlope * (ray2EndX - mirrorX);
-    if (ray2EndY > H - 20) {
-      ray2EndY = H - 20;
+    if (ray2EndY > H - 15) {
+      ray2EndY = H - 15;
       ray2EndX = mirrorX + (ray2EndY - axisY) / reflSlope;
     }
     ctx.beginPath();
@@ -456,9 +457,9 @@ function drawRays() {
               Math.atan2(ray2EndY - axisY, ray2EndX - mirrorX));
 
     // Dashed extension: from vertex backward through virtual image
-    ctx.setLineDash([5, 5]);
+    ctx.setLineDash([4, 4]);
     ctx.globalAlpha = 0.5;
-    const extX = Math.min(imgX, W - 10);
+    const extX = Math.min(imgX, W - 8);
     const extSlope = (imgTopY - axisY) / (imgX - mirrorX);
     const extY = axisY + extSlope * (extX - mirrorX);
     ctx.beginPath();
@@ -489,33 +490,33 @@ function drawLabels() {
   const focusX = cmToX(F_CM);
   ctx.fillStyle = 'rgba(255,200,50,0.7)';
   ctx.beginPath();
-  ctx.arc(focusX, axisY, 4, 0, Math.PI * 2);
+  ctx.arc(focusX, axisY, 3, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = 'rgba(220,220,200,0.6)';
-  ctx.font = '13px Arial';
+  ctx.font = '10px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('F', focusX, axisY - 8);
+  ctx.fillText('F', focusX, axisY - 6);
 
   // ── Center of curvature ────────────────────────────────────────────
   const ccX = cmToX(2 * F_CM);
   ctx.fillStyle = 'rgba(200,150,50,0.5)';
   ctx.beginPath();
-  ctx.arc(ccX, axisY, 3.5, 0, Math.PI * 2);
+  ctx.arc(ccX, axisY, 2.5, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = 'rgba(220,220,200,0.6)';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('C', ccX, axisY - 8);
+  ctx.fillText('C', ccX, axisY - 6);
 
   // ── Compute image size for bracket placement ───────────────────────
   let realImgH = 0;
   if (!isAtFocus && isFinite(m)) {
     realImgH = Math.abs(m) * H_OBJ_CM * SCALE;
   }
-  const bracketY = axisY + Math.max(isVirtual ? 30 : realImgH + 20, 40);
+  const bracketY = axisY + Math.max(isVirtual ? 22 : realImgH + 15, 30);
 
   // ── Object distance label with bracket ─────────────────────────────
-  ctx.font      = 'bold 15px Arial';
+  ctx.font      = 'bold 11px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
   ctx.fillStyle = '#ddd';
@@ -531,28 +532,28 @@ function drawLabels() {
   ctx.strokeStyle = 'rgba(220,220,220,0.4)';
   ctx.lineWidth   = 1;
   ctx.beginPath();
-  ctx.moveTo(objX, axisY + 6); ctx.lineTo(objX, bracketY + 8);
+  ctx.moveTo(objX, axisY + 5); ctx.lineTo(objX, bracketY + 6);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(mirrorX, axisY + 6); ctx.lineTo(mirrorX, bracketY + 8);
+  ctx.moveTo(mirrorX, axisY + 5); ctx.lineTo(mirrorX, bracketY + 6);
   ctx.stroke();
 
-  const tw = ctx.measureText(oLabel).width / 2 + 6;
+  const tw = ctx.measureText(oLabel).width / 2 + 5;
   ctx.beginPath();
-  ctx.moveTo(objX, bracketY + 6); ctx.lineTo(midX - tw, bracketY + 6);
+  ctx.moveTo(objX, bracketY + 5); ctx.lineTo(midX - tw, bracketY + 5);
   ctx.stroke();
   ctx.beginPath();
-  ctx.moveTo(midX + tw, bracketY + 6); ctx.lineTo(mirrorX, bracketY + 6);
+  ctx.moveTo(midX + tw, bracketY + 5); ctx.lineTo(mirrorX, bracketY + 5);
   ctx.stroke();
 
   // ── Image info label ───────────────────────────────────────────────
-  ctx.font = '14px Arial';
+  ctx.font = '11px Arial';
   ctx.textBaseline = 'top';
   ctx.textAlign = 'center';
 
   if (isAtFocus) {
     ctx.fillStyle = 'rgba(255,180,100,0.7)';
-    ctx.fillText('At focus \u2014 no image (rays are parallel)', W / 2, bracketY + 24);
+    ctx.fillText('At focus \u2014 no image (rays are parallel)', W / 2, bracketY + 18);
   } else if (isFinite(i)) {
     const iVal = Math.round(Math.abs(i) * 10) / 10;
     const iStr = (iVal % 1 === 0) ? iVal.toFixed(0) : iVal.toFixed(1);
@@ -566,15 +567,15 @@ function drawLabels() {
     const iLabel = 'i = ' + iStr + ' cm  \u00b7  ' + typeStr + ', ' + orientStr + ', ' + sizeStr + '  (|m| = ' + mStr + ')';
 
     ctx.fillStyle = isVirtual ? 'rgba(180,255,200,0.7)' : 'rgba(180,200,255,0.7)';
-    ctx.fillText(iLabel, W / 2, bracketY + 24);
+    ctx.fillText(iLabel, W / 2, bracketY + 18);
   }
 
   // ── Drag hint ──────────────────────────────────────────────────────
   ctx.fillStyle = 'rgba(200,200,200,0.30)';
-  ctx.font      = '13px Arial';
+  ctx.font      = '10px Arial';
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
-  ctx.fillText('\u2190 drag the cone \u2192', objX, axisY - hObj - 10);
+  ctx.fillText('\u2190 drag the cone \u2192', objX, axisY - hObj - 8);
 
   ctx.restore();
 }
@@ -583,9 +584,9 @@ function drawLabels() {
 function hitCone(px, py) {
   const objX = cmToX(objDist);
   const hObj = H_OBJ_CM * SCALE;
-  return Math.abs(px - objX) < hObj * 0.5 + 20
-      && py > axisY - hObj - 25
-      && py < axisY + 25;
+  return Math.abs(px - objX) < hObj * 0.5 + 15
+      && py > axisY - hObj - 20
+      && py < axisY + 20;
 }
 
 // ── Main render ──────────────────────────────────────────────────────
@@ -620,10 +621,10 @@ function draw() {
       // Virtual image: behind mirror, upright, shown with lower alpha
       const absI = Math.abs(i);
       const imgX = mirrorX + absI * SCALE;
-      if (imgX < W + 200 && maxImgH < H * 0.9) {
+      if (imgX < W + 150 && maxImgH < H * 0.9) {
         ctx.save();
         ctx.beginPath();
-        ctx.rect(mirrorX + 5, 0, W - mirrorX, H);
+        ctx.rect(mirrorX + 4, 0, W - mirrorX, H);
         ctx.clip();
         drawConeAt(imgX, axisY, maxImgH, false, 0.5);
         ctx.restore();
@@ -631,7 +632,7 @@ function draw() {
     } else if (i > 0 && i < 150) {
       // Real image: in front of mirror, inverted
       const imgX = cmToX(i);
-      const cappedH = Math.min(maxImgH, H - axisY - 20);
+      const cappedH = Math.min(maxImgH, H - axisY - 15);
       drawConeAt(imgX, axisY, cappedH, true, 0.75);
     }
   }
