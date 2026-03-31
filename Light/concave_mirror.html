@@ -1,0 +1,437 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Concave Mirror</title>
+  <style>
+    body { margin: 0; overflow: hidden; background: #1a1a2e; font-family: Arial, sans-serif; }
+    canvas { display: block; touch-action: none; user-select: none; }
+  </style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+// ── Physics (all distances in cm) ──────────────────────────────────────
+// 1/v + 1/u = 1/f  →  1/v = 1/30 − 1/36 = 1/180  →  v = 180
+// m = −v/u = −180/36 = −5  (inverted, 5× magnified)
+const F_CM     = 30;
+const U_CM     = 36;
+const V_CM     = 180;
+const MAG      = 5;
+const H_OBJ_CM = 7;   // object (cone) height in cm
+
+// ── Layout (recomputed in resize) ──────────────────────────────────────
+let W, H, SCALE;
+let mirror_x, axis_y, mirrorCX, mirrorR;
+let focus_x, cone_x, image_x;
+let h_obj_px, h_img_px;
+
+// ── Ruler state ─────────────────────────────────────────────────────────
+const RULER_LEN_CM = 60;
+let ruler = { x: 0, y: 0, dragging: false, dragOffX: 0, dragOffY: 0, ready: false };
+
+// ── Resize ──────────────────────────────────────────────────────────────
+function resize() {
+  W = canvas.width  = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+
+  // Scale so the full scene (image → mirror + 25 cm margin) fits width
+  SCALE      = Math.min((W - 80) / (V_CM + 25), 7);
+  mirror_x   = W - 50;
+  axis_y     = H * 0.28;
+  mirrorR    = 2 * F_CM * SCALE;   // radius of curvature = 60 cm
+  mirrorCX   = mirror_x - mirrorR; // centre of curvature
+  focus_x    = mirror_x - F_CM  * SCALE;
+  cone_x     = mirror_x - U_CM  * SCALE;
+  image_x    = mirror_x - V_CM  * SCALE;
+  h_obj_px   = H_OBJ_CM        * SCALE;
+  h_img_px   = H_OBJ_CM * MAG  * SCALE;
+
+  if (!ruler.ready) {
+    ruler.x     = image_x + (cone_x - image_x) * 0.5;
+    ruler.y     = H * 0.74;
+    ruler.ready = true;
+  }
+}
+
+// ── Drawing helpers ─────────────────────────────────────────────────────
+
+function arrowHead(x, y, angle) {
+  const L = 10, A = Math.PI / 6;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - L * Math.cos(angle - A), y - L * Math.sin(angle - A));
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - L * Math.cos(angle + A), y - L * Math.sin(angle + A));
+  ctx.stroke();
+}
+
+function drawOpticalAxis() {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(180,180,160,0.35)';
+  ctx.lineWidth   = 1.5;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath();
+  ctx.moveTo(0, axis_y);
+  ctx.lineTo(W, axis_y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawMirror() {
+  // Arc spans from slightly above object-top hit to slightly below image-top hit
+  const upperAngle = Math.asin(Math.min(h_obj_px / mirrorR, 0.99)) + 0.14;
+  const lowerAngle = Math.asin(Math.min(h_img_px / mirrorR, 0.99)) + 0.14;
+
+  // Reflecting surface
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(mirrorCX, axis_y, mirrorR, -upperAngle, lowerAngle);
+  const grd = ctx.createLinearGradient(mirror_x - 6, 0, mirror_x + 6, 0);
+  grd.addColorStop(0, '#888');
+  grd.addColorStop(0.4, '#fff');
+  grd.addColorStop(0.7, '#ccc');
+  grd.addColorStop(1, '#666');
+  ctx.strokeStyle = grd;
+  ctx.lineWidth   = 5;
+  ctx.stroke();
+
+  // Hatching on the back (right side) of the mirror
+  const N = 16;
+  ctx.strokeStyle = '#556';
+  ctx.lineWidth   = 1;
+  for (let i = 0; i <= N; i++) {
+    const angle = -upperAngle + (upperAngle + lowerAngle) * i / N;
+    const sx = mirrorCX + mirrorR * Math.cos(angle);
+    const sy = axis_y   + mirrorR * Math.sin(angle);
+    ctx.beginPath();
+    ctx.moveTo(sx, sy);
+    ctx.lineTo(sx + Math.cos(angle) * 8, sy + Math.sin(angle) * 8);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawScreen() {
+  const sx = image_x;
+  const top    = axis_y;
+  const bottom = axis_y + h_img_px + 28;
+
+  // Subtle glow to left of screen
+  const grd = ctx.createLinearGradient(sx, 0, sx - 40, 0);
+  grd.addColorStop(0, 'rgba(240,235,210,0.16)');
+  grd.addColorStop(1, 'rgba(240,235,210,0)');
+  ctx.fillStyle = grd;
+  ctx.fillRect(sx - 40, top, 40, bottom - top);
+
+  // Screen line
+  ctx.strokeStyle = 'rgba(220,215,190,0.85)';
+  ctx.lineWidth   = 3;
+  ctx.beginPath();
+  ctx.moveTo(sx, top);
+  ctx.lineTo(sx, bottom);
+  ctx.stroke();
+}
+
+// Draw a stylized ice-cream cone.
+// tipX, tipY : the pointy bottom tip of the cone (object: on axis; tip toward viewer)
+// h          : total height from tip to cherry centre
+// inverted   : false = cone points down, ice cream above (object)
+//              true  = cone points up,   ice cream below (image, upside-down)
+function drawConeAt(tipX, tipY, h, inverted, alpha) {
+  const dir = inverted ? 1 : -1;   // canvas-y direction from tip toward ice cream
+
+  ctx.save();
+  if (alpha !== undefined) ctx.globalAlpha = alpha;
+
+  const cW       = h * 0.24;   // cone half-width at base
+  const cH       = h * 0.40;   // cone height
+  const coneTopY = tipY + dir * cH;
+
+  // ── Cone triangle ──
+  ctx.fillStyle   = '#C68642';
+  ctx.strokeStyle = '#A0522D';
+  ctx.lineWidth   = Math.max(1, h * 0.015);
+  ctx.beginPath();
+  ctx.moveTo(tipX, tipY);
+  ctx.lineTo(tipX - cW, coneTopY);
+  ctx.lineTo(tipX + cW, coneTopY);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  // Waffle lines (only when large enough to see)
+  if (h > 28) {
+    ctx.strokeStyle = 'rgba(120,60,10,0.35)';
+    ctx.lineWidth   = 0.7;
+    for (let i = 1; i < 4; i++) {
+      const fy = tipY + dir * cH * i / 4;
+      const hw = cW * i / 4;
+      ctx.beginPath();
+      ctx.moveTo(tipX - hw, fy);
+      ctx.lineTo(tipX + hw, fy);
+      ctx.stroke();
+    }
+  }
+
+  // ── Bottom scoop (vanilla) ──
+  const s1Y = tipY + dir * h * 0.52;
+  const s1R = h * 0.22;
+  ctx.fillStyle   = '#FFF8DC';
+  ctx.strokeStyle = '#D4C07A';
+  ctx.lineWidth   = Math.max(1, h * 0.012);
+  ctx.beginPath();
+  ctx.arc(tipX, s1Y, s1R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // ── Top scoop (strawberry) ──
+  const s2Y = tipY + dir * h * 0.76;
+  const s2R = h * 0.19;
+  ctx.fillStyle   = '#FFB6C1';
+  ctx.strokeStyle = '#E07088';
+  ctx.lineWidth   = Math.max(1, h * 0.012);
+  ctx.beginPath();
+  ctx.arc(tipX, s2Y, s2R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Highlight on top scoop
+  if (h > 25) {
+    ctx.fillStyle = 'rgba(255,255,255,0.22)';
+    ctx.beginPath();
+    ctx.arc(tipX - s2R * 0.38, s2Y - dir * s2R * 0.38, s2R * 0.36, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // ── Cherry ──
+  const cR = Math.max(2.5, h * 0.07);
+  const cY = tipY + dir * h;   // cherry is at exactly h from tip
+  ctx.fillStyle   = '#CC0022';
+  ctx.strokeStyle = '#880011';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.arc(tipX, cY, cR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Cherry stem
+  if (h > 20) {
+    ctx.strokeStyle = '#228833';
+    ctx.lineWidth   = 1.2;
+    ctx.beginPath();
+    ctx.moveTo(tipX, cY - dir * cR);
+    ctx.quadraticCurveTo(tipX + cR * 2, cY - dir * cR * 3, tipX + cR * 1.3, cY - dir * cR * 5);
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ── Ray diagram ─────────────────────────────────────────────────────────
+// Paraxial ray diagram for concave mirror.
+//
+// Physics verification (all in optics coords, mirror at x=0, axis y=0, +y up):
+//   obj_top  = (−36, +h)      img_top = (−180, −5h)
+//
+// Ray 1 (horizontal → through focus after reflection):
+//   incoming : (−36, h)  →  (0, h)                [horizontal]
+//   reflected: (0, h)    →  (−180, −5h)            [line through (−30, 0) ✓]
+//
+// Ray 2 (through focus → parallel after reflection):
+//   incoming : (−36, h)  →  (0, −5h)              [line through (−30, 0) ✓]
+//   reflected: (0, −5h)  →  (−180, −5h)            [horizontal]
+function drawRays() {
+  // In canvas coords: y increases downward; above axis = smaller y
+  const obj_top = { x: cone_x,  y: axis_y - h_obj_px };  // cherry of object
+  const img_top = { x: image_x, y: axis_y + h_img_px };  // cherry of image
+
+  // Paraxial hit points on the mirror plane (x = mirror_x)
+  const hit1 = { x: mirror_x, y: axis_y - h_obj_px };  // Ray 1 (same height as obj_top)
+  const hit2 = { x: mirror_x, y: axis_y + h_img_px };  // Ray 2 (same height as img_top)
+
+  // ── Ray 1 : gold/yellow ──────────────────────────────────────────────
+  ctx.save();
+  ctx.strokeStyle = '#FFD700';
+  ctx.lineWidth   = 2;
+
+  // Incoming (horizontal)
+  ctx.beginPath();
+  ctx.moveTo(obj_top.x, obj_top.y);
+  ctx.lineTo(hit1.x, hit1.y);
+  ctx.stroke();
+  // Arrow at mid-point
+  const r1mid_x = (obj_top.x + hit1.x) / 2;
+  arrowHead(r1mid_x, hit1.y, 0);   // pointing right
+
+  // Reflected (through focal point to image top)
+  ctx.beginPath();
+  ctx.moveTo(hit1.x, hit1.y);
+  ctx.lineTo(img_top.x, img_top.y);
+  ctx.stroke();
+  // Arrow at mid-point of reflected segment
+  const r1r_mid_x = (hit1.x + img_top.x) / 2;
+  const r1r_mid_y = (hit1.y + img_top.y) / 2;
+  const r1r_ang   = Math.atan2(img_top.y - hit1.y, img_top.x - hit1.x);
+  arrowHead(r1r_mid_x, r1r_mid_y, r1r_ang);
+
+  ctx.restore();
+
+  // ── Ray 2 : cyan ─────────────────────────────────────────────────────
+  ctx.save();
+  ctx.strokeStyle = '#00BFFF';
+  ctx.lineWidth   = 2;
+
+  // Incoming (through focal point)
+  ctx.beginPath();
+  ctx.moveTo(obj_top.x, obj_top.y);
+  ctx.lineTo(hit2.x, hit2.y);
+  ctx.stroke();
+  // Arrow at mid-point
+  const r2mid_x = (obj_top.x + hit2.x) / 2;
+  const r2mid_y = (obj_top.y + hit2.y) / 2;
+  const r2ang   = Math.atan2(hit2.y - obj_top.y, hit2.x - obj_top.x);
+  arrowHead(r2mid_x, r2mid_y, r2ang);
+
+  // Reflected (horizontal)
+  ctx.beginPath();
+  ctx.moveTo(hit2.x, hit2.y);
+  ctx.lineTo(img_top.x, img_top.y);
+  ctx.stroke();
+  // Arrow at mid-point of reflected segment
+  const r2r_mid_x = (hit2.x + img_top.x) / 2;
+  arrowHead(r2r_mid_x, img_top.y, Math.PI);   // pointing left
+
+  ctx.restore();
+}
+
+// ── Ruler ───────────────────────────────────────────────────────────────
+function drawRuler() {
+  const lenPx  = RULER_LEN_CM * SCALE;
+  const rulerH = 28;
+
+  ctx.save();
+  ctx.translate(ruler.x, ruler.y);
+  ctx.globalAlpha = 0.88;
+
+  // Body
+  ctx.fillStyle   = '#f5e6c8';
+  ctx.fillRect(-lenPx / 2, -rulerH / 2, lenPx, rulerH);
+  ctx.strokeStyle = '#8B7355';
+  ctx.lineWidth   = 1;
+  ctx.strokeRect(-lenPx / 2, -rulerH / 2, lenPx, rulerH);
+
+  // Tick marks
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth   = 1;
+  for (let cm = 0; cm <= RULER_LEN_CM; cm++) {
+    const x        = -lenPx / 2 + cm * SCALE;
+    const isMajor  = (cm % 10 === 0);
+    const isMid    = (cm % 5  === 0) && !isMajor;
+    const tickH    = isMajor ? 10 : isMid ? 7 : 4;
+
+    ctx.beginPath();
+    ctx.moveTo(x, -rulerH / 2);
+    ctx.lineTo(x, -rulerH / 2 + tickH);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x,  rulerH / 2);
+    ctx.lineTo(x,  rulerH / 2 - tickH);
+    ctx.stroke();
+
+    if (isMajor) {
+      ctx.font         = '9px Arial';
+      ctx.fillStyle    = '#333';
+      ctx.textAlign    = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(cm, x, 3);
+    }
+  }
+
+  // "cm" label at right end
+  ctx.font         = '8px Arial';
+  ctx.fillStyle    = '#555';
+  ctx.textAlign    = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('cm', lenPx / 2 - 2, rulerH / 2 - 5);
+
+  ctx.globalAlpha  = 1;
+  ctx.textBaseline = 'alphabetic';
+  ctx.restore();
+}
+
+// ── Hit test for ruler ──────────────────────────────────────────────────
+function hitRuler(x, y) {
+  const lenPx  = RULER_LEN_CM * SCALE;
+  const rulerH = 28;
+  return Math.abs(x - ruler.x) <= lenPx / 2 + 4
+      && Math.abs(y - ruler.y) <= rulerH / 2 + 4;
+}
+
+// ── Main render ─────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  drawOpticalAxis();
+  drawRays();       // rays behind the mirror surface
+  drawScreen();
+  drawMirror();     // mirror on top of rays so hatching looks right
+
+  // Object (upright, tip on axis)
+  drawConeAt(cone_x, axis_y, h_obj_px, false, 1.0);
+
+  // Image (inverted, 5×, tip on axis)
+  drawConeAt(image_x, axis_y, h_img_px, true, 0.80);
+
+  drawRuler();
+
+  requestAnimationFrame(draw);
+}
+
+// ── Input ───────────────────────────────────────────────────────────────
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const src  = e.touches ? e.touches[0] : e;
+  return { x: src.clientX - rect.left, y: src.clientY - rect.top };
+}
+
+function onDown(e) {
+  const p = getPos(e);
+  if (hitRuler(p.x, p.y)) {
+    ruler.dragging = true;
+    ruler.dragOffX = p.x - ruler.x;
+    ruler.dragOffY = p.y - ruler.y;
+  }
+}
+
+function onMove(e) {
+  const p = getPos(e);
+  if (ruler.dragging) {
+    ruler.x = p.x - ruler.dragOffX;
+    ruler.y = p.y - ruler.dragOffY;
+  }
+}
+
+function onUp() { ruler.dragging = false; }
+
+canvas.addEventListener('mousedown',  onDown);
+canvas.addEventListener('mousemove',  onMove);
+canvas.addEventListener('mouseup',    onUp);
+canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(e); }, { passive: false });
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(e); }, { passive: false });
+canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp(e);   }, { passive: false });
+
+window.addEventListener('resize', resize);
+resize();
+draw();
+</script>
+</body>
+</html>

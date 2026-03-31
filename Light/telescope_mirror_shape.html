@@ -288,13 +288,53 @@ function draw() {
     const u_ref = rdx * ax + rdy * ay;
     const v_ref = rdx * px + rdy * py;
 
-    // Find where this ray crosses the tube opening plane (u = tubeLength)
-    if (Math.abs(dirU) < 0.001) continue;
-    const t_open = (tubeLength - u_ref) / dirU;
-    const v_ap = v_ref + dirV * t_open;
+    // Determine if the ray enters the tube through the opening using slab test.
+    // Tube AABB in telescope coords: 0 <= u <= tubeLength, -halfW <= v <= halfW.
+    // The opening face is at u = tubeLength. Walls are at v = ±halfW.
+    // The ray enters the tube only if its first intersection with the AABB
+    // is on the opening face (u = tubeLength), not on a wall.
+    let entersAperture = false;
+    let v_ap = 0;
+    let blockedByWall = false;
+    let wallHitU = 0, wallHitV = 0;
 
-    // Check if ray enters the tube
-    const entersAperture = Math.abs(v_ap) <= halfW;
+    if (Math.abs(dirU) > 0.0001) {
+      // Slab intervals for u and v
+      const t1u = -u_ref / dirU;
+      const t2u = (tubeLength - u_ref) / dirU;
+      const t_enter_u = Math.min(t1u, t2u);
+      const t_exit_u = Math.max(t1u, t2u);
+
+      let t_enter_v = -Infinity, t_exit_v = Infinity;
+      if (Math.abs(dirV) > 0.0001) {
+        const t1v = (-halfW - v_ref) / dirV;
+        const t2v = (halfW - v_ref) / dirV;
+        t_enter_v = Math.min(t1v, t2v);
+        t_exit_v = Math.max(t1v, t2v);
+      } else if (v_ref < -halfW || v_ref > halfW) {
+        // Ray parallel to walls and outside — misses tube
+        t_enter_v = Infinity;
+        t_exit_v = -Infinity;
+      }
+
+      const t_entry = Math.max(t_enter_u, t_enter_v);
+      const t_exit_box = Math.min(t_exit_u, t_exit_v);
+
+      if (t_entry < t_exit_box) {
+        // Ray intersects tube AABB. Entry is through the opening only if
+        // the u-coordinate at entry equals tubeLength (not a wall or back).
+        const u_at_entry = u_ref + dirU * t_entry;
+        if (Math.abs(u_at_entry - tubeLength) < 1) {
+          entersAperture = true;
+          v_ap = v_ref + dirV * t_entry;
+        } else {
+          // Ray is blocked by a tube wall — save the hit point for drawing
+          blockedByWall = true;
+          wallHitU = u_at_entry;
+          wallHitV = v_ref + dirV * t_entry;
+        }
+      }
+    }
 
     let hitsMirror = false;
     let u_end = 0, v_end = 0;
@@ -346,6 +386,11 @@ function draw() {
       if (entersAperture) {
         // Stop at mirror hit or tube wall
         const endP = toCanvas(u_end, v_end);
+        endWx = endP.x;
+        endWy = endP.y;
+      } else if (blockedByWall) {
+        // Stop at tube wall where the ray is blocked
+        const endP = toCanvas(wallHitU, wallHitV);
         endWx = endP.x;
         endWy = endP.y;
       } else {
