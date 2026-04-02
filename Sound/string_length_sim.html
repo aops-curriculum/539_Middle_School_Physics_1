@@ -1,0 +1,665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>String Length &amp; Frequency</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    overflow: hidden;
+    background: #2b2b2b;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+  }
+  canvas {
+    display: block;
+    max-width: 100vw;
+    max-height: 100vh;
+  }
+</style>
+</head>
+<body>
+<canvas id="sim" width="600" height="600"></canvas>
+
+<script>
+/* ================================================================
+   STRING LENGTH & FREQUENCY SIMULATOR
+   ================================================================
+   Physics model:
+     f = (1 / 2L) × √(T / μ)
+
+   T (tension) is fixed — it comes from the weight of the hanging
+   mass: T = m × g.  The student drags the weight up or down to
+   change L (the vibrating string length) and observes how the
+   fundamental frequency changes.
+
+   Clicking the string "plucks" it — it vibrates in the fundamental
+   mode (half-sine shape) with an exponential decay, just like a
+   real plucked string.  The calculated frequency is displayed.
+   ================================================================ */
+
+
+// ── Canvas Setup ────────────────────────────────────────────────
+// "canvas" is the HTML <canvas> element — the rectangular drawing
+// surface.  "ctx" is the 2-D drawing context: every drawing
+// command (lines, arcs, fills) goes through this object.
+const canvas = document.getElementById('sim');
+const ctx    = canvas.getContext('2d');
+
+
+// ── Physics Constants ───────────────────────────────────────────
+// These define the physical system being simulated.
+
+const GRAVITY        = 9.8;    // m/s² — acceleration due to gravity
+const HANGING_MASS   = 2.0;    // kg   — mass of the circular weight
+const TENSION        = HANGING_MASS * GRAVITY;   // 19.6 N (constant)
+const LINEAR_DENSITY = 0.00063; // kg/m — μ, the string's mass per
+                                //         unit length
+
+// With these values the frequency range is roughly:
+//   L = 0.25 m  →  f ≈ 352.8 Hz  (calibrated so that
+//   L = 0.60 m  →  f ≈ 147.0 Hz   0.60 m gives 147 Hz)
+//   L = 1.20 m  →  f ≈  73.5 Hz
+
+
+// ── Layout Constants (pixel coordinates on the 600×600 canvas) ──
+// Everything is measured in pixels.  The simulation maps a pixel
+// range to a physical metre range (see PHYS_* constants below).
+
+// The string attaches at a fixed ceiling mount, centred horizontally.
+const MOUNT_X = 300;           // x-coordinate of the mount point
+const MOUNT_Y = 55;            // y-coordinate (near the top)
+
+// Limits on where the weight can be dragged (in pixels).
+// These keep the weight on-screen and the string a sensible length.
+const WEIGHT_MIN_Y = 145;      // highest the weight centre can go
+const WEIGHT_MAX_Y = 510;      // lowest  the weight centre can go
+
+// The circular weight
+const WEIGHT_RADIUS = 28;      // radius of the drawn circle (px)
+
+// Mapping between pixel distance and physical string length.
+// When the weight is at WEIGHT_MIN_Y the string is PHYS_MIN_L
+// metres long; at WEIGHT_MAX_Y it is PHYS_MAX_L metres long.
+const PHYS_MIN_L = 0.25;       // metres — shortest string
+const PHYS_MAX_L = 1.20;       // metres — longest string
+
+
+// ── State Variables ─────────────────────────────────────────────
+// These change as the user interacts with the simulation.
+
+// Current weight position (starts roughly in the middle)
+let weightY = 330;
+
+// Dragging state: true while the user is click-dragging the weight
+let draggingWeight = false;
+
+// Vibration state: null when the string is still, or an object
+// { startTime, frequency } when it is vibrating after a pluck
+let vibration     = null;
+let lastFrequency = null;   // remembers the frequency between plucks
+
+// Hover-detection state (updated every frame via mousemove)
+let mouseX      = 0;
+let mouseY      = 0;
+let hoverWeight = false;    // is the cursor over the weight?
+let hoverString = false;    // is the cursor over the string?
+
+
+// ── Physics Helpers ─────────────────────────────────────────────
+
+/**
+ * Convert the weight's pixel y-position to the physical string
+ * length in metres.  This is a simple linear mapping (interpolation)
+ * between the pixel range and the physical range.
+ *
+ *   fraction = (weightY − WEIGHT_MIN_Y) / (WEIGHT_MAX_Y − WEIGHT_MIN_Y)
+ *   length   = PHYS_MIN_L + fraction × (PHYS_MAX_L − PHYS_MIN_L)
+ */
+function getStringLength() {
+  const fraction = (weightY - WEIGHT_MIN_Y) / (WEIGHT_MAX_Y - WEIGHT_MIN_Y);
+  return PHYS_MIN_L + fraction * (PHYS_MAX_L - PHYS_MIN_L);
+}
+
+/**
+ * Fundamental frequency using f = (1 / 2L) × √(T / μ).
+ */
+function getFrequency() {
+  const L = getStringLength();
+  if (L <= 0) return 0;
+  return (1 / (2 * L)) * Math.sqrt(TENSION / LINEAR_DENSITY);
+}
+
+
+// ── Drawing Utilities ───────────────────────────────────────────
+
+/**
+ * Trace a rounded-rectangle path on the canvas.  This does NOT
+ * fill or stroke — the caller must do that separately.
+ *
+ * @param {number} x  Left edge
+ * @param {number} y  Top edge
+ * @param {number} w  Width
+ * @param {number} h  Height
+ * @param {number} r  Corner radius
+ */
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+
+// ── Scene Drawing Functions ─────────────────────────────────────
+// Each function draws one layer of the scene.  They are called in
+// order every frame inside the main draw() loop.
+
+function drawBackground() {
+  // Warm off-white — like a classroom wall
+  ctx.fillStyle = '#f5f0e8';
+  ctx.fillRect(0, 0, 600, 600);
+
+  // Subtle "ceiling" strip across the top
+  ctx.fillStyle = '#e8e0d0';
+  ctx.fillRect(0, 0, 600, 38);
+  // Shadow line below the ceiling
+  ctx.fillStyle = '#d8d0c0';
+  ctx.fillRect(0, 38, 600, 2);
+}
+
+/**
+ * The ceiling bracket: a small metal plate bolted to the ceiling,
+ * with a ring or hook from which the string hangs.
+ */
+function drawCeilingMount() {
+  // Vertical mounting bar from ceiling to mount point
+  ctx.fillStyle = '#8a8a8a';
+  ctx.fillRect(MOUNT_X - 5, 30, 10, MOUNT_Y - 30);
+
+  // Horizontal bracket plate
+  ctx.fillStyle = '#8a8a8a';
+  roundRect(MOUNT_X - 20, 26, 40, 10, 3);
+  ctx.fill();
+  ctx.strokeStyle = '#707070';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  // Decorative bolt / hook ring at the bottom of the bracket
+  ctx.beginPath();
+  ctx.arc(MOUNT_X, MOUNT_Y, 6, 0, Math.PI * 2);
+  ctx.fillStyle = '#707070';
+  ctx.fill();
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Inner hole of the ring (through which the string passes)
+  ctx.beginPath();
+  ctx.arc(MOUNT_X, MOUNT_Y, 2.5, 0, Math.PI * 2);
+  ctx.fillStyle = '#f5f0e8';   // background colour so it looks hollow
+  ctx.fill();
+}
+
+/**
+ * Draw the vertical string.
+ *
+ * When still, the string is a straight vertical line from the mount
+ * point down to the top of the weight.
+ *
+ * When vibrating, the string follows a half-sine mode shape —
+ * zero displacement at the two ends (mount and weight), maximum
+ * displacement in the middle.  The displacement is *horizontal*
+ * (perpendicular to the string's resting direction).
+ *
+ * The amplitude oscillates sinusoidally at a slow "visual"
+ * frequency (so the human eye can follow it) and decays
+ * exponentially (like a real plucked string losing energy).
+ */
+function drawString() {
+  ctx.strokeStyle = '#4a3728';     // dark brown, like a real string
+  ctx.lineWidth   = 2.5;
+  ctx.lineCap     = 'round';
+
+  // The string spans from the mount to the top of the weight.
+  const stringTopY    = MOUNT_Y;
+  const stringBottomY = weightY - WEIGHT_RADIUS;
+  const stringPixelLen = stringBottomY - stringTopY;
+
+  ctx.beginPath();
+
+  if (vibration && stringPixelLen > 0) {
+    // ── Vibrating ──
+    const elapsed = (performance.now() - vibration.startTime) / 1000;
+
+    // Visual oscillation speed — intentionally slow (3.5 Hz) so
+    // the student can see the motion.  The REAL calculated
+    // frequency is shown in the readout panel.
+    const visualFreq = 3.5;
+
+    // Amplitude: oscillates with visualFreq, decays exponentially.
+    // 30 is the peak horizontal displacement in pixels.
+    const amp = 30
+              * Math.sin(2 * Math.PI * visualFreq * elapsed)
+              * Math.exp(-2.5 * elapsed);
+
+    // If visible amplitude is tiny, stop the vibration
+    if (Math.abs(amp) < 0.3) {
+      vibration = null;
+    }
+
+    // Draw the string as many short line segments following
+    // a half-sine (fundamental mode shape).
+    //
+    // "norm" goes from 0 (at the mount) to 1 (at the weight).
+    // sin(π × norm) gives the half-sine: zero at both ends,
+    // maximum in the middle — exactly the fundamental mode.
+    for (let py = 0; py <= stringPixelLen; py += 2) {
+      const norm = py / stringPixelLen;
+      const xOffset = amp * Math.sin(Math.PI * norm);
+      const drawX = MOUNT_X + xOffset;
+      const drawY = stringTopY + py;
+      if (py === 0) ctx.moveTo(drawX, drawY);
+      else          ctx.lineTo(drawX, drawY);
+    }
+  } else {
+    // ── Still — just a straight vertical line ──
+    ctx.moveTo(MOUNT_X, stringTopY);
+    ctx.lineTo(MOUNT_X, stringBottomY);
+  }
+  ctx.stroke();
+}
+
+/**
+ * Draw the circular hanging weight.
+ *
+ * It has a subtle 3-D look: a radial gradient makes it appear
+ * lit from the upper-left, plus a drop shadow beneath it.
+ */
+function drawWeight() {
+  // ── Drop shadow ──
+  ctx.beginPath();
+  ctx.arc(MOUNT_X + 3, weightY + 3, WEIGHT_RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.fill();
+
+  // ── Main circle with gradient ──
+  const grad = ctx.createRadialGradient(
+    MOUNT_X - 8, weightY - 8, 4,       // highlight offset upper-left
+    MOUNT_X, weightY, WEIGHT_RADIUS     // outer edge
+  );
+  // Colour depends on hover state
+  if (hoverWeight || draggingWeight) {
+    grad.addColorStop(0, '#7fb3e0');    // lighter steel-blue highlight
+    grad.addColorStop(1, '#3a7cc0');    // deeper blue at rim
+  } else {
+    grad.addColorStop(0, '#6fa8d6');    // normal highlight
+    grad.addColorStop(1, '#2c6fad');    // normal rim
+  }
+
+  ctx.beginPath();
+  ctx.arc(MOUNT_X, weightY, WEIGHT_RADIUS, 0, Math.PI * 2);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  // Outer ring stroke
+  ctx.strokeStyle = hoverWeight || draggingWeight ? '#2a5f90' : '#1f4f7a';
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+
+  // ── Mass label inside the circle ──
+  ctx.fillStyle    = '#fff';
+  ctx.font         = 'bold 14px Arial, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(HANGING_MASS.toFixed(1) + ' kg', MOUNT_X, weightY);
+}
+
+/**
+ * A subtle highlight glow on the string when the cursor hovers
+ * over it, indicating it can be clicked (plucked).
+ */
+function drawStringHighlight() {
+  if (!hoverString || draggingWeight) return;
+
+  const stringTopY    = MOUNT_Y + 15;
+  const stringBottomY = weightY - WEIGHT_RADIUS - 15;
+
+  ctx.save();
+  ctx.globalAlpha  = 0.15;
+  ctx.strokeStyle  = '#e67e22';     // warm orange glow
+  ctx.lineWidth    = 14;
+  ctx.lineCap      = 'round';
+  ctx.beginPath();
+  ctx.moveTo(MOUNT_X, stringTopY);
+  ctx.lineTo(MOUNT_X, stringBottomY);
+  ctx.stroke();
+  ctx.restore();
+}
+
+/**
+ * Draw a thin ruler / scale on the side so students can see the
+ * length visually as they drag.
+ */
+function drawRuler() {
+  const rulerX   = 78;                         // left edge of ruler
+  const topY     = MOUNT_Y;                     // top of ruler = mount
+  const bottomY  = weightY - WEIGHT_RADIUS;     // bottom = top of weight
+  const L        = getStringLength();
+
+  // Vertical line
+  ctx.strokeStyle = '#bbb';
+  ctx.lineWidth   = 1;
+  ctx.beginPath();
+  ctx.moveTo(rulerX, topY);
+  ctx.lineTo(rulerX, bottomY);
+  ctx.stroke();
+
+  // Top and bottom tick marks (horizontal lines)
+  ctx.beginPath();
+  ctx.moveTo(rulerX - 6, topY);
+  ctx.lineTo(rulerX + 6, topY);
+  ctx.moveTo(rulerX - 6, bottomY);
+  ctx.lineTo(rulerX + 6, bottomY);
+  ctx.stroke();
+
+  // Arrow heads
+  // Top arrow (pointing up)
+  ctx.fillStyle = '#bbb';
+  ctx.beginPath();
+  ctx.moveTo(rulerX, topY - 1);
+  ctx.lineTo(rulerX - 4, topY + 7);
+  ctx.lineTo(rulerX + 4, topY + 7);
+  ctx.closePath();
+  ctx.fill();
+  // Bottom arrow (pointing down)
+  ctx.beginPath();
+  ctx.moveTo(rulerX, bottomY + 1);
+  ctx.lineTo(rulerX - 4, bottomY - 7);
+  ctx.lineTo(rulerX + 4, bottomY - 7);
+  ctx.closePath();
+  ctx.fill();
+
+  // Length label beside the ruler
+  const midY = (topY + bottomY) / 2;
+  ctx.fillStyle    = '#888';
+  ctx.font         = '13px Arial, sans-serif';
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('L = ' + L.toFixed(2) + ' m', rulerX, midY - 10);
+}
+
+/**
+ * Information panel in the upper-right corner.
+ * Shows the current string length and frequency.
+ */
+function drawInfoPanel() {
+  const L    = getStringLength();
+  const freq = vibration ? vibration.frequency : lastFrequency;
+
+  // Panel dimensions
+  const panelW = 200;
+  const panelH = freq !== null ? 80 : 48;
+  const panelX = 600 - panelW - 18;
+  const panelY = 52;
+
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.06)';
+  roundRect(panelX + 2, panelY + 2, panelW, panelH, 8);
+  ctx.fill();
+
+  // White background
+  roundRect(panelX, panelY, panelW, panelH, 8);
+  ctx.fillStyle = 'rgba(255,255,255,0.92)';
+  ctx.fill();
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  // ── Length (always shown) ──
+  ctx.textAlign    = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle    = '#555';
+  ctx.font         = '15px Arial, sans-serif';
+  ctx.fillText('Length:', panelX + 14, panelY + 12);
+  ctx.fillStyle = '#2c3e50';
+  ctx.font      = 'bold 15px Arial, sans-serif';
+  ctx.fillText(L.toFixed(2) + ' m', panelX + 82, panelY + 12);
+
+  // ── Frequency (shown after plucking) ──
+  if (freq !== null) {
+    ctx.fillStyle = '#555';
+    ctx.font      = '15px Arial, sans-serif';
+    ctx.fillText('Frequency:', panelX + 14, panelY + 42);
+    ctx.fillStyle = vibration ? '#c0392b' : '#888';
+    ctx.font      = 'bold 15px Arial, sans-serif';
+    ctx.fillText(freq.toFixed(1) + ' Hz', panelX + 108, panelY + 42);
+
+    // Pulsing dot while vibrating
+    if (vibration) {
+      const elapsed = (performance.now() - vibration.startTime) / 1000;
+      const alpha   = Math.max(0, 1 - elapsed / 3);
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = '#e74c3c';
+      ctx.beginPath();
+      ctx.arc(panelX + panelW - 18, panelY + 50, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+/**
+ * Context-sensitive instruction text that guides the student.
+ */
+function drawInstructions() {
+  ctx.textAlign    = 'center';
+  ctx.textBaseline = 'middle';
+
+  if (!vibration && !draggingWeight) {
+    // Pulsing opacity to draw the eye
+    const pulse = 0.5 + 0.4 * Math.sin(performance.now() / 350);
+
+    if (lastFrequency === null) {
+      // First visit — tell them what to do
+      ctx.fillStyle = '#aaa';
+      ctx.font      = '14px Arial, sans-serif';
+      ctx.fillText('Drag the weight up or down to change the string length',
+                   300, 575);
+      ctx.fillStyle = `rgba(120, 100, 80, ${0.35 + 0.35 * pulse})`;
+      ctx.font      = '14px Arial, sans-serif';
+      ctx.fillText('Then click the string to pluck it!',
+                   300, 555);
+    } else {
+      // They've plucked before — remind them they can keep exploring
+      ctx.fillStyle = `rgba(120, 100, 80, ${0.25 + 0.25 * pulse})`;
+      ctx.font      = '13px Arial, sans-serif';
+      ctx.fillText('Drag the weight to change length, click string to pluck',
+                   300, 575);
+    }
+  }
+}
+
+
+// ── Hit Testing ─────────────────────────────────────────────────
+// These functions test whether a given (x, y) coordinate falls
+// within a clickable region.
+
+/**
+ * Is the point inside (or very near) the circular weight?
+ * We use a slightly generous radius so it's easy to grab.
+ */
+function isOnWeight(x, y) {
+  const dx = x - MOUNT_X;
+  const dy = y - weightY;
+  return (dx * dx + dy * dy) <= (WEIGHT_RADIUS + 8) * (WEIGHT_RADIUS + 8);
+}
+
+/**
+ * Is the point near the vertical string?
+ * "Near" means within 15 px horizontally of the string's x, and
+ * vertically between the mount and the weight (with a small margin
+ * so the ends aren't too finicky).
+ */
+function isOnString(x, y) {
+  const stringTopY    = MOUNT_Y + 15;
+  const stringBottomY = weightY - WEIGHT_RADIUS - 15;
+  if (y < stringTopY || y > stringBottomY) return false;
+  return Math.abs(x - MOUNT_X) < 15;
+}
+
+
+// ── Coordinate Helper ───────────────────────────────────────────
+// The canvas may be CSS-scaled to fit the viewport.  This function
+// converts a mouse/touch event's page coordinates into the canvas's
+// own 600×600 coordinate system.
+
+function canvasCoords(clientX, clientY) {
+  const rect = canvas.getBoundingClientRect();
+  return {
+    x: (clientX - rect.left) * (600 / rect.width),
+    y: (clientY - rect.top)  * (600 / rect.height)
+  };
+}
+
+
+// ── Mouse Event Handlers ────────────────────────────────────────
+
+canvas.addEventListener('mousedown', (e) => {
+  const { x, y } = canvasCoords(e.clientX, e.clientY);
+
+  // 1) Is the user clicking on the weight? → start dragging
+  if (isOnWeight(x, y)) {
+    draggingWeight = true;
+    vibration      = null;     // stop vibrating while adjusting
+    lastFrequency  = null;
+    canvas.style.cursor = 'grabbing';
+    return;
+  }
+
+  // 2) Is the user clicking on the string? → pluck it
+  if (isOnString(x, y)) {
+    pluckString();
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const { x, y } = canvasCoords(e.clientX, e.clientY);
+  mouseX = x;
+  mouseY = y;
+
+  if (draggingWeight) {
+    // Move the weight, clamping to the allowed range.
+    // Math.max / Math.min ensure it stays within bounds.
+    weightY = Math.max(WEIGHT_MIN_Y, Math.min(WEIGHT_MAX_Y, y));
+    canvas.style.cursor = 'grabbing';
+  } else {
+    // Update hover states for visual feedback
+    hoverWeight = isOnWeight(x, y);
+    hoverString = isOnString(x, y);
+
+    if (hoverWeight)      canvas.style.cursor = 'grab';
+    else if (hoverString) canvas.style.cursor = 'pointer';
+    else                  canvas.style.cursor = 'default';
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  if (draggingWeight) {
+    draggingWeight = false;
+    canvas.style.cursor = hoverWeight ? 'grab' : 'default';
+  }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  draggingWeight = false;
+  hoverWeight    = false;
+  hoverString    = false;
+  canvas.style.cursor = 'default';
+});
+
+
+// ── Touch Event Handlers (mobile / tablet support) ──────────────
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  const { x, y } = canvasCoords(e.touches[0].clientX, e.touches[0].clientY);
+
+  if (isOnWeight(x, y)) {
+    draggingWeight = true;
+    vibration      = null;
+    lastFrequency  = null;
+    return;
+  }
+  if (isOnString(x, y)) {
+    pluckString();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', (e) => {
+  e.preventDefault();
+  if (draggingWeight) {
+    const { x, y } = canvasCoords(e.touches[0].clientX, e.touches[0].clientY);
+    weightY = Math.max(WEIGHT_MIN_Y, Math.min(WEIGHT_MAX_Y, y));
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchend', (e) => {
+  e.preventDefault();
+  draggingWeight = false;
+}, { passive: false });
+
+
+// ── Pluck Action ────────────────────────────────────────────────
+
+/**
+ * Start the string vibrating.  Records the current time (so we
+ * can calculate elapsed time for the animation) and the frequency
+ * (so we can display it in the info panel).
+ */
+function pluckString() {
+  const freq = getFrequency();
+  if (freq <= 0) return;
+  vibration = {
+    startTime: performance.now(),
+    frequency: freq
+  };
+  lastFrequency = freq;
+}
+
+
+// ── Main Animation Loop ────────────────────────────────────────
+// This function runs ~60 times per second via requestAnimationFrame.
+// Each call redraws the entire scene from scratch — this is normal
+// for Canvas animations (the browser double-buffers automatically).
+
+function draw() {
+  drawBackground();
+  drawCeilingMount();
+  drawStringHighlight();   // glow behind the string
+  drawString();
+  drawWeight();
+  drawRuler();
+  drawInfoPanel();
+  drawInstructions();
+
+  // Schedule the next frame
+  requestAnimationFrame(draw);
+}
+
+// Kick off the loop!
+draw();
+</script>
+</body>
+</html>
