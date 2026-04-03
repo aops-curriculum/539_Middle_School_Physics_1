@@ -86,6 +86,10 @@ const cabinW = 55;
 const cabinH = 18;
 const carCabinRect = { x: carX + 15, y: carY - 24, w: 28, h: 9 };
 
+// Melting easter egg state
+let meltProgress = 0;
+let animFrameId = null;
+
 // Curve: the left edge of the building at height y, given bow amount.
 // At top and bottom, the edge is at bldgFlatLeft.
 // At the middle, it's bowed inward (to the right) by `bow` pixels.
@@ -174,6 +178,7 @@ function rayRectIntersect(ox, oy, dx, dy, rect) {
 
 function traceRay(ox, oy, dx, dy, allSurfaces) {
   let segments = [];
+  let hitCar = false;
   let cx = ox, cy = oy;
   let rdx = dx, rdy = dy;
 
@@ -230,9 +235,11 @@ function traceRay(ox, oy, dx, dy, allSurfaces) {
       cx = closest.x;
       cy = closest.y;
     } else {
+      if (hitType === 'car' && bounce > 0) hitCar = true;
       break;
     }
   }
+  segments.hitCar = hitCar;
   return segments;
 }
 
@@ -402,18 +409,75 @@ function drawBuilding(bow) {
   ctx.fillRect(topLeftX, bldgTop, bldgRight - topLeftX, 4);
 }
 
-function drawCar() {
+function countCarHits(angleDeg, allSurfaces) {
+  const angleRad = angleDeg * Math.PI / 180;
+  const dx = Math.cos(angleRad);
+  const dy = Math.sin(angleRad);
+  let count = 0;
+  for (const [sx, sy] of getRayStarts(dx, dy)) {
+    const segs = traceRay(sx, sy, dx, dy, allSurfaces);
+    if (segs.hitCar) count++;
+  }
+  return count;
+}
+
+function drawCar(melt) {
   ctx.save();
   ctx.translate(carX, carY);
   ctx.scale(0.5, 0.5);
   ctx.translate(-carX, -carY);
 
+  // Heat glow behind car
+  if (melt > 0.05) {
+    const glowSize = 40 + melt * 60;
+    const glow = ctx.createRadialGradient(
+      carX + carW / 2, carY - carH / 2, 0,
+      carX + carW / 2, carY - carH / 2, glowSize
+    );
+    glow.addColorStop(0, `rgba(255, ${Math.floor(180 - melt * 130)}, 0, ${melt * 0.45})`);
+    glow.addColorStop(1, 'rgba(255, 80, 0, 0)');
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(carX + carW / 2, carY - carH / 2, glowSize, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Puddle beneath car
+  if (melt > 0.2) {
+    const pp = (melt - 0.2) / 0.8;
+    ctx.fillStyle = `rgba(30, 8, 3, ${(0.4 + pp * 0.5).toFixed(2)})`;
+    ctx.beginPath();
+    ctx.ellipse(carX + carW / 2, carY + 3, carW * 0.3 + pp * carW * 0.6, 2 + pp * 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // Melt deformation — squish down, spread out
+  if (melt > 0) {
+    const sy = 1 - melt * 0.82;
+    const sx = 1 + melt * 0.5;
+    ctx.translate(carX + carW / 2, carY);
+    ctx.scale(sx, sy);
+    ctx.translate(-(carX + carW / 2), -carY);
+  }
+
+  // Color interpolation: body heats from dark to red-orange
+  const br = Math.floor(17 + melt * 190);
+  const bg = Math.floor(17 + melt * 40);
+  const bb = Math.floor(17 - melt * 17);
+  const bodyColor = `rgb(${br}, ${bg}, ${bb})`;
+  const cr = Math.floor(42 + melt * 170);
+  const cg = Math.floor(42 + melt * 20);
+  const cb = Math.floor(58 - melt * 58);
+  const cabColor = `rgb(${cr}, ${cg}, ${cb})`;
+
+  // Shadow
   ctx.fillStyle = 'rgba(0,0,0,0.2)';
   ctx.beginPath();
   ctx.ellipse(carX + carW / 2, GROUND_Y + 2, carW / 2 + 5, 4, 0, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.fillStyle = '#111';
+  // Body
+  ctx.fillStyle = bodyColor;
   ctx.beginPath();
   ctx.moveTo(carX, carY);
   ctx.lineTo(carX, carY - carH);
@@ -424,7 +488,8 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = '#2a2a3a';
+  // Cabin
+  ctx.fillStyle = cabColor;
   ctx.beginPath();
   ctx.moveTo(cabinX, cabinY + cabinH);
   ctx.lineTo(cabinX + 8, cabinY);
@@ -433,7 +498,10 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = 'rgba(100, 150, 200, 0.3)';
+  // Windows (fade out as car melts)
+  const wa = Math.max(0, 1 - melt * 2.5);
+
+  ctx.fillStyle = `rgba(100, 150, 200, ${(0.3 * wa).toFixed(3)})`;
   ctx.beginPath();
   ctx.moveTo(cabinX + 2, cabinY + cabinH);
   ctx.lineTo(cabinX + 10, cabinY + 2);
@@ -442,7 +510,7 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
-  ctx.fillStyle = 'rgba(100, 150, 200, 0.25)';
+  ctx.fillStyle = `rgba(100, 150, 200, ${(0.25 * wa).toFixed(3)})`;
   ctx.beginPath();
   ctx.moveTo(cabinX + cabinW / 2 + 2, cabinY + cabinH);
   ctx.lineTo(cabinX + cabinW / 2 + 2, cabinY + 2);
@@ -451,6 +519,7 @@ function drawCar() {
   ctx.closePath();
   ctx.fill();
 
+  // Wheels
   ctx.fillStyle = '#222';
   ctx.beginPath();
   ctx.arc(carX + 25, carY, 10, 0, Math.PI * 2);
@@ -467,16 +536,19 @@ function drawCar() {
   ctx.arc(carX + carW - 25, carY, 5, 0, Math.PI * 2);
   ctx.fill();
 
+  // Headlight
   ctx.fillStyle = '#ff6';
   ctx.beginPath();
   ctx.ellipse(carX + carW, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // Taillight
   ctx.fillStyle = '#e33';
   ctx.beginPath();
   ctx.ellipse(carX, carY - carH + 8, 4, 3, 0, 0, Math.PI * 2);
   ctx.fill();
 
+  // Body line
   ctx.strokeStyle = '#333';
   ctx.lineWidth = 1.5;
   ctx.beginPath();
@@ -574,11 +646,26 @@ function drawGlowSpots(angleDeg, allSurfaces) {
 }
 
 function draw() {
+  if (animFrameId) {
+    cancelAnimationFrame(animFrameId);
+    animFrameId = null;
+  }
+
   const angleDeg = parseFloat(angleSlider.value);
   const curveFrac = parseFloat(curveSlider.value) / 100;
   const bow = maxBow * curveFrac;
 
   const allSurfaces = getCurveSurfaces(bow);
+
+  // Count reflected rays hitting the car
+  const carHits = countCarHits(angleDeg, allSurfaces);
+  const shouldMelt = carHits >= 10;
+
+  if (shouldMelt && meltProgress < 1) {
+    meltProgress = Math.min(1, meltProgress + 0.025);
+  } else if (!shouldMelt && meltProgress > 0) {
+    meltProgress = Math.max(0, meltProgress - 0.025);
+  }
 
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, 348, 400);
@@ -588,13 +675,19 @@ function draw() {
   drawGlowSpots(angleDeg, allSurfaces);
   drawRays(angleDeg, allSurfaces);
   drawBuilding(bow);
-  drawCar();
+  drawCar(meltProgress);
 
   ctx.fillStyle = 'rgba(0,0,0,0.4)';
   ctx.font = 'bold 13px Arial';
   ctx.textAlign = 'right';
   ctx.fillText(angleDeg + '° from horizontal', W - 12, H - 10);
   ctx.textAlign = 'left';
+
+  // Continue animating while melt is transitioning
+  const needsAnim = (shouldMelt && meltProgress < 1) || (!shouldMelt && meltProgress > 0);
+  if (needsAnim) {
+    animFrameId = requestAnimationFrame(draw);
+  }
 }
 
 angleSlider.addEventListener('input', draw);
