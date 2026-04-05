@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Telescope Mirror Comparison</title>
+</head>
+<body style="margin:0;background:#1a1a2e;">
+<canvas id="canvas" width="1200" height="1200"></canvas>
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const PANEL = 600; // each panel is 600x600
+const FULL = 1200;
+
+const mirrorTypes = ['parabolic', 'spherical', 'elliptical', 'hyperbolic'];
+const labels = ['Parabolic', 'Spherical', 'Elliptical', 'Hyperbolic'];
+const positions = [[0,0],[PANEL,0],[0,PANEL],[PANEL,PANEL]];
+
+const tubeLength = 360;
+const tubeWidth = tubeLength / 2;
+const halfW = tubeWidth / 2;
+const Rc = 135;
+
+const conicK = { spherical: 0, parabolic: -1, elliptical: -0.5, hyperbolic: -2 };
+
+const W = 600, H = 600;
+const baseX = W / 2, baseY = H - 80;
+
+const rayAngle = 20 * Math.PI / 180;
+const telescopeAngle = -rayAngle;
+const cosA = Math.cos(telescopeAngle);
+const sinA = Math.sin(telescopeAngle);
+
+const inDirWx = -Math.sin(rayAngle);
+const inDirWy = Math.cos(rayAngle);
+const perpWx = inDirWy;
+const perpWy = -inDirWx;
+
+const defaultOffsets = [-0.8, -0.5, -0.2, 0.1, 0.4, 0.7, -0.65, -0.35];
+
+function mirrorSag(x, type) {
+  const r = Math.abs(x);
+  const K = conicK[type];
+  if (Math.abs(1 + K) < 1e-10) return (r * r) / (2 * Rc);
+  const disc = 1 - (1 + K) * r * r / (Rc * Rc);
+  if (disc < 0) return (r * r) / (2 * Rc);
+  return (r * r) / (Rc * (1 + Math.sqrt(disc)));
+}
+
+const focalLength = Rc / 2;
+
+function toWorld(u, v) {
+  const ax = -sinA, ay = -cosA;
+  const px = cosA, py = -sinA;
+  return { x: baseX + u * ax + v * px, y: baseY + u * ay + v * py };
+}
+
+const focusWorld = toWorld(focalLength, 0);
+const viewZoom = 4.5;
+const basePanX = -(focusWorld.x - W / 2) * viewZoom;
+const basePanY = -(focusWorld.y - H / 2) * viewZoom;
+
+function drawPanel(ox, oy, mirrorType, label) {
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(ox, oy, PANEL, PANEL);
+  ctx.clip();
+
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(ox, oy, PANEL, PANEL);
+
+  function worldToScreen(wx, wy) {
+    return {
+      x: ox + (wx - W / 2) * viewZoom + PANEL / 2 + basePanX,
+      y: oy + (wy - H / 2) * viewZoom + PANEL / 2 + basePanY
+    };
+  }
+  function toScreen(u, v) {
+    const w = toWorld(u, v);
+    return worldToScreen(w.x, w.y);
+  }
+
+  // Tube walls
+  ctx.strokeStyle = 'rgba(136, 136, 136, 0.4)';
+  ctx.lineWidth = 2;
+  let p1 = toScreen(tubeLength, -halfW), p2 = toScreen(0, -halfW);
+  ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+  p1 = toScreen(tubeLength, halfW); p2 = toScreen(0, halfW);
+  ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+
+  // Optical axis
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.15)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([8, 8]);
+  p1 = toScreen(-20, 0); p2 = toScreen(tubeLength + 40, 0);
+  ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Rays
+  const ax = -sinA, ay = -cosA;
+  const px = cosA, py = -sinA;
+  const dirU = inDirWx * ax + inDirWy * ay;
+  const dirV = inDirWx * px + inDirWy * py;
+
+  for (let ri = 0; ri < defaultOffsets.length; ri++) {
+    const d_world = defaultOffsets[ri] * halfW;
+    const refWx = baseX + d_world * perpWx;
+    const refWy = baseY + d_world * perpWy;
+    const rdx = refWx - baseX, rdy = refWy - baseY;
+    const u_ref = rdx * ax + rdy * ay;
+    const v_ref = rdx * px + rdy * py;
+
+    let entersAperture = false, v_ap = 0;
+    if (Math.abs(dirU) > 0.0001) {
+      const t1u = -u_ref / dirU, t2u = (tubeLength - u_ref) / dirU;
+      const t_enter_u = Math.min(t1u, t2u), t_exit_u = Math.max(t1u, t2u);
+      let t_enter_v = -Infinity, t_exit_v = Infinity;
+      if (Math.abs(dirV) > 0.0001) {
+        const t1v = (-halfW - v_ref) / dirV, t2v = (halfW - v_ref) / dirV;
+        t_enter_v = Math.min(t1v, t2v); t_exit_v = Math.max(t1v, t2v);
+      } else if (v_ref < -halfW || v_ref > halfW) { t_enter_v = Infinity; t_exit_v = -Infinity; }
+      const t_entry = Math.max(t_enter_u, t_enter_v);
+      const t_exit_box = Math.min(t_exit_u, t_exit_v);
+      if (t_entry < t_exit_box) {
+        const u_at_entry = u_ref + dirU * t_entry;
+        if (Math.abs(u_at_entry - tubeLength) < 1) { entersAperture = true; v_ap = v_ref + dirV * t_entry; }
+      }
+    }
+
+    let hitsMirror = false, u_end = 0, v_end = 0;
+    if (entersAperture) {
+      let tLow = 0, tHigh = Math.abs(tubeLength / dirU) * 3;
+      for (let iter = 0; iter < 50; iter++) {
+        const tMid = (tLow + tHigh) / 2;
+        const uMid = tubeLength + dirU * tMid, vMid = v_ap + dirV * tMid;
+        if (uMid > mirrorSag(vMid, mirrorType)) tLow = tMid; else tHigh = tMid;
+      }
+      let t_mirror = (tLow + tHigh) / 2;
+      let t_wall = Infinity;
+      if (Math.abs(dirV) > 0.0001) {
+        const tL = (-halfW - v_ap) / dirV, tR = (halfW - v_ap) / dirV;
+        if (tL > 0.01) t_wall = Math.min(t_wall, tL);
+        if (tR > 0.01) t_wall = Math.min(t_wall, tR);
+      }
+      if (t_wall < t_mirror) { u_end = tubeLength + dirU * t_wall; v_end = v_ap + dirV * t_wall; }
+      else {
+        const v_hit = v_ap + dirV * t_mirror, u_hit = tubeLength + dirU * t_mirror;
+        if (Math.abs(v_hit) <= halfW) { hitsMirror = true; u_end = u_hit; v_end = v_hit; }
+      }
+    }
+
+    if (!hitsMirror) continue;
+    const hitS = toScreen(u_end, v_end);
+
+    // Reflect
+    const dv = 0.05;
+    const dsagdv = (mirrorSag(v_end + dv, mirrorType) - mirrorSag(v_end - dv, mirrorType)) / (2 * dv);
+    const nLen = Math.sqrt(1 + dsagdv * dsagdv);
+    const nu = 1 / nLen, nv = -dsagdv / nLen;
+    const dLen = Math.sqrt(dirU * dirU + dirV * dirV);
+    const du_n = dirU / dLen, dv_n = dirV / dLen;
+    const dot = du_n * nu + dv_n * nv;
+    const ru = du_n - 2 * dot * nu, rv = dv_n - 2 * dot * nv;
+
+    let s_end = tubeLength * 2;
+    if (Math.abs(rv) > 0.0001) {
+      const s_left = (-halfW - v_end) / rv, s_right = (halfW - v_end) / rv;
+      if (s_left > 0.1) s_end = Math.min(s_end, s_left);
+      if (s_right > 0.1) s_end = Math.min(s_end, s_right);
+    }
+    if (ru > 0.0001) { const s_top = (tubeLength - u_end) / ru; if (s_top > 0.1) s_end = Math.min(s_end, s_top); }
+
+    const refEndU = u_end + ru * s_end, refEndV = v_end + rv * s_end;
+    const endS = toScreen(refEndU, refEndV);
+
+    ctx.strokeStyle = 'rgba(231, 76, 60, 0.8)';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath(); ctx.moveTo(hitS.x, hitS.y); ctx.lineTo(endS.x, endS.y); ctx.stroke();
+
+    ctx.fillStyle = 'rgba(231, 76, 60, 0.9)';
+    ctx.beginPath(); ctx.arc(hitS.x, hitS.y, 3.5, 0, Math.PI * 2); ctx.fill();
+  }
+
+  // Focus crosshair
+  const focusS = toScreen(focalLength, 0);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(focusS.x - 8, focusS.y); ctx.lineTo(focusS.x + 8, focusS.y);
+  ctx.moveTo(focusS.x, focusS.y - 8); ctx.lineTo(focusS.x, focusS.y + 8);
+  ctx.stroke();
+
+  // Label
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold 24px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.shadowColor = 'rgba(0,0,0,0.9)';
+  ctx.shadowBlur = 12;
+  ctx.fillText(label, ox + PANEL / 2, oy + PANEL - 16);
+  ctx.shadowBlur = 0;
+
+  ctx.restore();
+}
+
+// Draw thin grid lines between panels
+ctx.fillStyle = '#1a1a2e';
+ctx.fillRect(0, 0, FULL, FULL);
+
+for (let i = 0; i < 4; i++) {
+  drawPanel(positions[i][0], positions[i][1], mirrorTypes[i], labels[i]);
+}
+
+// Grid divider lines
+ctx.strokeStyle = 'rgba(255,255,255,0.2)';
+ctx.lineWidth = 2;
+ctx.beginPath(); ctx.moveTo(PANEL, 0); ctx.lineTo(PANEL, FULL); ctx.stroke();
+ctx.beginPath(); ctx.moveTo(0, PANEL); ctx.lineTo(FULL, PANEL); ctx.stroke();
+
+// Export as PNG
+setTimeout(() => {
+  const link = document.createElement('a');
+  link.download = 'telescope_mirror_comparison.png';
+  link.href = canvas.toDataURL('image/png');
+  link.click();
+}, 500);
+</script>
+</body>
+</html>
