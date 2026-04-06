@@ -550,6 +550,13 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Light/telescope_mirror_grid.html",
+      "title": "Telescope Mirror Comparison",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
