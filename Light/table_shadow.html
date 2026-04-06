@@ -89,8 +89,8 @@
             const maxWidth = container.clientWidth;
             const maxHeight = container.clientHeight;
             
-            canvas.width = Math.min(maxWidth, 800);
-            canvas.height = Math.min(maxHeight, 600);
+            canvas.width = Math.min(maxWidth * 0.75, 800);
+            canvas.height = Math.min(maxHeight * 0.75, 600);
             
             draw();
         }

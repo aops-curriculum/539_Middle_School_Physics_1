@@ -9,16 +9,21 @@
             margin: 0;
             padding: 0;
             overflow: hidden;
-            background: ##6565b5;
+            background: #1a1a2e;
             font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100vw;
+            height: 100vh;
         }
-        
+
         #canvas {
             display: block;
             cursor: grab;
             touch-action: none;
         }
-        
+
         #canvas:active {
             cursor: grabbing;
         }
@@ -39,8 +44,8 @@
         let screen = { y: 0, height: 120 };
         
         function resize() {
-            width = window.innerWidth;
-            height = window.innerHeight;
+            width = window.innerWidth * 0.75;
+            height = window.innerHeight * 0.75;
             canvas.width = width;
             canvas.height = height;
             
