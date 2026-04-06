@@ -10,7 +10,6 @@
             padding: 0;
             overflow: hidden;
             font-family: Arial, sans-serif;
-            background-color: #f0f0f0;
         }
         
         #container {
@@ -29,7 +28,6 @@
         canvas {
             background-color: #87CEEB;
             display: block;
-            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
         }
         
         #controls {
@@ -89,8 +87,8 @@
             const maxWidth = container.clientWidth;
             const maxHeight = container.clientHeight;
             
-            canvas.width = Math.min(maxWidth * 0.75, 800);
-            canvas.height = Math.min(maxHeight * 0.75, 600);
+            canvas.width = maxWidth;
+            canvas.height = maxHeight;
             
             draw();
         }
