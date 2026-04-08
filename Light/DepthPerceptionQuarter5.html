@@ -7,34 +7,20 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: #1a1a2e;
-            color: #eee;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            min-height: 100vh;
-            max-width: 600px;
-            margin: 0 auto;
+            background: #12121f;
+            overflow: hidden;
             user-select: none;
         }
-        #instructions {
-            margin: 12px 0 8px;
-            font-size: 14px;
-            color: #aaa;
-            text-align: center;
-        }
         canvas {
-            border: 1px solid #333;
-            border-radius: 6px;
+            display: block;
+            width: 406px;
+            height: 490px;
             cursor: grab;
-            background: #12121f;
         }
         canvas.dragging { cursor: grabbing; }
     </style>
 </head>
 <body>
-    <p id="instructions">Click and drag the quarter to move it.</p>
     <canvas id="canvas" width="580" height="700"></canvas>
 
     <script>
@@ -113,14 +99,8 @@
             ctx.fill();
         }
 
-        // Given a ray from (sx, sy) that must reflect off the mirror (y = mirrorY)
-        // and reach (ex, ey), find the reflection point on the mirror.
-        // The virtual source is the mirror image of (sx, sy): (sx, 2*mirrorY - sy).
-        // The reflection point is the intersection of the line from virtual source to (ex, ey) with y = mirrorY.
         function reflectionPoint(sx, sy, ex, ey) {
             const virtualY = 2 * mirrorY - sy;
-            // Line from (sx, virtualY) to (ex, ey): parametric
-            // y = virtualY + t*(ey - virtualY) = mirrorY  =>  t = (mirrorY - virtualY) / (ey - virtualY)
             const t = (mirrorY - virtualY) / (ey - virtualY);
             const rx = sx + t * (ex - sx);
             return { x: rx, y: mirrorY };
@@ -128,6 +108,13 @@
 
         function draw() {
             ctx.clearRect(0, 0, W, H);
+
+            // Instructions at top
+            ctx.font = '13px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
+            ctx.fillStyle = '#aaa';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Click and drag the quarter to move it.', W / 2, 21);
 
             // Clip: don't draw anything below the mirror
             ctx.save();
@@ -153,7 +140,6 @@
                 const size = coinRadius * 2;
                 ctx.drawImage(quarterImg, coinX - coinRadius, coinY - coinRadius, size, size);
             } else {
-                // Fallback circle
                 ctx.beginPath();
                 ctx.arc(coinX, coinY, coinRadius, 0, Math.PI * 2);
                 ctx.fillStyle = '#c0c0c0';
@@ -163,9 +149,9 @@
                 ctx.stroke();
             }
 
-            ctx.restore(); // remove clip
+            ctx.restore();
 
-            // Draw mirror (on top, at exact mirrorY, not clipped)
+            // Draw mirror
             ctx.beginPath();
             ctx.moveTo(mirrorX1, mirrorY);
             ctx.lineTo(mirrorX2, mirrorY);
@@ -211,7 +197,6 @@
             }
         }
 
-        // --- Interaction ---
         function getCanvasPos(e) {
             const rect = canvas.getBoundingClientRect();
             const touch = e.touches ? e.touches[0] : e;
@@ -228,7 +213,6 @@
         }
 
         function clampCoin() {
-            // Keep coin fully above mirror
             coinX = Math.max(coinRadius, Math.min(W - coinRadius, coinX));
             coinY = Math.max(coinRadius, Math.min(mirrorY - coinRadius, coinY));
         }
