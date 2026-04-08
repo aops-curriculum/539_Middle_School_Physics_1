@@ -1,0 +1,1086 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Measure the Speed of Light</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+body{background:#1a1a2e;font-family:Arial,sans-serif;max-width:600px;margin:0 auto;user-select:none;-webkit-user-select:none}
+.inst{font-size:14px;color:#aaa;text-align:center;margin:10px 0 6px;padding:0 10px}
+canvas{border:1px solid #333;border-radius:6px;cursor:grab;display:block;width:600px;height:560px}
+.controls{display:flex;gap:8px;justify-content:center;margin:8px 0;flex-wrap:wrap}
+button{background:rgba(76,175,80,0.9);color:#fff;border:none;border-radius:4px;padding:8px 16px;font-size:12px;font-weight:bold;box-shadow:0 2px 4px rgba(0,0,0,0.2);cursor:pointer}
+button:hover{background:rgba(76,175,80,1)}
+button:disabled{background:rgba(100,100,100,0.5);cursor:not-allowed}
+.slider-row{display:flex;align-items:center;gap:8px;justify-content:center;margin:4px 0}
+.slider-row label{color:#aaa;font-size:12px;white-space:nowrap}
+.slider-row input[type=range]{width:180px;accent-color:#4caf50}
+.slider-row .val{color:#fff;font-size:12px;font-weight:bold;min-width:70px}
+</style>
+</head>
+<body>
+<p class="inst">Drag equipment from the tray onto the mountains to measure the speed of light.</p>
+<canvas id="c" width="600" height="560"></canvas>
+<div class="slider-row">
+  <label>Light slowdown:</label>
+  <input type="range" id="slowSlider" min="2" max="5" step="0.05" value="2">
+  <span class="val" id="slowVal">&times;100</span>
+</div>
+<div class="controls">
+  <button id="bPulse" disabled>Send Pulse</button>
+  <button id="bLamp" disabled>Lamp On</button>
+  <button id="bReset">Reset All</button>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 560;
+
+// Hi-DPI: scale canvas backing store for crisp rendering
+const DPR = window.devicePixelRatio || 1;
+canvas.width = W * DPR;
+canvas.height = H * DPR;
+
+// Layout
+const SCENE_H = 400;
+const TRAY_TOP = 410;
+
+// Mountains
+const LP = {x:80, y:118};   // left peak (Mt Wilson)
+const RP = {x:520, y:105};  // right peak (Mt San Antonio)
+const VALLEY = 305;
+
+// Scale: peak-to-peak pixel distance = 35426 m
+const DIST_M = 35426;
+const PX_SPAN = Math.sqrt((RP.x-LP.x)**2 + (RP.y-LP.y)**2);
+const M_PER_PX = DIST_M / PX_SPAN;
+
+// Light speed (adjustable)
+const C_REAL = 299792458;
+let SLOWDOWN = 100;
+let C_PX = C_REAL / SLOWDOWN / M_PER_PX;
+
+function updateSlowdown(val) {
+    SLOWDOWN = Math.round(Math.pow(10, val));
+    C_PX = C_REAL / SLOWDOWN / M_PER_PX;
+    document.getElementById('slowVal').textContent = '\u00d7' + SLOWDOWN.toLocaleString();
+}
+
+
+// Equipment tray definitions
+const TRAY_ITEMS = [
+  {type:'lamp',       label:'Lamp'},
+  {type:'stopwatch',  label:'Timer'},
+  {type:'flat_mirror',label:'Mirror'},
+  {type:'concave',    label:'Concave'},
+  {type:'octagonal',  label:'Rotating'},
+  {type:'tape',       label:'Tape'},
+  {type:'telescope',  label:'Telescope'},
+];
+const TRAY_W = 78, TRAY_ITEM_H = 62;
+const TRAY_X0 = (W - TRAY_ITEMS.length * TRAY_W) / 2;
+const TRAY_Y0 = TRAY_TOP + 12;
+
+// State
+let placed = [];       // placed equipment
+let photons = [];      // active photons {x,y,vx,vy,bounced,age}
+let nextId = 1;
+
+// Dragging
+let drag = null;       // {type, x, y, fromTray, itemRef, tapeEnd}
+let isDown = false;
+
+// Stopwatch
+let swRunning = false;
+let swTime = 0;
+let swPulseOrigin = null; // {x,y} of lamp when pulse was sent
+let swPulseMirror = null; // {x,y} of mirror the pulse aimed at
+
+// Lamp modes
+let lampContinuous = false;
+let lampEmitAccum = 0;
+const EMIT_INTERVAL = 0.25; // seconds between continuous photons
+
+// Octagonal mirror rotation
+let octAngle = 0;
+let octSpeed = 0.8; // radians per second
+
+// lastFrame removed - using setInterval tick loop instead
+
+// ===================== UTILITIES =====================
+function getPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const t = e.touches ? e.touches[0] || e.changedTouches[0] : e;
+    // Map viewport coords to canvas coords accounting for CSS scaling
+    const scaleX = W / r.width;
+    const scaleY = H / r.height;
+    return {x: (t.clientX - r.left) * scaleX, y: (t.clientY - r.top) * scaleY};
+}
+function dist(a, b) { return Math.sqrt((a.x-b.x)**2 + (a.y-b.y)**2); }
+
+function hasLamp() { return placed.some(e => e.type === 'lamp'); }
+function hasMirror() { return placed.some(e => e.type === 'flat_mirror' || e.type === 'concave' || e.type === 'octagonal'); }
+function hasStopwatch() { return placed.some(e => e.type === 'stopwatch'); }
+function getLamp() { return placed.find(e => e.type === 'lamp'); }
+function getMirrors() { return placed.filter(e => e.type === 'flat_mirror' || e.type === 'concave' || e.type === 'octagonal'); }
+
+// ===================== DRAWING: SCENE =====================
+function drawSky() {
+    const g = ctx.createLinearGradient(0, 0, 0, VALLEY);
+    g.addColorStop(0, '#0d1b3e');
+    g.addColorStop(0.4, '#1e3a6e');
+    g.addColorStop(0.8, '#4a90c2');
+    g.addColorStop(1, '#7ec8e3');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, SCENE_H);
+}
+
+function drawCloud(cx, cy, w) {
+    ctx.fillStyle = 'rgba(255,255,255,0.15)';
+    ctx.beginPath();
+    ctx.ellipse(cx, cy, w, w*0.35, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx - w*0.4, cy + 3, w*0.5, w*0.25, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.beginPath();
+    ctx.ellipse(cx + w*0.45, cy + 2, w*0.55, w*0.28, 0, 0, Math.PI*2);
+    ctx.fill();
+}
+
+function drawMountain(points, topColor, botColor) {
+    ctx.beginPath();
+    ctx.moveTo(points[0].x, points[0].y);
+    for (let i = 1; i < points.length; i++) {
+        if (points[i].cp) {
+            ctx.quadraticCurveTo(points[i].cp.x, points[i].cp.y, points[i].x, points[i].y);
+        } else {
+            ctx.lineTo(points[i].x, points[i].y);
+        }
+    }
+    ctx.closePath();
+    const g = ctx.createLinearGradient(0, Math.min(...points.map(p=>p.y)), 0, VALLEY);
+    g.addColorStop(0, topColor);
+    g.addColorStop(0.3, '#5a7247');
+    g.addColorStop(1, botColor);
+    ctx.fillStyle = g;
+    ctx.fill();
+}
+
+function drawSnowCap(peak, size) {
+    ctx.beginPath();
+    ctx.moveTo(peak.x - size, peak.y + size * 1.1);
+    ctx.lineTo(peak.x, peak.y);
+    ctx.lineTo(peak.x + size, peak.y + size * 1.1);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(255,255,255,0.65)';
+    ctx.fill();
+}
+
+function drawTree(x, y, h) {
+    ctx.fillStyle = '#2a5e1e';
+    ctx.beginPath();
+    ctx.moveTo(x, y - h);
+    ctx.lineTo(x - h * 0.35, y);
+    ctx.lineTo(x + h * 0.35, y);
+    ctx.closePath();
+    ctx.fill();
+    ctx.fillStyle = '#4a3520';
+    ctx.fillRect(x - 1.5, y, 3, 5);
+}
+
+function drawScene() {
+    drawSky();
+
+    // Clouds
+    drawCloud(180, 55, 40);
+    drawCloud(350, 38, 35);
+    drawCloud(480, 65, 30);
+
+    // Distant hills
+    ctx.fillStyle = '#3a6a4a';
+    ctx.beginPath();
+    ctx.moveTo(140, VALLEY);
+    ctx.quadraticCurveTo(220, VALLEY - 50, 300, VALLEY - 30);
+    ctx.quadraticCurveTo(380, VALLEY - 55, 460, VALLEY);
+    ctx.lineTo(140, VALLEY);
+    ctx.closePath();
+    ctx.fill();
+
+    // Left mountain (Mt Wilson)
+    drawMountain([
+        {x:0, y:VALLEY},
+        {x:0, y:195},
+        {x:LP.x, y:LP.y, cp:{x:30, y:145}},
+        {x:195, y:VALLEY, cp:{x:140, y:155}},
+    ], '#6b5b4f', '#3a6d34');
+    drawSnowCap(LP, 14);
+
+    // Right mountain (Mt San Antonio)
+    drawMountain([
+        {x:405, y:VALLEY},
+        {x:RP.x, y:RP.y, cp:{x:455, y:145}},
+        {x:W, y:180, cp:{x:575, y:135}},
+        {x:W, y:VALLEY},
+    ], '#6b5b4f', '#3a6d34');
+    drawSnowCap(RP, 16);
+
+    // Valley floor
+    const vg = ctx.createLinearGradient(0, VALLEY, 0, SCENE_H);
+    vg.addColorStop(0, '#4a8a3a');
+    vg.addColorStop(1, '#2d6b2e');
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, VALLEY, W, SCENE_H - VALLEY);
+
+    // Trees
+    for (let tx = 200; tx < 400; tx += 22) {
+        drawTree(tx + Math.sin(tx)*5, VALLEY + 2, 14 + Math.sin(tx*0.7)*4);
+    }
+    for (let tx = 10; tx < 180; tx += 30) {
+        drawTree(tx, VALLEY + 2, 10 + Math.sin(tx)*3);
+    }
+    for (let tx = 420; tx < W - 10; tx += 28) {
+        drawTree(tx, VALLEY + 2, 10 + Math.sin(tx)*3);
+    }
+
+    // Mountain labels
+    ctx.font = 'bold 12px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ddd';
+    ctx.fillText('Mt Wilson', LP.x, LP.y - 18);
+    ctx.fillText('Mt San Antonio', RP.x, RP.y - 22);
+
+    // Light speed info
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = 'rgba(200,200,200,0.6)';
+    ctx.fillText('Light slowed \u00d7' + SLOWDOWN.toLocaleString() + '\u00d7', W - 10, 16);
+}
+
+// ===================== DRAWING: TRAY =====================
+function drawTray() {
+    // Tray background
+    ctx.fillStyle = '#12122a';
+    ctx.fillRect(0, TRAY_TOP - 5, W, H - TRAY_TOP + 5);
+
+    // Separator line
+    ctx.strokeStyle = '#333';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(10, TRAY_TOP - 5);
+    ctx.lineTo(W - 10, TRAY_TOP - 5);
+    ctx.stroke();
+
+    ctx.font = 'bold 11px Arial';
+    ctx.fillStyle = '#777';
+    ctx.textAlign = 'center';
+    ctx.fillText('EQUIPMENT  \u2014  drag onto scene', W/2, TRAY_TOP + 7);
+
+    for (let i = 0; i < TRAY_ITEMS.length; i++) {
+        const item = TRAY_ITEMS[i];
+        const x = TRAY_X0 + i * TRAY_W;
+        const y = TRAY_Y0;
+        const cx = x + TRAY_W/2;
+        const cy = y + 24;
+
+        // Item background
+        ctx.fillStyle = 'rgba(255,255,255,0.06)';
+        ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+        ctx.lineWidth = 1;
+        roundRect(x + 4, y, TRAY_W - 8, TRAY_ITEM_H, 5);
+        ctx.fill();
+        ctx.stroke();
+
+        // Draw icon
+        drawEquipIcon(item.type, cx, cy, 0.7);
+
+        // Label
+        ctx.font = '10px Arial';
+        ctx.fillStyle = '#aaa';
+        ctx.textAlign = 'center';
+        ctx.fillText(item.label, cx, y + TRAY_ITEM_H - 4);
+    }
+}
+
+function roundRect(x, y, w, h, r) {
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.lineTo(x + w - r, y);
+    ctx.arcTo(x + w, y, x + w, y + r, r);
+    ctx.lineTo(x + w, y + h - r);
+    ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+    ctx.lineTo(x + r, y + h);
+    ctx.arcTo(x, y + h, x, y + h - r, r);
+    ctx.lineTo(x, y + r);
+    ctx.arcTo(x, y, x + r, y, r);
+    ctx.closePath();
+}
+
+// ===================== EQUIPMENT ICONS =====================
+function drawEquipIcon(type, cx, cy, scale) {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(scale, scale);
+
+    switch(type) {
+        case 'lamp':
+            // Bulb
+            ctx.fillStyle = '#ffe066';
+            ctx.beginPath();
+            ctx.arc(0, -6, 10, 0, Math.PI*2);
+            ctx.fill();
+            // Glow
+            ctx.fillStyle = 'rgba(255,224,100,0.3)';
+            ctx.beginPath();
+            ctx.arc(0, -6, 16, 0, Math.PI*2);
+            ctx.fill();
+            // Base
+            ctx.fillStyle = '#888';
+            ctx.fillRect(-5, 4, 10, 8);
+            // Rays
+            ctx.strokeStyle = '#ffcc00';
+            ctx.lineWidth = 1.5;
+            for (let a = 0; a < Math.PI*2; a += Math.PI/4) {
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a)*12, -6 + Math.sin(a)*12);
+                ctx.lineTo(Math.cos(a)*18, -6 + Math.sin(a)*18);
+                ctx.stroke();
+            }
+            break;
+
+        case 'stopwatch':
+            ctx.fillStyle = '#e0e0e0';
+            ctx.beginPath();
+            ctx.arc(0, 0, 14, 0, Math.PI*2);
+            ctx.fill();
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+            // Button on top
+            ctx.fillStyle = '#888';
+            ctx.fillRect(-3, -18, 6, 5);
+            // Face marks
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            for (let a = 0; a < Math.PI*2; a += Math.PI/6) {
+                ctx.beginPath();
+                ctx.moveTo(Math.cos(a)*10, Math.sin(a)*10);
+                ctx.lineTo(Math.cos(a)*12, Math.sin(a)*12);
+                ctx.stroke();
+            }
+            // Hand
+            ctx.strokeStyle = '#c00';
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.moveTo(0, 0);
+            ctx.lineTo(0, -9);
+            ctx.stroke();
+            break;
+
+        case 'flat_mirror':
+            // Flat mirror - vertical reflective surface
+            ctx.fillStyle = '#a8d8ea';
+            ctx.fillRect(-3, -16, 6, 32);
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-3, -16, 6, 32);
+            // Shine lines
+            ctx.strokeStyle = 'rgba(255,255,255,0.5)';
+            ctx.beginPath();
+            ctx.moveTo(-1, -10); ctx.lineTo(-1, 10);
+            ctx.stroke();
+            // Stand
+            ctx.fillStyle = '#666';
+            ctx.fillRect(-8, 16, 16, 4);
+            break;
+
+        case 'concave':
+            // Concave mirror - curved surface
+            ctx.strokeStyle = '#a8d8ea';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.arc(18, 0, 22, Math.PI*0.7, Math.PI*1.3);
+            ctx.stroke();
+            ctx.strokeStyle = '#fff';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(18, 0, 22, Math.PI*0.7, Math.PI*1.3);
+            ctx.stroke();
+            // Stand
+            ctx.fillStyle = '#666';
+            ctx.fillRect(-8, 16, 16, 4);
+            break;
+
+        case 'octagonal':
+            // Rotating octagonal mirror
+            ctx.strokeStyle = '#a8d8ea';
+            ctx.fillStyle = 'rgba(168,216,234,0.3)';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            for (let i = 0; i < 8; i++) {
+                const a = octAngle + i * Math.PI/4;
+                const px = Math.cos(a) * 13;
+                const py = Math.sin(a) * 13;
+                if (i === 0) ctx.moveTo(px, py);
+                else ctx.lineTo(px, py);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+            // Center dot
+            ctx.fillStyle = '#666';
+            ctx.beginPath();
+            ctx.arc(0, 0, 2, 0, Math.PI*2);
+            ctx.fill();
+            // Rotation arrow
+            ctx.strokeStyle = 'rgba(255,255,255,0.4)';
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(0, 0, 18, -0.3, 0.8);
+            ctx.stroke();
+            // Arrow head
+            const ax = Math.cos(0.8)*18, ay = Math.sin(0.8)*18;
+            ctx.beginPath();
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(ax - 4, ay - 4);
+            ctx.moveTo(ax, ay);
+            ctx.lineTo(ax + 3, ay - 4);
+            ctx.stroke();
+            break;
+
+        case 'tape':
+            // Tape measure
+            ctx.fillStyle = '#f5c542';
+            ctx.fillRect(-18, -3, 36, 6);
+            ctx.strokeStyle = '#c99a20';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-18, -3, 36, 6);
+            // Tick marks
+            ctx.strokeStyle = '#333';
+            ctx.lineWidth = 0.5;
+            for (let tx = -16; tx <= 16; tx += 4) {
+                ctx.beginPath();
+                ctx.moveTo(tx, -3);
+                ctx.lineTo(tx, tx % 8 === 0 ? 0 : -1);
+                ctx.stroke();
+            }
+            // End circles
+            ctx.fillStyle = '#c99a20';
+            ctx.beginPath(); ctx.arc(-18, 0, 4, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(18, 0, 4, 0, Math.PI*2); ctx.fill();
+            break;
+
+        case 'telescope':
+            // Telescope tube
+            ctx.fillStyle = '#8b7355';
+            ctx.save();
+            ctx.rotate(-0.3);
+            ctx.fillRect(-20, -5, 40, 10);
+            ctx.strokeStyle = '#5a4a30';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(-20, -5, 40, 10);
+            // Lens end
+            ctx.fillStyle = '#6699cc';
+            ctx.fillRect(-22, -7, 4, 14);
+            // Eyepiece
+            ctx.fillStyle = '#666';
+            ctx.fillRect(18, -4, 6, 8);
+            ctx.restore();
+            // Tripod legs
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(0, 6); ctx.lineTo(-10, 20); ctx.moveTo(0, 6); ctx.lineTo(10, 20);
+            ctx.moveTo(0, 6); ctx.lineTo(0, 20);
+            ctx.stroke();
+            break;
+    }
+    ctx.restore();
+}
+
+// ===================== DRAW PLACED EQUIPMENT =====================
+function drawPlaced() {
+    for (const eq of placed) {
+        if (drag && drag.itemRef === eq && !drag.tapeEnd) continue; // drawn at drag pos
+
+        if (eq.type === 'tape') {
+            drawTapeMeasure(eq);
+        } else {
+            drawEquipIcon(eq.type, eq.x, eq.y, 1.0);
+
+            // Stopwatch time display
+            if (eq.type === 'stopwatch') {
+                drawStopwatchDisplay(eq.x, eq.y);
+            }
+        }
+    }
+
+    // Draw dragged item
+    if (drag) {
+        if (drag.tapeEnd) {
+            // Tape endpoint being dragged - tape is drawn in drawTapeMeasure
+        } else {
+            ctx.globalAlpha = 0.7;
+            drawEquipIcon(drag.type, drag.x, drag.y, 1.0);
+            ctx.globalAlpha = 1;
+        }
+    }
+}
+
+function drawTapeMeasure(eq) {
+    const x1 = eq.x, y1 = eq.y, x2 = eq.x2, y2 = eq.y2;
+    const d = Math.sqrt((x2-x1)**2 + (y2-y1)**2);
+    const mDist = d * M_PER_PX;
+
+    // Line
+    ctx.strokeStyle = '#f5c542';
+    ctx.lineWidth = 3;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+
+    // Dashed center line
+    ctx.strokeStyle = 'rgba(51,51,51,0.4)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Endpoints
+    ctx.fillStyle = '#c99a20';
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.arc(x1, y1, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+    ctx.beginPath(); ctx.arc(x2, y2, 6, 0, Math.PI*2); ctx.fill(); ctx.stroke();
+
+    // Distance label
+    if (d > 20) {
+        const mx = (x1 + x2) / 2;
+        const my = (y1 + y2) / 2;
+        const label = mDist >= 1000 ? (mDist/1000).toFixed(1) + ' km' : Math.round(mDist) + ' m';
+
+        ctx.font = 'bold 13px Arial';
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = 'rgba(0,0,0,0.7)';
+        roundRect(mx - tw/2 - 5, my - 20, tw + 10, 20, 4);
+        ctx.fill();
+
+        ctx.fillStyle = '#f5c542';
+        ctx.textAlign = 'center';
+        ctx.fillText(label, mx, my - 7);
+    }
+}
+
+let swWallStart = 0; // wall clock time when stopwatch started (for running display)
+function drawStopwatchDisplay(x, y) {
+    let t = swTime;
+    if (swRunning) {
+        // Show a ticking display while waiting for pulse return
+        t = (performance.now() - swWallStart) / 1000;
+        // At high slowdowns this looks right; at low slowdowns it ticks too slowly
+        // but snaps to correct value on stop
+    }
+    const label = t < 0.1 ? t.toFixed(4) + ' s' : t.toFixed(3) + ' s';
+
+    ctx.font = 'bold 14px monospace';
+    const tw = ctx.measureText(label).width;
+    ctx.fillStyle = 'rgba(0,0,0,0.8)';
+    roundRect(x - tw/2 - 8, y + 20, tw + 16, 24, 5);
+    ctx.fill();
+    ctx.strokeStyle = swRunning ? '#4caf50' : '#888';
+    ctx.lineWidth = 1.5;
+    roundRect(x - tw/2 - 8, y + 20, tw + 16, 24, 5);
+    ctx.stroke();
+
+    ctx.fillStyle = swRunning ? '#4caf50' : '#e0e0e0';
+    ctx.textAlign = 'center';
+    ctx.fillText(label, x, y + 37);
+}
+
+// ===================== PHOTONS =====================
+function emitPulse() {
+    const lamp = getLamp();
+    if (!lamp) return;
+    const mirrors = getMirrors();
+    if (mirrors.length === 0) {
+        // Emit to the right by default
+        for (let i = 0; i < 6; i++) {
+            const spread = (Math.random() - 0.5) * 8;
+            photons.push({
+                x: lamp.x, y: lamp.y + spread,
+                vx: C_PX, vy: spread * 0.3,
+                bounced: false, age: 0
+            });
+        }
+    } else {
+        // Aim at nearest mirror
+        let nearest = mirrors[0];
+        let nd = dist(lamp, mirrors[0]);
+        for (const m of mirrors) {
+            const dd = dist(lamp, m);
+            if (dd < nd) { nd = dd; nearest = m; }
+        }
+        const dx = nearest.x - lamp.x;
+        const dy = nearest.y - lamp.y;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        const ux = dx / d, uy = dy / d;
+        for (let i = 0; i < 6; i++) {
+            const spread = (Math.random() - 0.5) * 4;
+            photons.push({
+                x: lamp.x, y: lamp.y,
+                vx: ux * C_PX + spread * 0.2,
+                vy: uy * C_PX + spread,
+                bounced: false, age: 0
+            });
+        }
+    }
+
+    // Auto-start stopwatch and record geometry for exact timing
+    if (hasStopwatch() && !swRunning) {
+        swRunning = true;
+        swTime = 0;
+        swWallStart = performance.now();
+        swPulseOrigin = {x: lamp.x, y: lamp.y};
+        if (mirrors.length > 0) {
+            let nearest = mirrors[0];
+            let nd = dist(lamp, mirrors[0]);
+            for (const m of mirrors) {
+                const dd = dist(lamp, m);
+                if (dd < nd) { nd = dd; nearest = m; }
+            }
+            swPulseMirror = {x: nearest.x, y: nearest.y};
+        }
+    }
+}
+
+// Swept circle-point collision: did photon pass within radius of target during this step?
+function sweptHit(oldX, oldY, newX, newY, tx, ty, radius) {
+    const dx = newX - oldX, dy = newY - oldY;
+    const fx = oldX - tx, fy = oldY - ty;
+    const a = dx*dx + dy*dy;
+    if (a < 0.001) return dist({x:oldX,y:oldY},{x:tx,y:ty}) < radius;
+    const b = 2*(fx*dx + fy*dy);
+    const c = fx*fx + fy*fy - radius*radius;
+    let disc = b*b - 4*a*c;
+    if (disc < 0) return false;
+    disc = Math.sqrt(disc);
+    const t1 = (-b - disc) / (2*a);
+    const t2 = (-b + disc) / (2*a);
+    return (t1 >= 0 && t1 <= 1) || (t2 >= 0 && t2 <= 1) || (t1 < 0 && t2 > 1);
+}
+
+function updatePhotons(dt) {
+    const lamp = getLamp();
+    const mirrors = getMirrors();
+
+    for (const p of photons) {
+        const oldX = p.x, oldY = p.y;
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.age += dt;
+
+        // Check mirror reflection (swept collision)
+        if (!p.bounced) {
+            for (const m of mirrors) {
+                if (sweptHit(oldX, oldY, p.x, p.y, m.x, m.y, 22)) {
+                    // Snap photon to mirror position
+                    p.x = m.x;
+                    p.y = m.y;
+                    // Reflect: reverse direction toward lamp
+                    if (lamp) {
+                        const dx = lamp.x - m.x;
+                        const dy = lamp.y - m.y;
+                        const d = Math.sqrt(dx*dx + dy*dy);
+                        if (d > 0) {
+                            p.vx = (dx/d) * C_PX + (Math.random()-0.5)*2;
+                            p.vy = (dy/d) * C_PX + (Math.random()-0.5)*2;
+                        } else {
+                            p.vx = -p.vx;
+                            p.vy = -p.vy;
+                        }
+                    } else {
+                        p.vx = -p.vx;
+                        p.vy = -p.vy;
+                    }
+                    p.bounced = true;
+                    break;
+                }
+            }
+        }
+
+        // Check if returned to lamp (swept collision)
+        if (p.bounced && lamp && sweptHit(oldX, oldY, p.x, p.y, lamp.x, lamp.y, 24)) {
+            p.age = 999; // mark for removal
+            // Auto-stop stopwatch with exact physics time
+            if (swRunning && swPulseOrigin && swPulseMirror) {
+                const tripDist = dist(swPulseOrigin, swPulseMirror) * M_PER_PX * 2; // round trip in meters
+                const simSpeed = C_REAL / SLOWDOWN; // m/s
+                swTime = tripDist / simSpeed;
+                swRunning = false;
+            }
+        }
+    }
+
+    // Remove off-screen or old photons
+    photons = photons.filter(p => p.x > -50 && p.x < W + 50 && p.y > -50 && p.y < H + 50 && p.age < 30);
+}
+
+function drawPhotons() {
+    for (const p of photons) {
+        // Outer glow
+        ctx.fillStyle = 'rgba(255,50,50,0.15)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 14, 0, Math.PI*2);
+        ctx.fill();
+        // Mid glow
+        ctx.fillStyle = 'rgba(255,60,60,0.3)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 8, 0, Math.PI*2);
+        ctx.fill();
+        // Core
+        ctx.fillStyle = '#ff3333';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 4, 0, Math.PI*2);
+        ctx.fill();
+        // Bright center
+        ctx.fillStyle = '#ffcccc';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI*2);
+        ctx.fill();
+    }
+}
+
+// ===================== BEAM LINE (for continuous mode) =====================
+function drawBeamLine() {
+    const lamp = getLamp();
+    if (!lamp || !lampContinuous) return;
+    const mirrors = getMirrors();
+    if (mirrors.length === 0) return;
+
+    let nearest = mirrors[0];
+    let nd = dist(lamp, mirrors[0]);
+    for (const m of mirrors) {
+        const dd = dist(lamp, m);
+        if (dd < nd) { nd = dd; nearest = m; }
+    }
+
+    // Draw beam from lamp to mirror and back
+    ctx.strokeStyle = 'rgba(255,60,60,0.12)';
+    ctx.lineWidth = 10;
+    ctx.beginPath();
+    ctx.moveTo(lamp.x, lamp.y);
+    ctx.lineTo(nearest.x, nearest.y);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,80,80,0.3)';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(lamp.x, lamp.y);
+    ctx.lineTo(nearest.x, nearest.y);
+    ctx.stroke();
+
+    ctx.strokeStyle = 'rgba(255,120,120,0.5)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(lamp.x, lamp.y);
+    ctx.lineTo(nearest.x, nearest.y);
+    ctx.stroke();
+}
+
+// ===================== INPUT HANDLING =====================
+function hitTrayItem(pos) {
+    for (let i = 0; i < TRAY_ITEMS.length; i++) {
+        const x = TRAY_X0 + i * TRAY_W + 4;
+        const y = TRAY_Y0;
+        if (pos.x >= x && pos.x <= x + TRAY_W - 8 && pos.y >= y && pos.y <= y + TRAY_ITEM_H) {
+            return TRAY_ITEMS[i];
+        }
+    }
+    return null;
+}
+
+function hitTapeEnd(pos) {
+    for (const eq of placed) {
+        if (eq.type === 'tape') {
+            if (dist(pos, {x: eq.x, y: eq.y}) < 12) return {item: eq, end: 1};
+            if (dist(pos, {x: eq.x2, y: eq.y2}) < 12) return {item: eq, end: 2};
+        }
+    }
+    return null;
+}
+
+function hitPlaced(pos) {
+    // Check in reverse order (topmost first)
+    for (let i = placed.length - 1; i >= 0; i--) {
+        const eq = placed[i];
+        if (eq.type === 'tape') {
+            // Hit whole tape? Check midpoint area
+            const mx = (eq.x + eq.x2) / 2;
+            const my = (eq.y + eq.y2) / 2;
+            if (dist(pos, {x: mx, y: my}) < 20) return eq;
+        } else {
+            if (dist(pos, eq) < 22) return eq;
+        }
+    }
+    return null;
+}
+
+function onDown(e) {
+    e.preventDefault();
+    isDown = true;
+    canvas.style.cursor = 'grabbing';
+    const pos = getPos(e);
+
+    // Check tape endpoints first
+    const te = hitTapeEnd(pos);
+    if (te) {
+        drag = {type: 'tape', tapeEnd: te.end, itemRef: te.item, x: pos.x, y: pos.y, fromTray: false};
+        return;
+    }
+
+    // Check placed equipment
+    const hit = hitPlaced(pos);
+    if (hit) {
+        drag = {type: hit.type, itemRef: hit, x: hit.x, y: hit.y, fromTray: false,
+                ox: hit.x - pos.x, oy: hit.y - pos.y};
+        return;
+    }
+
+    // Check tray items
+    const trayHit = hitTrayItem(pos);
+    if (trayHit) {
+        drag = {type: trayHit.type, x: pos.x, y: pos.y, fromTray: true, itemRef: null};
+        return;
+    }
+
+    // Click on stopwatch to toggle
+    for (const eq of placed) {
+        if (eq.type === 'stopwatch' && dist(pos, {x: eq.x, y: eq.y + 30}) < 30) {
+            if (swRunning) {
+                swRunning = false;
+            } else {
+                swRunning = true;
+            }
+            return;
+        }
+    }
+}
+
+function onMove(e) {
+    e.preventDefault();
+    if (!drag) return;
+    const pos = getPos(e);
+
+    if (drag.tapeEnd) {
+        const tape = drag.itemRef;
+        if (drag.tapeEnd === 1) { tape.x = pos.x; tape.y = pos.y; }
+        else { tape.x2 = pos.x; tape.y2 = pos.y; }
+    } else if (drag.fromTray) {
+        drag.x = pos.x;
+        drag.y = pos.y;
+    } else if (drag.itemRef) {
+        const eq = drag.itemRef;
+        if (eq.type === 'tape') {
+            const dx = pos.x + drag.ox - eq.x;
+            const dy = pos.y + drag.oy - eq.y;
+            eq.x += dx; eq.y += dy;
+            eq.x2 += dx; eq.y2 += dy;
+            drag.ox = eq.x - pos.x;
+            drag.oy = eq.y - pos.y;
+        } else {
+            eq.x = pos.x + drag.ox;
+            eq.y = pos.y + drag.oy;
+        }
+    }
+}
+
+function onUp(e) {
+    e.preventDefault();
+    canvas.style.cursor = 'grab';
+    isDown = false;
+
+    if (drag && drag.fromTray && drag.y < TRAY_TOP) {
+        // Clamp to scene bounds
+        const cx = Math.max(15, Math.min(W - 15, drag.x));
+        const cy = Math.max(15, Math.min(SCENE_H - 5, drag.y));
+        const eq = {type: drag.type, x: cx, y: cy, id: nextId++};
+        if (drag.type === 'tape') {
+            eq.x2 = Math.min(W - 15, eq.x + 40);
+            eq.y2 = eq.y;
+        }
+        placed.push(eq);
+        updateButtons();
+    }
+
+    drag = null;
+}
+
+// Mouse events
+canvas.addEventListener('mousedown', onDown);
+canvas.addEventListener('mousemove', onMove);
+canvas.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', onUp);
+
+// Touch events
+canvas.addEventListener('touchstart', onDown, {passive: false});
+canvas.addEventListener('touchmove', onMove, {passive: false});
+canvas.addEventListener('touchend', onUp, {passive: false});
+
+// ===================== BUTTONS =====================
+const bPulse = document.getElementById('bPulse');
+const bLamp = document.getElementById('bLamp');
+const bReset = document.getElementById('bReset');
+const slowSlider = document.getElementById('slowSlider');
+
+slowSlider.addEventListener('input', () => {
+    updateSlowdown(parseFloat(slowSlider.value));
+    // Update velocities of existing photons to match new speed
+    for (const p of photons) {
+        const speed = Math.sqrt(p.vx*p.vx + p.vy*p.vy);
+        if (speed > 0) {
+            const scale = C_PX / speed;
+            p.vx *= scale;
+            p.vy *= scale;
+        }
+    }
+});
+updateSlowdown(parseFloat(slowSlider.value));
+
+function updateButtons() {
+    const hl = hasLamp();
+    bPulse.disabled = !hl;
+    bLamp.disabled = !hl;
+    bLamp.textContent = lampContinuous ? 'Lamp Off' : 'Lamp On';
+}
+
+bPulse.addEventListener('click', () => {
+    if (!hasLamp()) return;
+    emitPulse();
+});
+
+bLamp.addEventListener('click', () => {
+    if (!hasLamp()) return;
+    lampContinuous = !lampContinuous;
+    if (lampContinuous) {
+        // Start stopwatch if present
+        if (hasStopwatch() && !swRunning) {
+            swRunning = true;
+            swTime = 0;
+        }
+    }
+    updateButtons();
+});
+
+bReset.addEventListener('click', () => {
+    placed = [];
+    photons = [];
+    drag = null;
+    swRunning = false;
+    swTime = 0;
+    lampContinuous = false;
+    lampEmitAccum = 0;
+    updateButtons();
+});
+
+// Double-click on placed equipment to remove it
+canvas.addEventListener('dblclick', (e) => {
+    const pos = getPos(e);
+    // Check tape endpoints
+    for (let i = placed.length - 1; i >= 0; i--) {
+        const eq = placed[i];
+        let hit = false;
+        if (eq.type === 'tape') {
+            const mx = (eq.x + eq.x2) / 2;
+            const my = (eq.y + eq.y2) / 2;
+            hit = dist(pos, {x: mx, y: my}) < 25 || dist(pos, eq) < 12 || dist(pos, {x:eq.x2,y:eq.y2}) < 12;
+        } else {
+            hit = dist(pos, eq) < 22;
+        }
+        if (hit) {
+            placed.splice(i, 1);
+            updateButtons();
+            break;
+        }
+    }
+});
+
+// ===================== MAIN LOOP =====================
+// Use setInterval for reliable ticking (works in background tabs)
+// plus requestAnimationFrame for smooth rendering when tab is visible
+let lastTick = performance.now();
+
+function tick() {
+    const now = performance.now();
+    const dt = Math.min((now - lastTick) / 1000, 0.05);
+    lastTick = now;
+    if (dt <= 0) return;
+
+    // Update octagonal mirror rotation
+    octAngle += octSpeed * dt;
+
+    // Continuous emission
+    if (lampContinuous && hasLamp()) {
+        lampEmitAccum += dt;
+        if (lampEmitAccum >= EMIT_INTERVAL) {
+            lampEmitAccum -= EMIT_INTERVAL;
+            emitPhotonSingle();
+        }
+    }
+
+    // Update photons
+    updatePhotons(dt);
+
+    // Draw
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    ctx.clearRect(0, 0, W, H);
+    drawScene();
+    drawBeamLine();
+    drawPhotons();
+    drawPlaced();
+    drawTray();
+
+    // Instructions overlay when empty
+    if (placed.length === 0) {
+        ctx.font = '15px Arial';
+        ctx.fillStyle = 'rgba(255,255,255,0.3)';
+        ctx.textAlign = 'center';
+        ctx.fillText('\u2191 Drag equipment here from the tray below \u2193', W/2, 240);
+    }
+}
+
+setInterval(tick, 16);
+
+function emitPhotonSingle() {
+    const lamp = getLamp();
+    if (!lamp) return;
+    const mirrors = getMirrors();
+    if (mirrors.length === 0) {
+        photons.push({x: lamp.x, y: lamp.y, vx: C_PX, vy: (Math.random()-0.5)*2, bounced: false, age: 0});
+    } else {
+        let nearest = mirrors[0];
+        let nd = dist(lamp, mirrors[0]);
+        for (const m of mirrors) {
+            const dd = dist(lamp, m);
+            if (dd < nd) { nd = dd; nearest = m; }
+        }
+        const dx = nearest.x - lamp.x, dy = nearest.y - lamp.y;
+        const d = Math.sqrt(dx*dx + dy*dy);
+        photons.push({
+            x: lamp.x, y: lamp.y,
+            vx: (dx/d) * C_PX + (Math.random()-0.5)*1,
+            vy: (dy/d) * C_PX + (Math.random()-0.5)*1,
+            bounced: false, age: 0
+        });
+    }
+}
+
+updateButtons();
+</script>
+</body>
+</html>
