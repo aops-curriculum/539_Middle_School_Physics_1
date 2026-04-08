@@ -119,7 +119,7 @@
     <div id="loading">Loading globe...</div>
 </div>
 <div id="info-panel">
-    <div id="instructions">Click a city to start measuring a geodesic</div>
+    <div id="instructions">Click a city to start measuring distances</div>
     <div id="measurements"></div>
     <button id="reset-btn">Reset All</button>
 </div>
@@ -139,7 +139,6 @@ import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 const GLOBE_RADIUS = 5;
 const MARKER_RADIUS = 0.09;
 const GEODESIC_LIFT = 1.003;
-const MAX_GEODESICS = 10;
 const DEG2RAD = Math.PI / 180;
 
 const GEODESIC_COLORS = [
@@ -484,28 +483,41 @@ function ndcFromEvent(e) {
 }
 
 // --- Preview geodesic ---
-function updatePreviewLine(points) {
+const previewDistLabel = document.createElement('div');
+previewDistLabel.className = 'distance-label';
+previewDistLabel.style.color = '#ffffff';
+previewDistLabel.style.display = 'none';
+labelsContainer.appendChild(previewDistLabel);
+let previewMidPt = null;
+
+function updatePreviewLine(points, distKm) {
     if (previewLine) {
         globeGroup.remove(previewLine);
         previewLine.geometry.dispose();
         previewLine = null;
     }
-    if (!points || points.length < 2) return;
+    if (!points || points.length < 2) {
+        previewDistLabel.style.display = 'none';
+        previewMidPt = null;
+        return;
+    }
     const geo = new THREE.BufferGeometry().setFromPoints(points);
     const mat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.5, depthTest: true });
     previewLine = new THREE.Line(geo, mat);
     globeGroup.add(previewLine);
+    // Update floating distance label at midpoint
+    if (distKm != null && distKm > 50) {
+        previewMidPt = points[Math.floor(points.length / 2)].clone();
+        previewDistLabel.textContent = `${Math.round(distKm).toLocaleString()} km`;
+        previewDistLabel.style.display = '';
+    } else {
+        previewDistLabel.style.display = 'none';
+        previewMidPt = null;
+    }
 }
 
 // --- Completed geodesics ---
 function addGeodesic(city1Idx, city2Idx) {
-    if (geodesics.length >= MAX_GEODESICS) {
-        // Remove oldest
-        const old = geodesics.shift();
-        globeGroup.remove(old.line);
-        old.line.geometry.dispose();
-        if (old.labelDiv) old.labelDiv.remove();
-    }
     const c1 = cities[city1Idx], c2 = cities[city2Idx];
     const color = GEODESIC_COLORS[geodesics.length % GEODESIC_COLORS.length];
     const pts = greatCirclePoints(c1.lat, c1.lon, c2.lat, c2.lon, 120);
@@ -546,9 +558,9 @@ function resetAll() {
     });
     geodesics = [];
     selectedCityIdx = null;
-    updatePreviewLine(null);
+    updatePreviewLine(null, null);
     document.getElementById('measurements').innerHTML = '';
-    document.getElementById('instructions').textContent = 'Click a city to start measuring a geodesic';
+    document.getElementById('instructions').textContent = 'Click a city to start measuring distances';
     markerMeshes.forEach(m => { m.material.color.set(0xFFD700); m.scale.setScalar(1); });
 }
 document.getElementById('reset-btn').addEventListener('click', resetAll);
@@ -605,10 +617,9 @@ renderer.domElement.addEventListener('mousemove', e => {
 
 function selectCity(idx) {
     selectedCityIdx = idx;
-    const c = cities[idx];
     markerMeshes[idx].material.color.set(0x00FF88);
     markerMeshes[idx].scale.setScalar(1.5);
-    document.getElementById('instructions').textContent = `Selected: ${c.name}, ${c.country} \u2014 click another city to measure`;
+    document.getElementById('instructions').textContent = 'Click another city to find the distance';
 }
 
 function deselectCity() {
@@ -617,8 +628,10 @@ function deselectCity() {
         markerMeshes[selectedCityIdx].scale.setScalar(1);
     }
     selectedCityIdx = null;
-    updatePreviewLine(null);
-    document.getElementById('instructions').textContent = 'Click a city to start measuring a geodesic';
+    updatePreviewLine(null, null);
+    // Show instructions only if no geodesics have been drawn yet
+    document.getElementById('instructions').textContent =
+        geodesics.length === 0 ? 'Click a city to start measuring distances' : '';
 }
 
 function completeGeodesic(cityIdx) {
@@ -626,11 +639,8 @@ function completeGeodesic(cityIdx) {
     markerMeshes[selectedCityIdx].material.color.set(0xFFD700);
     markerMeshes[selectedCityIdx].scale.setScalar(1);
     selectedCityIdx = null;
-    updatePreviewLine(null);
-    const remaining = MAX_GEODESICS - geodesics.length;
-    document.getElementById('instructions').textContent = remaining > 0
-        ? `Click a city to start another measurement (${geodesics.length}/${MAX_GEODESICS})`
-        : `Maximum ${MAX_GEODESICS} geodesics reached \u2014 oldest will be replaced`;
+    updatePreviewLine(null, null);
+    document.getElementById('instructions').textContent = '';
 }
 
 // --- Animation loop ---
@@ -638,7 +648,7 @@ function animate() {
     requestAnimationFrame(animate);
     controls.update();
 
-    // Update preview geodesic
+    // Update preview geodesic with live distance
     if (selectedCityIdx !== null && globe) {
         let targetLL = null;
         if (hoveredCityIdx !== null && hoveredCityIdx !== selectedCityIdx) {
@@ -650,9 +660,10 @@ function animate() {
         if (targetLL) {
             const sc = cities[selectedCityIdx];
             const pts = greatCirclePoints(sc.lat, sc.lon, targetLL.lat, targetLL.lon, 80);
-            updatePreviewLine(pts);
+            const dist = haversineKm(sc.lat, sc.lon, targetLL.lat, targetLL.lon);
+            updatePreviewLine(pts, dist);
         } else {
-            updatePreviewLine(null);
+            updatePreviewLine(null, null);
         }
     }
 
@@ -701,7 +712,6 @@ function animate() {
     // Update geodesic distance labels
     geodesics.forEach(g => {
         const worldPos = g.midPt.clone();
-        // Check visibility
         const normalDir = worldPos.clone().normalize();
         const toCam = camPos.clone().sub(worldPos).normalize();
         const facing = normalDir.dot(toCam);
@@ -717,6 +727,23 @@ function animate() {
             g.labelDiv.style.display = 'none';
         }
     });
+
+    // Position preview distance label
+    if (previewMidPt) {
+        const normalDir = previewMidPt.clone().normalize();
+        const toCam = camPos.clone().sub(previewMidPt).normalize();
+        const facing = normalDir.dot(toCam);
+        if (facing > 0) {
+            const projected = previewMidPt.clone().project(camera);
+            const x = (projected.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
+            const y = (-projected.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
+            previewDistLabel.style.left = x + 'px';
+            previewDistLabel.style.top = y + 'px';
+            previewDistLabel.style.opacity = Math.min(0.85, facing * 3);
+        } else {
+            previewDistLabel.style.display = 'none';
+        }
+    }
 
     renderer.render(scene, camera);
 }
