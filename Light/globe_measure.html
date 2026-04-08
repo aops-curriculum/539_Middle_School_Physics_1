@@ -137,7 +137,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 
 const GLOBE_RADIUS = 5;
-const MARKER_RADIUS = 0.055;
+const MARKER_RADIUS = 0.09;
 const GEODESIC_LIFT = 1.003;
 const MAX_GEODESICS = 10;
 const DEG2RAD = Math.PI / 180;
@@ -431,7 +431,22 @@ function getHitCity(ndcX, ndcY) {
     raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
     const hits = raycaster.intersectObjects(markerMeshes);
     if (hits.length > 0) return hits[0].object.userData.cityIndex;
-    return null;
+    // Fallback: screen-space proximity check (within 18px)
+    const camPos = camera.position.clone();
+    let bestIdx = null, bestDist = 18;
+    const sx = (ndcX * 0.5 + 0.5) * renderer.domElement.clientWidth;
+    const sy = (-ndcY * 0.5 + 0.5) * renderer.domElement.clientHeight;
+    markerMeshes.forEach((m, i) => {
+        const wp = m.getWorldPosition(new THREE.Vector3());
+        // Only consider markers facing camera
+        if (wp.clone().normalize().dot(camPos.clone().sub(wp).normalize()) < 0) return;
+        const proj = wp.clone().project(camera);
+        const px = (proj.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
+        const py = (-proj.y * 0.5 + 0.5) * renderer.domElement.clientHeight;
+        const d = Math.hypot(px - sx, py - sy);
+        if (d < bestDist) { bestDist = d; bestIdx = i; }
+    });
+    return bestIdx;
 }
 
 function getGlobeHitLatLon(ndcX, ndcY) {
