@@ -40,18 +40,6 @@
     border-radius: 4px;
     text-align: right;
   }
-  #info {
-    padding: 6px 12px;
-    font-size: 15px;
-    font-family: monospace;
-    line-height: 1.6;
-    color: #333;
-    min-height: 10px;
-    background: #f9f9f9;
-    border-top: 1px solid #ccc;
-    white-space: pre;
-    width: 600px;
-  }
 </style>
 </head>
 <body>
@@ -61,17 +49,17 @@
   <span id="instruction">&deg;</span>
 </div>
 <canvas id="canvas" width="1200" height="800"></canvas>
-<div id="info"></div>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const infoEl = document.getElementById('info');
 const angleInput = document.getElementById('angleInput');
 
 // HiDPI: canvas is 1200x800 but displayed at 600x400 via CSS
 const DPR = 2;
 ctx.scale(DPR, DPR);
+
+const CW = 600, CH = 400; // CSS dimensions
 
 // --- Style constants ---
 const BROWN = '#8B4513';
@@ -160,17 +148,10 @@ function makeTransparent() {
 let incidentAngleDeg = 0;
 
 // Compute the startY on Haibao from the incident angle.
-// The ray goes from (STUFFIE_CENTER_X, startY) to (MIRROR_X, MIRROR_TOP_Y).
-// The angle above horizontal = incidentAngleDeg.
-// tan(angle) = (MIRROR_TOP_Y - startY) / (MIRROR_X - STUFFIE_CENTER_X)
-// Since startY is above MIRROR_TOP_Y (smaller y), and the ray goes up-left:
-// vertical rise = DISTANCE_PX * tan(angle)
-// startY = MIRROR_TOP_Y - DISTANCE_PX * tan(angle)
 function angleToStartY(angleDeg) {
   const angleRad = angleDeg * Math.PI / 180;
   const distancePx = MIRROR_X - STUFFIE_CENTER_X;
   const startY = MIRROR_TOP_Y - distancePx * Math.tan(angleRad);
-  // Clamp to reasonable range
   const minY = STUFFIE_TOP_Y + 5;
   const maxY = MIRROR_TOP_Y - 2;
   return Math.max(minY, Math.min(maxY, startY));
@@ -178,7 +159,7 @@ function angleToStartY(angleDeg) {
 
 // --- Drawing ---
 function drawScene() {
-  ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
+  ctx.clearRect(0, 0, CW, CH);
 
   // Ground line
   ctx.strokeStyle = '#000';
@@ -195,11 +176,11 @@ function drawScene() {
   // Dashed horizontal line at mirror top height
   drawDashedLine();
 
-  // Fixed reflected ray: mirror top → Haibao's eye (below dashed line)
+  // Fixed reflected ray: mirror top -> Haibao's eye (below dashed line)
   drawArrow(MIRROR_X, MIRROR_TOP_Y, STUFFIE_CENTER_X, EYE_Y, RED, 2.5);
   drawFixedAngleArc();
 
-  // Interactive incident ray: Haibao start → mirror top (above dashed line)
+  // Interactive incident ray: Haibao start -> mirror top (above dashed line)
   const startY = angleToStartY(incidentAngleDeg);
   if (incidentAngleDeg > 0) {
     drawArrow(STUFFIE_CENTER_X, startY, MIRROR_X, MIRROR_TOP_Y, BLUE, 2.5);
@@ -207,7 +188,7 @@ function drawScene() {
     drawHeightArrow(startY);
   }
 
-  showInfo(startY);
+  drawInfoText(startY);
 }
 
 function drawStuffie() {
@@ -338,10 +319,6 @@ function drawDashedLine() {
   ctx.setLineDash([]);
 }
 
-// Draw angle arc between a ray and the horizontal dashed line at the mirror top.
-// rayFromX, rayFromY: the other end of the ray (not the mirror top).
-// color: stroke/fill color for arc and label.
-// labelBelow: if true, place label below dashed line; if false, above.
 function drawAngleArcGeneric(rayFromX, rayFromY, color, labelBelow) {
   const dx = rayFromX - MIRROR_X;
   const dy = rayFromY - MIRROR_TOP_Y;
@@ -362,7 +339,6 @@ function drawAngleArcGeneric(rayFromX, rayFromY, color, labelBelow) {
   ctx.arc(MIRROR_X, MIRROR_TOP_Y, arcRadius, horizAngle, rayAngle, useAntiClockwise);
   ctx.stroke();
 
-  // Label placement
   const labelX = MIRROR_X - arcRadius - 24;
   const labelY = labelBelow ? MIRROR_TOP_Y + 16 : MIRROR_TOP_Y - 16;
 
@@ -440,16 +416,26 @@ function drawHeightArrow(startY) {
   ctx.restore();
 }
 
-function showInfo(startY) {
+function drawInfoText(startY) {
   if (incidentAngleDeg <= 0) {
-    infoEl.textContent = `incident height     = \u2014\nangle of incidence  = \u2014`;
+    ctx.font = '13px monospace';
+    ctx.fillStyle = '#333';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+    ctx.fillText('highest part seen   = \u2014', 300, GROUND_Y_PX - 40);
+    ctx.fillText('angle of incidence  = \u2014', 300, GROUND_Y_PX - 22);
     return;
   }
   const heightCm = yToCm(startY);
   const heightStr = heightCm.toFixed(1);
   const angleStr = incidentAngleDeg.toFixed(1);
 
-  infoEl.textContent = `incident height     = ${heightStr} cm\nangle of incidence  = ${angleStr}\u00B0`;
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText('highest part seen   = ' + heightStr + ' cm', 300, GROUND_Y_PX - 40);
+  ctx.fillText('angle of incidence  = ' + angleStr + '\u00B0', 300, GROUND_Y_PX - 22);
 }
 
 // --- Interaction ---

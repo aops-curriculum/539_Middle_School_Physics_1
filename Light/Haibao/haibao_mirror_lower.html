@@ -18,42 +18,6 @@
     width: 600px;
     height: 400px;
   }
-  #controls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px 12px;
-    background: #f0f0f0;
-    border-bottom: 1px solid #ccc;
-    height: 36px;
-    width: 600px;
-  }
-  #instruction {
-    font-size: 14px;
-    color: #333;
-    flex: 1;
-  }
-  #resetBtn {
-    padding: 4px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    border: 1px solid #999;
-    border-radius: 4px;
-    background: #fff;
-  }
-  #resetBtn:hover { background: #e0e0e0; }
-  #info {
-    padding: 6px 12px;
-    font-size: 15px;
-    font-family: monospace;
-    line-height: 1.6;
-    color: #333;
-    min-height: 10px;
-    background: #f9f9f9;
-    border-top: 1px solid #ccc;
-    white-space: pre;
-    width: 600px;
-  }
   #warning {
     padding: 8px 12px;
     font-size: 13px;
@@ -66,25 +30,19 @@
 </style>
 </head>
 <body>
-<div id="controls">
-  <span id="instruction">Click the point where your ray ends (on Haibao).</span>
-  <button id="resetBtn">Reset</button>
-</div>
 <canvas id="canvas" width="1200" height="800"></canvas>
-<div id="info"></div>
 <div id="warning"></div>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const instructionEl = document.getElementById('instruction');
-const infoEl = document.getElementById('info');
 const warningEl = document.getElementById('warning');
-const resetBtn = document.getElementById('resetBtn');
 
 // HiDPI: canvas is 1200x800 but displayed at 600x400 via CSS
 const DPR = 2;
 ctx.scale(DPR, DPR);
+
+const CW = 600, CH = 400; // CSS dimensions
 
 // --- Style constants ---
 const BROWN = '#8B4513';
@@ -114,6 +72,13 @@ const STUFFIE_CENTER_X = 138;
 
 const MIRROR_X = STUFFIE_CENTER_X + DISTANCE * SCALE;
 const ARROW_RIGHT_X = MIRROR_X + 25;
+
+// --- Magnifier ---
+const MAG_RADIUS = 50;
+const MAG_ZOOM = 3;
+
+// --- UI hit regions (in CSS coords) ---
+const RESET_BTN = { x: 525, y: 6, w: 60, h: 24 };
 
 function cmToY(cm) {
   return GROUND_Y_PX - cm * SCALE;
@@ -173,10 +138,11 @@ let dragStart = null;
 let isDragging = false;
 let suppressClick = false;
 const DRAG_THRESHOLD = 10;
+let hoveringReset = false;
 
 // --- Drawing ---
 function drawScene() {
-  ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
+  ctx.clearRect(0, 0, CW, CH);
 
   // Ground line
   ctx.strokeStyle = '#000';
@@ -215,6 +181,181 @@ function drawScene() {
     // Height arrow for where the incident ray starts on Haibao
     drawHeightArrow(reflectedY);
   }
+
+  // --- On-canvas UI elements ---
+  drawInstruction();
+  drawInfoText();
+  drawResetButton();
+  drawCursorCrosshair();
+  drawMagnifier();
+}
+
+function drawInstruction() {
+  let text = '';
+  if (state === 'waiting_first') {
+    text = 'Click the point where your ray ends (on Haibao).';
+  } else if (state === 'waiting_second') {
+    text = 'Click the point where your ray begins (on the mirror).';
+  }
+  if (!text) return;
+
+  ctx.font = '14px Arial';
+  ctx.fillStyle = '#555';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(text, 200, 14);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawInfoText() {
+  if (state !== 'done' || !secondClick) return;
+
+  // Reflection angle
+  const dx = firstClick.x - secondClick.x;
+  const dy = firstClick.y - secondClick.y;
+  const reflAngleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
+
+  // Incident ray start height
+  const reflectedY = 2 * secondClick.y - firstClick.y;
+  const incidentHeightCm = yToCm(reflectedY);
+
+  // Normal height (where ray hits mirror)
+  const normalHeightCm = yToCm(secondClick.y);
+
+  const line1 = 'height of normal    = ' + normalHeightCm.toFixed(1) + ' cm';
+  const line2 = 'angle of reflection = ' + reflAngleDeg.toFixed(1) + '\u00B0';
+  const line3 = 'angle of incidence  = ' + reflAngleDeg.toFixed(1) + '\u00B0';
+  const line4 = 'lowest part seen    = ' + incidentHeightCm.toFixed(1) + ' cm';
+
+  ctx.font = '13px monospace';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(line1, 300, GROUND_Y_PX - 70);
+  ctx.fillText(line2, 300, GROUND_Y_PX - 52);
+  ctx.fillText(line3, 300, GROUND_Y_PX - 34);
+  ctx.fillText(line4, 300, GROUND_Y_PX - 16);
+}
+
+function drawResetButton() {
+  const b = RESET_BTN;
+  ctx.fillStyle = hoveringReset ? '#e0e0e0' : '#fff';
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 1;
+
+  // Rounded rect
+  const r = 4;
+  ctx.beginPath();
+  ctx.moveTo(b.x + r, b.y);
+  ctx.lineTo(b.x + b.w - r, b.y);
+  ctx.arcTo(b.x + b.w, b.y, b.x + b.w, b.y + r, r);
+  ctx.lineTo(b.x + b.w, b.y + b.h - r);
+  ctx.arcTo(b.x + b.w, b.y + b.h, b.x + b.w - r, b.y + b.h, r);
+  ctx.lineTo(b.x + r, b.y + b.h);
+  ctx.arcTo(b.x, b.y + b.h, b.x, b.y + b.h - r, r);
+  ctx.lineTo(b.x, b.y + r);
+  ctx.arcTo(b.x, b.y, b.x + r, b.y, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = '14px Arial';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Reset', b.x + b.w / 2, b.y + b.h / 2);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawCursorCrosshair() {
+  if (!mousePos) return;
+  if (state === 'done') return;
+
+  const mx = mousePos.x;
+  const my = mousePos.y;
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(mx - 10, my);
+  ctx.lineTo(mx - 3, my);
+  ctx.moveTo(mx + 3, my);
+  ctx.lineTo(mx + 10, my);
+  ctx.moveTo(mx, my - 10);
+  ctx.lineTo(mx, my - 3);
+  ctx.moveTo(mx, my + 3);
+  ctx.lineTo(mx, my + 10);
+  ctx.stroke();
+}
+
+function drawMagnifier() {
+  if (!mousePos) return;
+  if (state === 'done') return;
+
+  const mx = mousePos.x;
+  const my = mousePos.y;
+
+  // Position the magnifier circle offset from cursor
+  let lx = mx + 65;
+  let ly = my - 65;
+  if (lx + MAG_RADIUS > CW - 5) lx = mx - 65 - MAG_RADIUS;
+  if (ly - MAG_RADIUS < 5) ly = my + 65 + MAG_RADIUS;
+  if (lx - MAG_RADIUS < 5) lx = MAG_RADIUS + 5;
+  if (ly + MAG_RADIUS > CH - 5) ly = CH - 5 - MAG_RADIUS;
+
+  // Draw scene into offscreen canvas for sampling
+  const offCanvas = document.createElement('canvas');
+  offCanvas.width = CW;
+  offCanvas.height = CH;
+  const offCtx = offCanvas.getContext('2d');
+  offCtx.drawImage(canvas, 0, 0, CW, CH);
+
+  // Extract the region around cursor and draw it zoomed
+  const srcR = MAG_RADIUS / MAG_ZOOM;
+  const srcX = mx - srcR;
+  const srcY = my - srcR;
+  const srcSize = srcR * 2;
+  const destSize = MAG_RADIUS * 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(lx, ly, MAG_RADIUS, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.drawImage(offCanvas, srcX, srcY, srcSize, srcSize, lx - MAG_RADIUS, ly - MAG_RADIUS, destSize, destSize);
+  ctx.restore();
+
+  // Crosshair in magnifier center
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(lx - 12, ly);
+  ctx.lineTo(lx - 4, ly);
+  ctx.moveTo(lx + 4, ly);
+  ctx.lineTo(lx + 12, ly);
+  ctx.moveTo(lx, ly - 12);
+  ctx.lineTo(lx, ly - 4);
+  ctx.moveTo(lx, ly + 4);
+  ctx.lineTo(lx, ly + 12);
+  ctx.stroke();
+
+  // Center dot
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.arc(lx, ly, 1.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Border ring
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(lx, ly, MAG_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Subtle label
+  ctx.font = '10px Arial';
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'center';
+  ctx.fillText(MAG_ZOOM + '\u00d7', lx, ly + MAG_RADIUS + 12);
 }
 
 function drawStuffie() {
@@ -347,10 +488,6 @@ function drawDashedLine() {
 }
 
 // Generic angle arc between a ray endpoint and the mirror contact point.
-// rayEndX, rayEndY: the far end of the ray (on Haibao side).
-// mirrorPtX, mirrorPtY: the point on the mirror where the ray meets.
-// color: arc and label color.
-// labelBelow: if true, place label below the dashed line; if false, above.
 function drawAngleArc(rayEndX, rayEndY, mirrorPtX, mirrorPtY, color, labelBelow) {
   const dx = rayEndX - mirrorPtX;
   const dy = rayEndY - mirrorPtY;
@@ -442,13 +579,24 @@ function drawHeightArrow(startY) {
 }
 
 // --- Interaction ---
+function isInResetBtn(x, y) {
+  const b = RESET_BTN;
+  return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+}
+
 canvas.addEventListener('mousedown', (e) => {
-  if (state !== 'waiting_first') return;
   const rect = canvas.getBoundingClientRect();
-  dragStart = {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
-  };
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+
+  // Check reset button
+  if (isInResetBtn(cx, cy)) {
+    reset();
+    return;
+  }
+
+  if (state !== 'waiting_first') return;
+  dragStart = { x: cx, y: cy };
   isDragging = false;
 });
 
@@ -458,6 +606,11 @@ canvas.addEventListener('mousemove', (e) => {
     x: e.clientX - rect.left,
     y: e.clientY - rect.top
   };
+
+  // Update hover state for reset button
+  hoveringReset = isInResetBtn(mousePos.x, mousePos.y);
+  canvas.style.cursor = hoveringReset ? 'pointer' : 'crosshair';
+
   if (dragStart && state === 'waiting_first') {
     const dx = mousePos.x - dragStart.x;
     const dy = mousePos.y - dragStart.y;
@@ -469,9 +622,15 @@ canvas.addEventListener('mousemove', (e) => {
       return;
     }
   }
-  if (state === 'waiting_second') {
+  if (state === 'waiting_second' || state === 'waiting_first') {
     drawScene();
   }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  mousePos = null;
+  hoveringReset = false;
+  drawScene();
 });
 
 canvas.addEventListener('mouseup', (e) => {
@@ -482,13 +641,11 @@ canvas.addEventListener('mouseup', (e) => {
     firstClick = { x: dragStart.x, y: dragStart.y };
     secondClick = { x: endX, y: endY };
     state = 'done';
-    instructionEl.textContent = '';
     dragStart = null;
     isDragging = false;
     suppressClick = true;
 
     checkBackward();
-    showInfo();
     drawScene();
     return;
   }
@@ -506,18 +663,18 @@ canvas.addEventListener('click', (e) => {
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
 
+  // Ignore clicks on reset button (handled in mousedown)
+  if (isInResetBtn(clickX, clickY)) return;
+
   if (state === 'waiting_first') {
     firstClick = { x: clickX, y: clickY };
     state = 'waiting_second';
-    instructionEl.textContent = 'Click the point where your ray begins (on the mirror).';
     drawScene();
   } else if (state === 'waiting_second') {
     secondClick = { x: clickX, y: clickY };
     state = 'done';
-    instructionEl.textContent = '';
 
     checkBackward();
-    showInfo();
     drawScene();
   }
 });
@@ -532,32 +689,6 @@ function checkBackward() {
   }
 }
 
-function showInfo() {
-  // Reflection angle
-  const dx = firstClick.x - secondClick.x;
-  const dy = firstClick.y - secondClick.y;
-  const reflAngleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
-
-  // Incident ray start height
-  const reflectedY = 2 * secondClick.y - firstClick.y;
-  const incidentHeightCm = yToCm(reflectedY);
-
-  // Normal height (where ray hits mirror)
-  const normalHeightCm = yToCm(secondClick.y);
-
-  const angleStr = reflAngleDeg.toFixed(1);
-  const incHeightStr = incidentHeightCm.toFixed(1);
-  const normalStr = normalHeightCm.toFixed(1);
-
-  infoEl.textContent =
-    `normal height       = ${normalStr} cm\n` +
-    `angle of reflection = ${angleStr}\u00B0\n` +
-    `angle of incidence  = ${angleStr}\u00B0\n` +
-    `incident height     = ${incHeightStr} cm`;
-}
-
-resetBtn.addEventListener('click', reset);
-
 function reset() {
   state = 'waiting_first';
   firstClick = null;
@@ -566,8 +697,6 @@ function reset() {
   dragStart = null;
   isDragging = false;
   suppressClick = false;
-  instructionEl.textContent = 'Click the point where your ray ends (on Haibao).';
-  infoEl.textContent = '';
   warningEl.style.display = 'none';
   drawScene();
 }
