@@ -557,6 +557,20 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Light/_test_iframe.html",
+      "title": " Test Iframe",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/measure_light_speed.html",
+      "title": "Measure the Speed of Light",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
