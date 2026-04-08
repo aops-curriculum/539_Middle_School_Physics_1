@@ -192,7 +192,7 @@ function drawInstruction() {
   ctx.fillStyle = '#555';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText(text, 40, 14);
+  ctx.fillText(text, 200, 14);
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -208,27 +208,11 @@ function drawInfoText() {
   const line2 = 'angle of reflection = ' + angleDeg.toFixed(1) + '\u00B0';
 
   ctx.font = '13px monospace';
-  const tw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
-
-  const boxRight = 590;
-  const boxTop = 34;
-  const boxW = tw + 16;
-  const boxH = 40;
-  const boxLeft = boxRight - boxW;
-
-  // Box background and border
-  ctx.fillStyle = '#fff';
-  ctx.strokeStyle = '#ccc';
-  ctx.lineWidth = 1;
-  ctx.fillRect(boxLeft, boxTop, boxW, boxH);
-  ctx.strokeRect(boxLeft, boxTop, boxW, boxH);
-
-  // Text
   ctx.fillStyle = '#333';
-  ctx.textAlign = 'right';
+  ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(line1, boxRight - 8, boxTop + 17);
-  ctx.fillText(line2, boxRight - 8, boxTop + 33);
+  ctx.fillText(line1, 300, GROUND_Y_PX - 40);
+  ctx.fillText(line2, 300, GROUND_Y_PX - 22);
 }
 
 function drawResetButton() {
