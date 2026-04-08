@@ -9,38 +9,37 @@
         body {
             background: #1a1a2e;
             font-family: Arial, sans-serif;
-            max-width: 600px;
+            max-width: 360px;
             margin: 0 auto;
             user-select: none;
             -webkit-user-select: none;
         }
         .instructions {
-            font-size: 14px;
+            font-size: 10px;
             color: #aaa;
             text-align: center;
-            padding: 16px 8px 8px;
+            padding: 10px 5px 5px;
         }
         canvas {
-            border: 1px solid #333;
-            border-radius: 6px;
+            border: none;
             cursor: crosshair;
             display: block;
         }
         .controls {
             text-align: center;
-            padding: 8px;
+            padding: 5px;
         }
         button {
             background: rgba(76, 175, 80, 0.9);
             color: white;
             border: none;
-            border-radius: 4px;
-            padding: 8px 16px;
-            font-size: 12px;
+            border-radius: 2px;
+            padding: 5px 10px;
+            font-size: 9px;
             font-weight: bold;
             box-shadow: 0 2px 4px rgba(0,0,0,0.2);
             cursor: pointer;
-            margin: 4px;
+            margin: 2px;
         }
         button:hover {
             background: rgba(76, 175, 80, 1);
@@ -49,7 +48,7 @@
 </head>
 <body>
     <p class="instructions">Click and drag to draw lines. Lines snap to the mirrors and to endpoints of existing lines.</p>
-    <canvas id="canvas" width="600" height="600"></canvas>
+    <canvas id="canvas" width="360" height="360"></canvas>
     <div class="controls">
         <button id="undoBtn">Undo</button>
         <button id="clearBtn">Clear All</button>
@@ -57,13 +56,13 @@
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const W = 600;
-        const H = 600;
+        const W = 360;
+        const H = 360;
 
         // Corner reflector: two mirrors meeting at 90° at vertex
         // Vertex near top-center, mirrors go diagonally down-left and down-right
-        const vertex = { x: 300, y: 10 };
-        const mirrorLen = 300;
+        const vertex = { x: 180, y: 6 };
+        const mirrorLen = 180;
 
         // Mirror 1: vertex -> down-left at 45°
         const mirror1 = {
@@ -92,11 +91,11 @@
         let clickPathHover = null;  // Current hover position for live preview
         let dragDetected = false;   // Whether mouse moved enough to count as drag
         let mouseDownPos = null;    // Position at mousedown, to detect drag vs click
-        const DRAG_THRESHOLD = 5;   // Pixels of movement before it counts as a drag
+        const DRAG_THRESHOLD = 3;   // Pixels of movement before it counts as a drag
 
-        const SNAP_DIST = 15;
-        const NORMAL_LEN = 40;
-        const ARC_RADIUS = 25;
+        const SNAP_DIST = 9;
+        const NORMAL_LEN = 24;
+        const ARC_RADIUS = 15;
 
         // Load image
         const rainbowImg = new Image();
@@ -186,7 +185,7 @@
 
         function commitSegment(from, to) {
             const d = dist(from.x, from.y, to.x, to.y);
-            if (d > 5) {
+            if (d > 3) {
                 lines.push({
                     x1: from.x, y1: from.y,
                     x2: to.x, y2: to.y,
@@ -311,7 +310,7 @@
                 if (lines.length > 0) {
                     const last = lines[lines.length - 1];
                     const d = dist(last.x1, last.y1, last.x2, last.y2);
-                    if (d < 10) {
+                    if (d < 6) {
                         lines.pop();
                     }
                 }
@@ -411,17 +410,17 @@
             ctx.beginPath();
             ctx.arc(cx, cy, ARC_RADIUS, startA, endA);
             ctx.strokeStyle = '#FFD700';
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1;
             ctx.setLineDash([]);
             ctx.stroke();
 
             // Degree label
             const midA = (startA + endA) / 2;
-            const labelR = ARC_RADIUS + 15;
+            const labelR = ARC_RADIUS + 9;
             const labelX = cx + labelR * Math.cos(midA);
             const labelY = cy + labelR * Math.sin(midA);
 
-            ctx.font = 'bold 14px Arial';
+            ctx.font = 'bold 9px Arial';
             ctx.fillStyle = '#FFD700';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
@@ -452,7 +451,7 @@
 
         function drawCornerReflector() {
             // Mirror surfaces - thick lines
-            ctx.lineWidth = 5;
+            ctx.lineWidth = 3;
             ctx.strokeStyle = '#88CCFF';
             ctx.lineCap = 'round';
 
@@ -469,8 +468,8 @@
             // Hatching on non-reflective (outer) side of each mirror
             ctx.lineWidth = 1;
             ctx.strokeStyle = 'rgba(136, 204, 255, 0.35)';
-            const hatchSpacing = 10;
-            const hatchLen = 8;
+            const hatchSpacing = 6;
+            const hatchLen = 5;
 
             for (let mi = 0; mi < 2; mi++) {
                 const m = mirrors[mi];
@@ -505,7 +504,7 @@
             }
 
             // Right-angle indicator at vertex
-            const sq = 12;
+            const sq = 7;
             const m1ux = (mirror1.x2 - mirror1.x1) / mirrorLen;
             const m1uy = (mirror1.y2 - mirror1.y1) / mirrorLen;
             const m2ux = (mirror2.x2 - mirror2.x1) / mirrorLen;
@@ -528,14 +527,14 @@
 
             // After 90° CCW rotation, displayed dimensions swap: (imgH, imgW)
             const maxDrawW = W * 1.575;
-            const maxDrawH = 405;
+            const maxDrawH = 243;
             const scale = Math.min(maxDrawW / imgH, maxDrawH / imgW);
 
             const drawW = imgH * scale; // rotated width
             const drawH = imgW * scale; // rotated height
 
             ctx.save();
-            ctx.translate(W / 2, H - 20 - drawH / 2);
+            ctx.translate(W / 2, H - 12 - drawH / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.drawImage(rainbowImg, -imgW * scale / 2, -imgH * scale / 2, imgW * scale, imgH * scale);
             ctx.restore();
@@ -555,16 +554,16 @@
 
         function drawSnapIndicator(x, y) {
             ctx.beginPath();
-            ctx.arc(x, y, 6, 0, Math.PI * 2);
+            ctx.arc(x, y, 4, 0, Math.PI * 2);
             ctx.strokeStyle = '#4CAF50';
-            ctx.lineWidth = 2;
+            ctx.lineWidth = 1;
             ctx.setLineDash([]);
             ctx.stroke();
         }
 
         function drawEndpoint(x, y) {
             ctx.beginPath();
-            ctx.arc(x, y, 3, 0, Math.PI * 2);
+            ctx.arc(x, y, 2, 0, Math.PI * 2);
             ctx.fillStyle = '#FF6B6B';
             ctx.fill();
         }
@@ -584,7 +583,7 @@
 
             // Existing user-drawn lines
             for (const line of lines) {
-                drawLine(line.x1, line.y1, line.x2, line.y2, '#FF6B6B', 4, [5, 5]);
+                drawLine(line.x1, line.y1, line.x2, line.y2, '#FF6B6B', 3, [5, 5]);
 
                 // Annotations at mirror-snapped ends
                 if (line.startSnap === 'mirror' && line.startMirror >= 0) {
@@ -602,7 +601,7 @@
             // Line currently being drawn (drag or click-path drag)
             if (drawing && startPoint && currentEnd) {
                 drawLine(startPoint.x, startPoint.y, currentEnd.x, currentEnd.y,
-                    'rgba(255, 107, 107, 0.6)', 4, [5, 5]);
+                    'rgba(255, 107, 107, 0.6)', 3, [5, 5]);
 
                 // Live annotations for mirror snaps
                 if (startPoint.snapType === 'mirror' && startPoint.mirrorIndex >= 0) {
@@ -624,9 +623,9 @@
             // Click-path hover preview (when not actively dragging)
             if (clickPathActive && !drawing && clickPathStart && clickPathHover) {
                 const hd = dist(clickPathStart.x, clickPathStart.y, clickPathHover.x, clickPathHover.y);
-                if (hd > 2) {
+                if (hd > 1) {
                     drawLine(clickPathStart.x, clickPathStart.y, clickPathHover.x, clickPathHover.y,
-                        'rgba(255, 107, 107, 0.4)', 4, [5, 5]);
+                        'rgba(255, 107, 107, 0.4)', 3, [5, 5]);
 
                     // Live annotations for click-path preview
                     if (clickPathStart.snapType === 'mirror' && clickPathStart.mirrorIndex >= 0) {
