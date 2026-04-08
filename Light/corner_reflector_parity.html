@@ -171,7 +171,7 @@
             ctx.fillStyle = '#666';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText('Move the draggable arrow until it is a reflection of the fixed arrow across the red mirror.', W / 2, 12);
+            ctx.fillText('Move the draggable arrow until it shows the image of the object arrow in the red mirror.', W / 2, 12);
             ctx.font = 'bold 12px Arial';
             ctx.fillText('Drag to move  \u00b7  Rotate to turn 5\u00b0  \u00b7  Flip to mirror the arrow', W / 2, 35);
 
@@ -224,7 +224,7 @@
             ctx.fillStyle = '#999';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText('(fixed)', fixed.x, fixed.y + HH + 10);
+            ctx.fillText('object', fixed.x, fixed.y + HH + 10);
 
             // ── Correct-position ghost (shown after success) ──
             if (showCorrect) {
