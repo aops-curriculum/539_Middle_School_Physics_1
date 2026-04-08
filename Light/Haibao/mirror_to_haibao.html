@@ -16,7 +16,7 @@
     display: block;
     cursor: crosshair;
     width: 600px;
-    height: 400px;
+    height: 350px;
   }
   #warning {
     padding: 8px 12px;
@@ -30,7 +30,7 @@
 </style>
 </head>
 <body>
-<canvas id="canvas" width="1200" height="800"></canvas>
+<canvas id="canvas" width="1200" height="700"></canvas>
 <div id="warning"></div>
 
 <script>
@@ -38,9 +38,11 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const warningEl = document.getElementById('warning');
 
-// HiDPI: canvas is 1200x800 but displayed at 600x400 via CSS
+// HiDPI: canvas is 1200x700 but displayed at 600x350 via CSS
 const DPR = 2;
 ctx.scale(DPR, DPR);
+
+const CW = 600, CH = 350; // CSS dimensions
 
 // --- Style constants ---
 const BROWN = '#8B4513';
@@ -56,9 +58,9 @@ const MIRROR_BOTTOM = 28;
 const MIRROR_TOP = 45;
 const DISTANCE = 50;
 
-// Layout
-const GROUND_Y_PX = 380;
-const STUFFIE_TOP_Y = GROUND_Y_PX - STUFFIE_HEIGHT * SCALE;
+// Layout — ground positioned so Haibao's head reaches near the top
+const GROUND_Y_PX = 340;
+const STUFFIE_TOP_Y = GROUND_Y_PX - STUFFIE_HEIGHT * SCALE; // = 4
 
 const IMG_ASPECT = 0.528;
 let imgAspect = IMG_ASPECT;
@@ -84,7 +86,7 @@ const MAG_RADIUS = 50;
 const MAG_ZOOM = 3;
 
 // --- UI hit regions (in CSS coords) ---
-const RESET_BTN = { x: 520, y: 6, w: 60, h: 24 };
+const RESET_BTN = { x: 525, y: 6, w: 60, h: 24 };
 
 // --- Image loading ---
 const stuffieImg = new Image();
@@ -139,7 +141,7 @@ let hoveringReset = false;
 
 // --- Drawing ---
 function drawScene() {
-  ctx.clearRect(0, 0, canvas.width / DPR, canvas.height / DPR);
+  ctx.clearRect(0, 0, CW, CH);
 
   // Ground line - thick
   ctx.strokeStyle = '#000';
@@ -173,6 +175,7 @@ function drawScene() {
   drawInstruction();
   drawInfoText();
   drawResetButton();
+  drawCursorCrosshair();
   drawMagnifier();
 }
 
@@ -189,7 +192,7 @@ function drawInstruction() {
   ctx.fillStyle = '#555';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'top';
-  ctx.fillText(text, 12, 6);
+  ctx.fillText(text, 40, 14);
   ctx.textBaseline = 'alphabetic';
 }
 
@@ -205,15 +208,27 @@ function drawInfoText() {
   const line2 = 'angle of reflection = ' + angleDeg.toFixed(1) + '\u00B0';
 
   ctx.font = '13px monospace';
+  const tw = Math.max(ctx.measureText(line1).width, ctx.measureText(line2).width);
 
-  const x = 590;
-  const y = 44;
+  const boxRight = 590;
+  const boxTop = 34;
+  const boxW = tw + 16;
+  const boxH = 40;
+  const boxLeft = boxRight - boxW;
 
+  // Box background and border
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1;
+  ctx.fillRect(boxLeft, boxTop, boxW, boxH);
+  ctx.strokeRect(boxLeft, boxTop, boxW, boxH);
+
+  // Text
   ctx.fillStyle = '#333';
   ctx.textAlign = 'right';
   ctx.textBaseline = 'alphabetic';
-  ctx.fillText(line1, x, y);
-  ctx.fillText(line2, x, y + 18);
+  ctx.fillText(line1, boxRight - 8, boxTop + 17);
+  ctx.fillText(line2, boxRight - 8, boxTop + 33);
 }
 
 function drawResetButton() {
@@ -246,6 +261,28 @@ function drawResetButton() {
   ctx.textBaseline = 'alphabetic';
 }
 
+function drawCursorCrosshair() {
+  if (!mousePos) return;
+  if (state === 'done') return;
+
+  const mx = mousePos.x;
+  const my = mousePos.y;
+
+  // Small crosshair at cursor position
+  ctx.strokeStyle = 'rgba(0,0,0,0.5)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(mx - 10, my);
+  ctx.lineTo(mx - 3, my);
+  ctx.moveTo(mx + 3, my);
+  ctx.lineTo(mx + 10, my);
+  ctx.moveTo(mx, my - 10);
+  ctx.lineTo(mx, my - 3);
+  ctx.moveTo(mx, my + 3);
+  ctx.lineTo(mx, my + 10);
+  ctx.stroke();
+}
+
 function drawMagnifier() {
   if (!mousePos) return;
   // Don't show magnifier when done (results displayed)
@@ -256,22 +293,21 @@ function drawMagnifier() {
 
   // Position the magnifier circle offset from cursor
   // Place it to the upper-right unless near edge
-  let lx = mx + 60;
-  let ly = my - 60;
-  if (lx + MAG_RADIUS > 595) lx = mx - 60 - MAG_RADIUS;
-  if (ly - MAG_RADIUS < 5) ly = my + 60 + MAG_RADIUS;
+  let lx = mx + 65;
+  let ly = my - 65;
+  if (lx + MAG_RADIUS > CW - 5) lx = mx - 65 - MAG_RADIUS;
+  if (ly - MAG_RADIUS < 5) ly = my + 65 + MAG_RADIUS;
   if (lx - MAG_RADIUS < 5) lx = MAG_RADIUS + 5;
-  if (ly + MAG_RADIUS > 395) ly = 395 - MAG_RADIUS;
+  if (ly + MAG_RADIUS > CH - 5) ly = CH - 5 - MAG_RADIUS;
 
-  // Draw scene into offscreen canvas at higher resolution for sampling
+  // Draw scene into offscreen canvas for sampling
   const offCanvas = document.createElement('canvas');
-  const offW = 600, offH = 400;
-  offCanvas.width = offW;
-  offCanvas.height = offH;
+  offCanvas.width = CW;
+  offCanvas.height = CH;
   const offCtx = offCanvas.getContext('2d');
 
-  // Draw the main canvas (1200x800) scaled down to 600x400
-  offCtx.drawImage(canvas, 0, 0, offW, offH);
+  // Draw the main canvas scaled down to CSS size
+  offCtx.drawImage(canvas, 0, 0, CW, CH);
 
   // Extract the region around cursor and draw it zoomed
   const srcR = MAG_RADIUS / MAG_ZOOM;
@@ -289,15 +325,27 @@ function drawMagnifier() {
 
   ctx.restore();
 
-  // Crosshair in magnifier center
-  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
-  ctx.lineWidth = 0.5;
+  // Crosshair in magnifier center — prominent
+  ctx.strokeStyle = 'rgba(0,0,0,0.6)';
+  ctx.lineWidth = 1;
+  // Horizontal
   ctx.beginPath();
-  ctx.moveTo(lx - 8, ly);
-  ctx.lineTo(lx + 8, ly);
-  ctx.moveTo(lx, ly - 8);
-  ctx.lineTo(lx, ly + 8);
+  ctx.moveTo(lx - 12, ly);
+  ctx.lineTo(lx - 4, ly);
+  ctx.moveTo(lx + 4, ly);
+  ctx.lineTo(lx + 12, ly);
+  // Vertical
+  ctx.moveTo(lx, ly - 12);
+  ctx.lineTo(lx, ly - 4);
+  ctx.moveTo(lx, ly + 4);
+  ctx.lineTo(lx, ly + 12);
   ctx.stroke();
+
+  // Center dot
+  ctx.fillStyle = 'rgba(0,0,0,0.5)';
+  ctx.beginPath();
+  ctx.arc(lx, ly, 1.5, 0, Math.PI * 2);
+  ctx.fill();
 
   // Border ring
   ctx.strokeStyle = '#666';
@@ -585,7 +633,6 @@ canvas.addEventListener('mousemove', (e) => {
   };
 
   // Update hover state for reset button
-  const wasHovering = hoveringReset;
   hoveringReset = isInResetBtn(mousePos.x, mousePos.y);
   canvas.style.cursor = hoveringReset ? 'pointer' : 'crosshair';
 
@@ -663,7 +710,7 @@ function checkBackward() {
   const secondNearStuffie = Math.abs(secondClick.x - STUFFIE_CENTER_X) < tolerance;
   if (firstNearMirror && secondNearStuffie) {
     warningEl.style.display = 'block';
-    warningEl.textContent = "It looks like you found a ray from Haibao to the mirror. Make sure you draw a ray that enters Haibao\u2019s eye. Note that on this simulation, you choose the END of the ray first.";
+    warningEl.textContent = "Click Haibao\u2019s eye first, then the top of the mirror.";
   }
 }
 
