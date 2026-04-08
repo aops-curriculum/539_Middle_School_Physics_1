@@ -571,6 +571,13 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Light/globe_measure.html",
+      "title": "Globe Distance Measurer",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
