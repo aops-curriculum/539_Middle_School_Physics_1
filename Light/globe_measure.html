@@ -381,21 +381,28 @@ function addAtmosphere() {
 }
 
 // --- City markers ---
-const markerMeshes = [];
+const markerMeshes = [];  // visible gold dots
+const hitTargets = [];     // larger invisible spheres for easy click/hover detection
 const cityLabelDivs = [];
 const markerGeo = new THREE.SphereGeometry(MARKER_RADIUS, 12, 12);
-const markerMat = new THREE.MeshBasicMaterial({ color: 0xFFD700 });
-const markerHoverMat = new THREE.MeshBasicMaterial({ color: 0x00FFFF });
-const markerSelectedMat = new THREE.MeshBasicMaterial({ color: 0x00FF88 });
+const hitGeo = new THREE.SphereGeometry(MARKER_RADIUS * 4, 12, 12);
+const hitMat = new THREE.MeshBasicMaterial({ visible: false });
 
 function addCityMarkers() {
     cities.forEach((city, i) => {
         const pos = latLonToVec3(city.lat, city.lon, GLOBE_RADIUS * 1.005);
-        const marker = new THREE.Mesh(markerGeo, markerMat.clone());
+        const marker = new THREE.Mesh(markerGeo, new THREE.MeshBasicMaterial({ color: 0xFFD700 }));
         marker.position.copy(pos);
         marker.userData = { cityIndex: i };
         globeGroup.add(marker);
         markerMeshes.push(marker);
+
+        // Larger invisible hit target for easy clicking
+        const hit = new THREE.Mesh(hitGeo, hitMat);
+        hit.position.copy(pos);
+        hit.userData = { cityIndex: i };
+        globeGroup.add(hit);
+        hitTargets.push(hit);
 
         // Ring highlight under marker
         const ringGeo = new THREE.RingGeometry(MARKER_RADIUS * 1.5, MARKER_RADIUS * 2.5, 24);
@@ -432,16 +439,23 @@ const globeRaycaster = new THREE.Raycaster();
 
 function getHitCity(ndcX, ndcY) {
     raycaster.setFromCamera(new THREE.Vector2(ndcX, ndcY), camera);
-    const hits = raycaster.intersectObjects(markerMeshes);
-    if (hits.length > 0) return hits[0].object.userData.cityIndex;
-    // Fallback: screen-space proximity check (within 18px)
+    // Raycast against large invisible hit targets first
+    const hits = raycaster.intersectObjects(hitTargets);
+    if (hits.length > 0) {
+        // Verify the city is on the camera-facing side
+        const wp = hits[0].object.position;
+        const camPos = camera.position;
+        if (wp.clone().normalize().dot(camPos.clone().sub(wp).normalize()) > -0.05) {
+            return hits[0].object.userData.cityIndex;
+        }
+    }
+    // Fallback: screen-space proximity check (within 28px)
     const camPos = camera.position.clone();
-    let bestIdx = null, bestDist = 18;
+    let bestIdx = null, bestDist = 28;
     const sx = (ndcX * 0.5 + 0.5) * renderer.domElement.clientWidth;
     const sy = (-ndcY * 0.5 + 0.5) * renderer.domElement.clientHeight;
     markerMeshes.forEach((m, i) => {
         const wp = m.getWorldPosition(new THREE.Vector3());
-        // Only consider markers facing camera
         if (wp.clone().normalize().dot(camPos.clone().sub(wp).normalize()) < 0) return;
         const proj = wp.clone().project(camera);
         const px = (proj.x * 0.5 + 0.5) * renderer.domElement.clientWidth;
