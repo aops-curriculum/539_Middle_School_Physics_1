@@ -200,11 +200,14 @@ controls.minDistance = 7;
 controls.maxDistance = 30;
 controls.enablePan = false;
 
-// Lights
-scene.add(new THREE.AmbientLight(0x555566));
-const sunLight = new THREE.DirectionalLight(0xffffff, 1.4);
+// Lights — bright ambient so all sides are visible
+scene.add(new THREE.AmbientLight(0xbbbbcc, 1.8));
+const sunLight = new THREE.DirectionalLight(0xffffff, 1.0);
 sunLight.position.set(5, 3, 8);
 scene.add(sunLight);
+const fillLight = new THREE.DirectionalLight(0x8899bb, 0.7);
+fillLight.position.set(-5, -2, -8);
+scene.add(fillLight);
 
 // Stars
 const starGeo = new THREE.BufferGeometry();
