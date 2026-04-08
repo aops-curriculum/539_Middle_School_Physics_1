@@ -7,35 +7,33 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            background: #f0f0f0;
+            background: #fff;
             font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
-            padding: 16px 0;
+            width: 480px;
+            height: 512px;
+            overflow: hidden;
             user-select: none;
             -webkit-user-select: none;
         }
-        .instructions {
-            font-size: 14px;
-            color: #666;
-            text-align: center;
-            padding: 0 12px 10px;
-            line-height: 1.6;
+        .sim-wrap {
+            position: relative;
+            width: 600px;
+            height: 640px;
+            transform: scale(0.8);
+            transform-origin: top left;
         }
         canvas {
             display: block;
-            border: 1px solid #333;
-            border-radius: 6px;
             cursor: grab;
         }
         canvas.grabbing { cursor: grabbing; }
         .controls {
+            position: absolute;
+            bottom: 44px;
+            left: 0; right: 0;
             display: flex;
             gap: 10px;
-            margin-top: 10px;
             justify-content: center;
-            flex-wrap: wrap;
-            padding: 0 12px;
         }
         button {
             background: rgba(76, 175, 80, 0.9);
@@ -49,46 +47,29 @@
             cursor: pointer;
         }
         button:hover { background: rgba(76, 175, 80, 1); }
-        #submitBtn {
-            background: rgba(33, 150, 243, 0.9);
-        }
-        #submitBtn:hover {
-            background: rgba(33, 150, 243, 1);
-        }
-        .message {
-            text-align: center;
-            margin-top: 10px;
-            font-size: 16px;
-            font-weight: bold;
-            min-height: 24px;
-            padding: 0 12px;
-        }
-        .success { color: #4CAF50; }
-        .error { color: #d32f2f; }
+        #submitBtn { background: rgba(33, 150, 243, 0.9); }
+        #submitBtn:hover { background: rgba(33, 150, 243, 1); }
     </style>
 </head>
 <body>
-    <p class="instructions">
-        The object arrow and its reflection in the right mirror are already shown.<br>
-        Move the draggable arrow until it is a reflection of the image across the <span style="color:#cc0000;font-weight:bold">red</span> mirror.<br>
-        <strong>Drag</strong> to move &middot; <strong>Rotate</strong> to turn 5&deg; &middot; <strong>Flip</strong> to mirror the arrow
-    </p>
-    <canvas id="canvas" width="600" height="500"></canvas>
-    <div class="controls">
-        <button id="rotateBtn">&#8635; Rotate 5&deg;</button>
-        <button id="flipBtn">&#8596; Flip</button>
-        <button id="resetBtn">Reset</button>
-        <button id="submitBtn">Submit</button>
+    <div class="sim-wrap">
+        <canvas id="canvas" width="600" height="640"></canvas>
+        <div class="controls">
+            <button id="rotateCWBtn">&#8635; Rotate 5&deg;</button>
+            <button id="rotateCCWBtn">&#8634; Rotate -5&deg;</button>
+            <button id="flipBtn">&#8596; Flip</button>
+            <button id="resetBtn">Reset</button>
+            <button id="submitBtn">Submit</button>
+        </div>
     </div>
-    <div id="message" class="message"></div>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const W = 600, H = 500;
+        const W = 600, H = 640;
 
-        // ── Corner reflector ──
-        const vx = 280, vy = 230;
+        // ── Corner reflector ── (y-coords shifted down 55px for instructions area)
+        const vx = 280, vy = 285;
         const mirrorLen = 165;
         const md = mirrorLen / Math.SQRT2;
 
@@ -96,9 +77,9 @@
         const rightEnd = { x: vx + md, y: vy + md };    // BLACK mirror
 
         // Left mirror line: x + y = k
-        const k = vx + vy;                               // 510
+        const k = vx + vy;                               // 565
         // Right mirror line: x - y = c
-        const c = vx - vy;                               // 50
+        const c = vx - vy;                               // -5
 
         // Dashed extension of left mirror past vertex (up and to the right)
         const extLen = 180;
@@ -112,13 +93,13 @@
         const HS = 15;
 
         // ── Object arrow ──
-        const obj = { x: vx, y: 400, angle: 0, flipped: false };
+        const obj = { x: vx, y: 455, angle: 0, flipped: false };
 
         // ── First reflection (over right mirror, already shown) ──
         // Reflection across x - y = c: (px, py) → (py + c, px - c)
         const img1 = {
             x: obj.y + c,              // 450
-            y: obj.x - c,              // 230
+            y: obj.x - c,              // 285
             angle: Math.PI / 2,
             flipped: true
         };
@@ -129,18 +110,20 @@
         // Two reflections restore handedness → flipped = false
         const correct = {
             x: k - img1.y,             // 280
-            y: k - img1.x,             // 60
+            y: k - img1.x,             // 115
             angle: Math.PI,
             flipped: false
         };
 
         // ── Movable arrow ──
-        let mov = { x: 100, y: 430, angle: 0, flipped: false };
+        let mov = { x: 100, y: 490, angle: 0, flipped: false };
 
         // ── State ──
         let dragging = false;
         let dragOff = { x: 0, y: 0 };
         let showCorrect = false;
+        let msgText = '';
+        let msgSuccess = false;
 
         // ────────────────── drawing ──────────────────
 
@@ -205,6 +188,34 @@
             ctx.clearRect(0, 0, W, H);
             ctx.fillStyle = '#fff';
             ctx.fillRect(0, 0, W, H);
+
+            // ── Instructions at top ──
+            ctx.font = '13px Arial';
+            ctx.fillStyle = '#666';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('The object arrow and its reflection in the right mirror are already shown.', W / 2, 10);
+
+            // Line 2: "Move … across the [red] mirror." with red coloring
+            const line2a = 'Move the draggable arrow until it is a reflection of the image across the ';
+            const line2b = 'red';
+            const line2c = ' mirror.';
+            ctx.font = '13px Arial';
+            const wA = ctx.measureText(line2a).width;
+            ctx.font = 'bold 13px Arial';
+            const wB = ctx.measureText(line2b).width;
+            ctx.font = '13px Arial';
+            const wC = ctx.measureText(line2c).width;
+            const startX = (W - wA - wB - wC) / 2;
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#666';
+            ctx.fillText(line2a, startX, 32);
+            ctx.fillStyle = '#cc0000';
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText(line2b, startX + wA, 32);
+            ctx.font = '13px Arial';
+            ctx.fillStyle = '#666';
+            ctx.fillText(line2c, startX + wA + wB, 32);
 
             // ── Corner reflector ──
             ctx.save();
@@ -290,6 +301,15 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
             ctx.fillText('(drag to move)', mov.x, mov.y + HH + 14);
+
+            // ── Message at bottom ──
+            if (msgText) {
+                ctx.font = 'bold 16px Arial';
+                ctx.fillStyle = msgSuccess ? '#4CAF50' : '#d32f2f';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText(msgText, W / 2, H - 18);
+            }
         }
 
         // ────────────────── interaction ──────────────────
@@ -323,7 +343,7 @@
             if (!dragging) return;
             const p = getPos(e);
             mov.x = Math.max(AL, Math.min(W - AL, p.x - dragOff.x));
-            mov.y = Math.max(HH, Math.min(H - HH, p.y - dragOff.y));
+            mov.y = Math.max(55 + HH, Math.min(H - 100 - HH, p.y - dragOff.y));
             draw();
         }
 
@@ -343,12 +363,18 @@
         // ── Buttons ──
 
         function clearFeedback() {
-            document.getElementById('message').textContent = '';
+            msgText = '';
             showCorrect = false;
         }
 
-        document.getElementById('rotateBtn').onclick = function () {
-            mov.angle = (mov.angle + Math.PI / 36) % (Math.PI * 2);  // 5°
+        document.getElementById('rotateCWBtn').onclick = function () {
+            mov.angle = (mov.angle + Math.PI / 36) % (Math.PI * 2);
+            clearFeedback();
+            draw();
+        };
+
+        document.getElementById('rotateCCWBtn').onclick = function () {
+            mov.angle = ((mov.angle - Math.PI / 36) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
             clearFeedback();
             draw();
         };
@@ -360,29 +386,26 @@
         };
 
         document.getElementById('resetBtn').onclick = function () {
-            mov = { x: 100, y: 430, angle: 0, flipped: false };
+            mov = { x: 100, y: 490, angle: 0, flipped: false };
             clearFeedback();
             draw();
         };
 
         document.getElementById('submitBtn').onclick = function () {
-            var msg = document.getElementById('message');
+            const dist = Math.hypot(mov.x - correct.x, mov.y - correct.y);
 
-            var dist = Math.hypot(mov.x - correct.x, mov.y - correct.y);
-
-            // Normalise angles to [0, 2π)
             var ma = ((mov.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             var ca = ((correct.angle % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2);
             var ad = Math.abs(ma - ca);
             if (ad > Math.PI) ad = Math.PI * 2 - ad;
 
             if (dist < 40 && ad < 0.3 && mov.flipped === correct.flipped) {
-                msg.className = 'message success';
-                msg.textContent = 'Congratulations! The secret password is: handedness';
+                msgText = 'Congratulations! The secret password is: handedness';
+                msgSuccess = true;
                 showCorrect = true;
             } else {
-                msg.className = 'message error';
-                msg.textContent = "That\u2019s not quite right. Try again!";
+                msgText = "That\u2019s not quite right. Try again!";
+                msgSuccess = false;
                 showCorrect = false;
             }
             draw();
