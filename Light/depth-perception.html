@@ -7,63 +7,24 @@
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            background: #1a1a2e;
-            color: #eee;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            min-height: 100vh;
-            max-width: 600px;
-            margin: 0 auto;
+            background: #12121f;
+            overflow: hidden;
             user-select: none;
         }
-        #instructions {
-            margin: 12px 0 8px;
-            font-size: 14px;
-            color: #aaa;
-            text-align: center;
-        }
-        #controls {
-            margin-bottom: 8px;
-        }
-        button {
-            background: #3a3a5c;
-            color: #eee;
-            border: 1px solid #555;
-            padding: 6px 18px;
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 14px;
-        }
-        button:hover { background: #50507a; }
         canvas {
-            border: 1px solid #333;
-            border-radius: 6px;
+            display: block;
+            width: 464px;
+            height: 416px;
             cursor: crosshair;
-            background: #12121f;
-        }
-        #status {
-            margin-top: 8px;
-            font-size: 13px;
-            color: #888;
-            height: 20px;
         }
     </style>
 </head>
 <body>
-    <p id="instructions">Click once to start an arrow, click again to place the arrowhead.</p>
-    <div id="controls">
-        <button id="resetBtn">Reset</button>
-    </div>
     <canvas id="canvas" width="580" height="520"></canvas>
-    <p id="status"></p>
 
     <script>
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
-        const statusEl = document.getElementById('status');
-        const resetBtn = document.getElementById('resetBtn');
 
         // Layout constants
         const W = canvas.width;
@@ -73,8 +34,11 @@
         const leftEyeX = W / 2 - eyeSep / 2;
         const rightEyeX = W / 2 + eyeSep / 2;
         const blueDotY = 250;
-        const redDotY = 420; // twice as far from eyes as blue dot
+        const redDotY = 420;
         const dotX = W / 2;
+
+        // Reset button rect (canvas coords)
+        const btnRect = { x: W - 88, y: 8, w: 78, h: 26 };
 
         // State
         let arrows = [];
@@ -82,10 +46,24 @@
         let mousePos = null;
         let isDragging = false;
         let dragMoved = false;
+        let statusText = '';
         const DRAG_THRESHOLD = 5;
 
+        function drawRoundRect(x, y, w, h, r) {
+            ctx.beginPath();
+            ctx.moveTo(x + r, y);
+            ctx.lineTo(x + w - r, y);
+            ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+            ctx.lineTo(x + w, y + h - r);
+            ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+            ctx.lineTo(x + r, y + h);
+            ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+            ctx.lineTo(x, y + r);
+            ctx.quadraticCurveTo(x, y, x + r, y);
+            ctx.closePath();
+        }
+
         function drawEye(cx, cy, radius) {
-            // White of eye
             ctx.beginPath();
             ctx.ellipse(cx, cy, radius * 1.5, radius, 0, 0, Math.PI * 2);
             ctx.fillStyle = '#f0f0f0';
@@ -94,19 +72,16 @@
             ctx.lineWidth = 2;
             ctx.stroke();
 
-            // Iris
             ctx.beginPath();
             ctx.arc(cx, cy, radius * 0.6, 0, Math.PI * 2);
             ctx.fillStyle = '#4a7a5a';
             ctx.fill();
 
-            // Pupil
             ctx.beginPath();
             ctx.arc(cx, cy, radius * 0.28, 0, Math.PI * 2);
             ctx.fillStyle = '#111';
             ctx.fill();
 
-            // Highlight
             ctx.beginPath();
             ctx.arc(cx - radius * 0.15, cy - radius * 0.15, radius * 0.12, 0, Math.PI * 2);
             ctx.fillStyle = 'rgba(255,255,255,0.7)';
@@ -134,7 +109,6 @@
             ctx.lineWidth = lineWidth;
             ctx.stroke();
 
-            // Arrowhead
             ctx.beginPath();
             ctx.moveTo(x2, y2);
             ctx.lineTo(x2 - headLen * Math.cos(angle - Math.PI / 6), y2 - headLen * Math.sin(angle - Math.PI / 6));
@@ -144,23 +118,45 @@
             ctx.fill();
         }
 
+        function drawUI() {
+            // Instructions / status at top left
+            const instrText = statusText || 'Click to start an arrow, click again to finish.';
+            ctx.font = '13px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
+            ctx.fillStyle = '#aaa';
+            ctx.textAlign = 'left';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(instrText, 10, 21);
+
+            // Reset button at top right
+            drawRoundRect(btnRect.x, btnRect.y, btnRect.w, btnRect.h, 4);
+            ctx.fillStyle = '#3a3a5c';
+            ctx.fill();
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            ctx.stroke();
+
+            ctx.fillStyle = '#eee';
+            ctx.font = '13px Segoe UI, Tahoma, Geneva, Verdana, sans-serif';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText('Reset', btnRect.x + btnRect.w / 2, btnRect.y + btnRect.h / 2);
+        }
+
         function draw() {
             ctx.clearRect(0, 0, W, H);
 
-            // Draw eyes
+            drawUI();
+
             drawEye(leftEyeX, eyeY, 22);
             drawEye(rightEyeX, eyeY, 22);
 
-            // Draw dots
             drawDot(dotX, blueDotY, '#4488ff', 10);
             drawDot(dotX, redDotY, '#ff4444', 10);
 
-            // Draw saved arrows
             for (const arrow of arrows) {
                 drawArrow(arrow.x1, arrow.y1, arrow.x2, arrow.y2, '#ffcc44', 2);
             }
 
-            // Draw in-progress arrow
             if (startPoint && mousePos) {
                 drawArrow(startPoint.x, startPoint.y, mousePos.x, mousePos.y, 'rgba(255,204,68,0.5)', 2);
             }
@@ -174,22 +170,35 @@
             };
         }
 
+        function isInBtn(pos) {
+            return pos.x >= btnRect.x && pos.x <= btnRect.x + btnRect.w &&
+                   pos.y >= btnRect.y && pos.y <= btnRect.y + btnRect.h;
+        }
+
+        function reset() {
+            arrows = [];
+            startPoint = null;
+            mousePos = null;
+            statusText = '';
+            draw();
+        }
+
         canvas.addEventListener('mousedown', (e) => {
             const pos = getCanvasPos(e);
+            if (isInBtn(pos)) return;
             if (!startPoint) {
-                // First click: begin a new arrow
                 startPoint = { x: pos.x, y: pos.y };
                 isDragging = true;
                 dragMoved = false;
-                statusEl.textContent = 'Click again to place the arrowhead.';
+                statusText = 'Click again to place the arrowhead.';
+                draw();
             } else {
-                // Second click: complete the arrow (click-click mode)
                 arrows.push({ x1: startPoint.x, y1: startPoint.y, x2: pos.x, y2: pos.y });
                 startPoint = null;
                 mousePos = null;
                 isDragging = false;
                 dragMoved = false;
-                statusEl.textContent = '';
+                statusText = '';
                 draw();
             }
         });
@@ -210,25 +219,20 @@
         });
 
         canvas.addEventListener('mouseup', (e) => {
+            const pos = getCanvasPos(e);
+            if (isInBtn(pos)) {
+                reset();
+                return;
+            }
             if (isDragging && dragMoved && startPoint) {
-                // Drag completed: finalize the arrow
-                const pos = getCanvasPos(e);
                 arrows.push({ x1: startPoint.x, y1: startPoint.y, x2: pos.x, y2: pos.y });
                 startPoint = null;
                 mousePos = null;
-                statusEl.textContent = '';
+                statusText = '';
                 draw();
             }
             isDragging = false;
             dragMoved = false;
-        });
-
-        resetBtn.addEventListener('click', () => {
-            arrows = [];
-            startPoint = null;
-            mousePos = null;
-            statusEl.textContent = '';
-            draw();
         });
 
         draw();
