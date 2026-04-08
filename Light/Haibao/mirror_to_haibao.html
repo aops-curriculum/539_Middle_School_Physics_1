@@ -18,42 +18,6 @@
     width: 600px;
     height: 400px;
   }
-  #controls {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    padding: 6px 12px;
-    background: #f0f0f0;
-    border-bottom: 1px solid #ccc;
-    height: 36px;
-    width: 600px;
-  }
-  #instruction {
-    font-size: 14px;
-    color: #333;
-    flex: 1;
-  }
-  #resetBtn {
-    padding: 4px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    border: 1px solid #999;
-    border-radius: 4px;
-    background: #fff;
-  }
-  #resetBtn:hover { background: #e0e0e0; }
-  #info {
-    padding: 6px 12px;
-    font-size: 15px;
-    font-family: monospace;
-    line-height: 1.6;
-    color: #333;
-    min-height: 10px;
-    background: #f9f9f9;
-    border-top: 1px solid #ccc;
-    white-space: pre;
-    width: 600px;
-  }
   #warning {
     padding: 8px 12px;
     font-size: 13px;
@@ -66,24 +30,15 @@
 </style>
 </head>
 <body>
-<div id="controls">
-  <span id="instruction">Click the point where your ray ends.</span>
-  <button id="resetBtn">Reset</button>
-</div>
 <canvas id="canvas" width="1200" height="800"></canvas>
-<div id="info"></div>
 <div id="warning"></div>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const instructionEl = document.getElementById('instruction');
-const infoEl = document.getElementById('info');
 const warningEl = document.getElementById('warning');
-const resetBtn = document.getElementById('resetBtn');
 
 // HiDPI: canvas is 1200x800 but displayed at 600x400 via CSS
-// Scale all drawing by 2x for crisp rendering
 const DPR = 2;
 ctx.scale(DPR, DPR);
 
@@ -92,7 +47,6 @@ const BROWN = '#8B4513';
 const LABEL_FONT = 'bold 17px Arial';
 
 // --- Coordinate system ---
-// Scale: pixels per cm
 const SCALE = 6;
 
 // Physical measurements in cm
@@ -125,6 +79,13 @@ function yToCm(y) {
   return (GROUND_Y_PX - y) / SCALE;
 }
 
+// --- Magnifier ---
+const MAG_RADIUS = 50;
+const MAG_ZOOM = 3;
+
+// --- UI hit regions (in CSS coords) ---
+const RESET_BTN = { x: 520, y: 6, w: 60, h: 24 };
+
 // --- Image loading ---
 const stuffieImg = new Image();
 let imgLoaded = false;
@@ -137,7 +98,6 @@ stuffieImg.onload = () => {
   drawScene();
 };
 stuffieImg.onerror = () => {
-  // Try fallback: if jpg failed try png, if png failed try jpg
   if (stuffieImg.src.endsWith('.jpg')) {
     stuffieImg.src = 'haibao.png';
   } else if (stuffieImg.src.endsWith('.png')) {
@@ -175,6 +135,7 @@ let dragStart = null;
 let isDragging = false;
 let suppressClick = false;
 const DRAG_THRESHOLD = 10;
+let hoveringReset = false;
 
 // --- Drawing ---
 function drawScene() {
@@ -207,6 +168,149 @@ function drawScene() {
   } else if (state === 'done' && firstClick && secondClick) {
     drawArrow(secondClick.x, secondClick.y, firstClick.x, firstClick.y, '#e00', 2.5);
   }
+
+  // --- On-canvas UI elements ---
+  drawInstruction();
+  drawInfoText();
+  drawResetButton();
+  drawMagnifier();
+}
+
+function drawInstruction() {
+  let text = '';
+  if (state === 'waiting_first') {
+    text = 'Click the point where your ray ends.';
+  } else if (state === 'waiting_second') {
+    text = 'Click the point where your ray begins.';
+  }
+  if (!text) return;
+
+  ctx.font = '14px Arial';
+  ctx.fillStyle = '#555';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'top';
+  ctx.fillText(text, 12, 6);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawInfoText() {
+  if (state !== 'done' || !secondClick) return;
+
+  const heightCm = yToCm(secondClick.y);
+  const dx = firstClick.x - secondClick.x;
+  const dy = firstClick.y - secondClick.y;
+  const angleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
+
+  const line1 = 'height of normal = ' + heightCm.toFixed(1) + ' cm';
+  const line2 = 'angle of reflection = ' + angleDeg.toFixed(1) + '\u00B0';
+
+  ctx.font = '13px monospace';
+
+  const x = 590;
+  const y = 44;
+
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(line1, x, y);
+  ctx.fillText(line2, x, y + 18);
+}
+
+function drawResetButton() {
+  const b = RESET_BTN;
+  ctx.fillStyle = hoveringReset ? '#e0e0e0' : '#fff';
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 1;
+
+  // Rounded rect
+  const r = 4;
+  ctx.beginPath();
+  ctx.moveTo(b.x + r, b.y);
+  ctx.lineTo(b.x + b.w - r, b.y);
+  ctx.arcTo(b.x + b.w, b.y, b.x + b.w, b.y + r, r);
+  ctx.lineTo(b.x + b.w, b.y + b.h - r);
+  ctx.arcTo(b.x + b.w, b.y + b.h, b.x + b.w - r, b.y + b.h, r);
+  ctx.lineTo(b.x + r, b.y + b.h);
+  ctx.arcTo(b.x, b.y + b.h, b.x, b.y + b.h - r, r);
+  ctx.lineTo(b.x, b.y + r);
+  ctx.arcTo(b.x, b.y, b.x + r, b.y, r);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.font = '14px Arial';
+  ctx.fillStyle = '#333';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Reset', b.x + b.w / 2, b.y + b.h / 2);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function drawMagnifier() {
+  if (!mousePos) return;
+  // Don't show magnifier when done (results displayed)
+  if (state === 'done') return;
+
+  const mx = mousePos.x;
+  const my = mousePos.y;
+
+  // Position the magnifier circle offset from cursor
+  // Place it to the upper-right unless near edge
+  let lx = mx + 60;
+  let ly = my - 60;
+  if (lx + MAG_RADIUS > 595) lx = mx - 60 - MAG_RADIUS;
+  if (ly - MAG_RADIUS < 5) ly = my + 60 + MAG_RADIUS;
+  if (lx - MAG_RADIUS < 5) lx = MAG_RADIUS + 5;
+  if (ly + MAG_RADIUS > 395) ly = 395 - MAG_RADIUS;
+
+  // Draw scene into offscreen canvas at higher resolution for sampling
+  const offCanvas = document.createElement('canvas');
+  const offW = 600, offH = 400;
+  offCanvas.width = offW;
+  offCanvas.height = offH;
+  const offCtx = offCanvas.getContext('2d');
+
+  // Draw the main canvas (1200x800) scaled down to 600x400
+  offCtx.drawImage(canvas, 0, 0, offW, offH);
+
+  // Extract the region around cursor and draw it zoomed
+  const srcR = MAG_RADIUS / MAG_ZOOM;
+  const srcX = mx - srcR;
+  const srcY = my - srcR;
+  const srcSize = srcR * 2;
+  const destSize = MAG_RADIUS * 2;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(lx, ly, MAG_RADIUS, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.drawImage(offCanvas, srcX, srcY, srcSize, srcSize, lx - MAG_RADIUS, ly - MAG_RADIUS, destSize, destSize);
+
+  ctx.restore();
+
+  // Crosshair in magnifier center
+  ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(lx - 8, ly);
+  ctx.lineTo(lx + 8, ly);
+  ctx.moveTo(lx, ly - 8);
+  ctx.lineTo(lx, ly + 8);
+  ctx.stroke();
+
+  // Border ring
+  ctx.strokeStyle = '#666';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.arc(lx, ly, MAG_RADIUS, 0, Math.PI * 2);
+  ctx.stroke();
+
+  // Subtle label
+  ctx.font = '10px Arial';
+  ctx.fillStyle = '#888';
+  ctx.textAlign = 'center';
+  ctx.fillText(MAG_ZOOM + '\u00d7', lx, ly + MAG_RADIUS + 12);
 }
 
 function drawStuffie() {
@@ -361,28 +465,13 @@ function drawAngleArc() {
 
   const arcRadius = 22;
 
-  // The ray goes from secondClick toward firstClick.
   const rayAngle = Math.atan2(dy, dx);
-
-  // The dashed line is horizontal. Its direction from secondClick depends on
-  // which side firstClick is on:
   const horizAngle = dx < 0 ? Math.PI : 0;
 
-  // Canvas arc() with anticlockwise=false sweeps angles in the INCREASING
-  // direction (which looks clockwise on screen because y points down).
-  // With anticlockwise=true it sweeps in the DECREASING direction
-  // (which looks counterclockwise on screen).
-  //
-  // We want the SMALL arc. Compute the signed difference and choose direction.
   let diff = rayAngle - horizAngle;
-  // Normalize diff to (-PI, PI]
   while (diff > Math.PI) diff -= 2 * Math.PI;
   while (diff <= -Math.PI) diff += 2 * Math.PI;
 
-  // If diff > 0, ray is at a larger angle than horiz (in canvas math terms).
-  //   arc from horizAngle to rayAngle with anticlockwise=false sweeps the small arc.
-  // If diff < 0, ray is at a smaller angle than horiz.
-  //   arc from horizAngle to rayAngle with anticlockwise=true sweeps the small arc.
   const useAntiClockwise = diff < 0;
 
   ctx.strokeStyle = '#e00';
@@ -391,7 +480,6 @@ function drawAngleArc() {
   ctx.arc(secondClick.x, secondClick.y, arcRadius, horizAngle, rayAngle, useAntiClockwise);
   ctx.stroke();
 
-  // Label: place to the left of the arc, near the dashed line
   const labelX = secondClick.x - arcRadius - 24;
   const labelY = secondClick.y - 2;
 
@@ -468,13 +556,24 @@ function drawHeightArrow() {
 }
 
 // --- Interaction ---
+function isInResetBtn(x, y) {
+  const b = RESET_BTN;
+  return x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h;
+}
+
 canvas.addEventListener('mousedown', (e) => {
-  if (state !== 'waiting_first') return;
   const rect = canvas.getBoundingClientRect();
-  dragStart = {
-    x: e.clientX - rect.left,
-    y: e.clientY - rect.top
-  };
+  const cx = e.clientX - rect.left;
+  const cy = e.clientY - rect.top;
+
+  // Check reset button
+  if (isInResetBtn(cx, cy)) {
+    reset();
+    return;
+  }
+
+  if (state !== 'waiting_first') return;
+  dragStart = { x: cx, y: cy };
   isDragging = false;
 });
 
@@ -484,6 +583,12 @@ canvas.addEventListener('mousemove', (e) => {
     x: e.clientX - rect.left,
     y: e.clientY - rect.top
   };
+
+  // Update hover state for reset button
+  const wasHovering = hoveringReset;
+  hoveringReset = isInResetBtn(mousePos.x, mousePos.y);
+  canvas.style.cursor = hoveringReset ? 'pointer' : 'crosshair';
+
   if (dragStart && state === 'waiting_first') {
     const dx = mousePos.x - dragStart.x;
     const dy = mousePos.y - dragStart.y;
@@ -495,9 +600,15 @@ canvas.addEventListener('mousemove', (e) => {
       return;
     }
   }
-  if (state === 'waiting_second') {
+  if (state === 'waiting_second' || state === 'waiting_first') {
     drawScene();
   }
+});
+
+canvas.addEventListener('mouseleave', () => {
+  mousePos = null;
+  hoveringReset = false;
+  drawScene();
 });
 
 canvas.addEventListener('mouseup', (e) => {
@@ -508,13 +619,11 @@ canvas.addEventListener('mouseup', (e) => {
     firstClick = { x: dragStart.x, y: dragStart.y };
     secondClick = { x: endX, y: endY };
     state = 'done';
-    instructionEl.textContent = '';
     dragStart = null;
     isDragging = false;
     suppressClick = true;
 
     checkBackward();
-    showInfo();
     drawScene();
     return;
   }
@@ -532,18 +641,18 @@ canvas.addEventListener('click', (e) => {
   const clickX = e.clientX - rect.left;
   const clickY = e.clientY - rect.top;
 
+  // Ignore clicks on reset button (handled in mousedown)
+  if (isInResetBtn(clickX, clickY)) return;
+
   if (state === 'waiting_first') {
     firstClick = { x: clickX, y: clickY };
     state = 'waiting_second';
-    instructionEl.textContent = 'Click the point where your ray begins.';
     drawScene();
   } else if (state === 'waiting_second') {
     secondClick = { x: clickX, y: clickY };
     state = 'done';
-    instructionEl.textContent = '';
 
     checkBackward();
-    showInfo();
     drawScene();
   }
 });
@@ -558,21 +667,6 @@ function checkBackward() {
   }
 }
 
-function showInfo() {
-  const heightCm = yToCm(secondClick.y);
-
-  const dx = firstClick.x - secondClick.x;
-  const dy = firstClick.y - secondClick.y;
-  const angleDeg = Math.abs(Math.atan2(Math.abs(dy), Math.abs(dx))) * 180 / Math.PI;
-
-  const heightStr = heightCm.toFixed(1);
-  const angleStr = angleDeg.toFixed(1);
-
-  infoEl.textContent = `normal height      = ${heightStr} cm\nangle of reflection = ${angleStr}\u00B0`;
-}
-
-resetBtn.addEventListener('click', reset);
-
 function reset() {
   state = 'waiting_first';
   firstClick = null;
@@ -581,8 +675,6 @@ function reset() {
   dragStart = null;
   isDragging = false;
   suppressClick = false;
-  instructionEl.textContent = 'Click the point where your ray ends.';
-  infoEl.textContent = '';
   warningEl.style.display = 'none';
   drawScene();
 }
