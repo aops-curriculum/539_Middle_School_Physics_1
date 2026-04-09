@@ -578,6 +578,13 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Light/rotate_octagon.html",
+      "title": "Michelson Speed of Light Experiment",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
