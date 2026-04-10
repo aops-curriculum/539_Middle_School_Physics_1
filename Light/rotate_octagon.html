@@ -202,7 +202,7 @@ const OBS_RADIUS = 6;
 // ── State ──────────────────────────────────────────────
 let speedSign = 1, digits = [0, 0, 0];
 let discreteAngleDeg = 0, fineAngleDeg = 0;
-let photons = [], eyeGlow = 0, simTime = 0, photonAccum = 0, prevTS = null;
+let photons = [], eyeGlow = 0, simTime = 0, photonPhase = 0, photonAccum = 0, prevTS = null;
 
 function getOmega() { return speedSign * (digits[0]*100 + digits[1]*10 + digits[2]) * speedScale; }
 function octAngle(t) { return (discreteAngleDeg + fineAngleDeg) * DEG + getOmega() * 2 * Math.PI * t; }
@@ -453,13 +453,27 @@ function drawPhotons(now) {
 function update(dt) {
     simTime += dt;
     const omega = Math.abs(getOmega());
-    const photonRate = omega > 1e-6 ? 8 * N_PER_FACE * omega : 30;
-    photonAccum += photonRate * dt;
-    const nNew = Math.floor(photonAccum);
-    photonAccum -= nNew;
-    for (let i = 0; i < nNew; i++) {
-        const t = nNew > 1 ? simTime - dt + (i + 0.5) * dt / nNew : simTime;
-        photons.push({t0: t, segs: computePath(t)});
+    if (omega > 1e-6) {
+        // Phase-locked emission: exactly N_PER_FACE photons per 1/8 revolution
+        const phaseRate = 8 * N_PER_FACE * omega; // phase units per sim-second
+        const oldPhase = photonPhase;
+        photonPhase += phaseRate * dt;
+        const nNew = Math.floor(photonPhase) - Math.floor(oldPhase);
+        for (let i = 0; i < nNew; i++) {
+            const boundary = Math.floor(oldPhase) + 1 + i;
+            const frac = (boundary - oldPhase) / (photonPhase - oldPhase);
+            const t = simTime - dt + frac * dt;
+            photons.push({t0: t, segs: computePath(t)});
+        }
+        if (photonPhase > 1e8) photonPhase -= Math.floor(photonPhase);
+    } else {
+        // Static mode: constant rate
+        photonAccum += 30 * dt;
+        const nNew = Math.floor(photonAccum);
+        photonAccum -= nNew;
+        for (let i = 0; i < nNew; i++) {
+            photons.push({t0: simTime, segs: computePath(simTime)});
+        }
     }
     const alive = [];
     for (const p of photons) {
@@ -522,7 +536,7 @@ document.getElementById('fineDown').addEventListener('click', () => {
 document.getElementById('resetBtn').addEventListener('click', () => {
     speedSign=1; digits=[0,0,0]; discreteAngleDeg=0; fineAngleDeg=0;
     rotSlider.value=0; updateRotDisplay();
-    photons=[]; eyeGlow=0; simTime=0; photonAccum=0; prevTS=null;
+    photons=[]; eyeGlow=0; simTime=0; photonPhase=0; photonAccum=0; prevTS=null;
     updateSpeedDisplay();
 });
 
