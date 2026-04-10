@@ -104,7 +104,7 @@ const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 420;
 const DEG = Math.PI / 180;
-const TARGET_DOTS = 20;  // target number of visible photons in transit
+const TARGET_DOTS = 60;  // target number of visible photons in transit
 const EYE_GLOW_DUR = 0.2;
 let speedScale = 0.01; // adjustable: display shows 1/speedScale × actual rotation speed
 
@@ -441,26 +441,21 @@ function update(dt) {
     simTime += dt;
     // Scale spawn rate so ~TARGET_DOTS are visible in transit at any time
     const transitTime = STATIC_RT / getSimSpeed();
-    const photonRate = Math.min(200, TARGET_DOTS / transitTime);
+    const photonRate = Math.min(500, TARGET_DOTS / transitTime);
     photonAccum += photonRate * dt;
     while (photonAccum >= 1) {
         photonAccum -= 1;
-        // Add random time jitter when octagon is spinning so photons
-        // sample all octagon phases uniformly. Without this, the fixed
-        // spawn interval creates a deterministic phase pattern that can
-        // miss the narrow alignment window entirely at 528 rev/s.
+        // Jitter the PHYSICS evaluation time so photons sample all octagon
+        // phases uniformly. Visual spawn time (t0) stays at simTime so
+        // photons appear at a constant rate without spurts.
         const omega = Math.abs(getOmega());
         const jitter = omega > 1e-6 ? (Math.random() - 0.5) / (omega * 8) : 0;
-        const t = simTime + jitter;
-        photons.push({t0:t, segs:computePath(t)});
+        photons.push({t0:simTime, segs:computePath(simTime + jitter)});
     }
     const alive = [];
     for (const p of photons) {
         const td = tDur(p), age = simTime - p.t0;
-        if (hitsEye(p)) {
-            const ht = p.t0 + td;
-            if (ht <= simTime && ht > simTime - dt) eyeGlow = EYE_GLOW_DUR;
-        }
+        if (hitsEye(p) && age >= td && age - dt < td) eyeGlow = EYE_GLOW_DUR;
         if (age < td + 0.05) alive.push(p);
     }
     photons = alive;
