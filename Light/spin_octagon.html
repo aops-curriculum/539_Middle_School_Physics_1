@@ -279,6 +279,8 @@ function computePath(spawn) {
 }
 
 // ── Photon tracking ────────────────────────────────────
+const EYE_LINGER = 0.15;   // seconds photon stays visible at eye after arrival
+
 function pPos(p, now) {
     let el = now - p.t0;
     for (const seg of p.segs) {
@@ -287,6 +289,14 @@ function pPos(p, now) {
             return {x:seg.s.x+f*(seg.e.x-seg.s.x), y:seg.s.y+f*(seg.e.y-seg.s.y), ok:true};
         }
         el -= seg.dur;
+    }
+    // If it hit the eye and is still within linger window, show at endpoint
+    if (hitsEye(p)) {
+        const last = p.segs[p.segs.length - 1];
+        const overAge = now - p.t0 - tDur(p);
+        if (overAge < EYE_LINGER) {
+            return {x: last.e.x, y: last.e.y, ok: true};
+        }
     }
     return {ok:false};
 }
@@ -416,7 +426,8 @@ function update(dt) {
     for (const p of photons) {
         const td = tDur(p), age = simTime - p.t0;
         if (hitsEye(p) && age >= td && age - dt < td) eyeGlow = EYE_GLOW_DUR;
-        if (age < td + 0.05) alive.push(p);
+        const keepFor = hitsEye(p) ? td + EYE_LINGER : td + 0.05;
+        if (age < keepFor) alive.push(p);
     }
     photons = alive;
     eyeGlow = Math.max(0, eyeGlow - dt);
@@ -430,6 +441,28 @@ function drawZoomedInset() {
     const cx = OBSERVER.x, cy = OBSERVER.y;
     const srcW = INSET_W / ZOOM, srcH = INSET_H / ZOOM;
     const sx = cx - srcW / 2, sy = cy - srcH / 2;
+
+    // Dotted box around the source region in the main view
+    const boxX = sx, boxY = sy, boxW = srcW, boxH = srcH;
+    ctx.save();
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = '#667';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(boxX, boxY, boxW, boxH);
+    ctx.setLineDash([]);
+
+    // Connector lines from right side of dotted box to inset corners
+    ctx.strokeStyle = '#445';
+    ctx.lineWidth = 0.7;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(boxX + boxW, boxY);
+    ctx.lineTo(INSET_X, INSET_Y);
+    ctx.moveTo(boxX + boxW, boxY + boxH);
+    ctx.lineTo(INSET_X, INSET_Y + INSET_H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
 
     ctx.save();
 
@@ -447,11 +480,8 @@ function drawZoomedInset() {
     ctx.scale(ZOOM, ZOOM);
 
     // Redraw elements that may appear near the observer
-    // Octagon
     drawOctagon(octAngle(simTime));
-    // Eye
     drawEye(eyeGlow / EYE_GLOW_DUR);
-    // Photons
     drawPhotons(simTime);
 
     ctx.restore();
