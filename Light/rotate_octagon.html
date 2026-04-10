@@ -99,6 +99,7 @@ const W = 600, H = 420;
 const DEG = Math.PI / 180;
 const PHOTON_RATE = 200;
 const EYE_GLOW_DUR = 0.2;
+const SPEED_SCALE = 0.01; // display shows 100× actual rotation speed
 
 // ── Layout ─────────────────────────────────────────────
 // Octagon center and size
@@ -132,19 +133,21 @@ const MIRROR_CY = FACE0_MID_Y;
 const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
 const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
 
-// Calibrate SIM_SPEED so peak alignment occurs at exactly 528 rev/s.
+// Calibrate SIM_SPEED so peak alignment occurs at displayed 528 rev/s
+// (actual 5.28 rev/s after SPEED_SCALE).
 // Round-trip = outgoing (horizontal) + return (slightly angled) distance.
 // Need N_ALIGN mod 8 = 6 so the net 270° rotation sends return beam
 // upward toward the observer (face normal goes 45° → 315°).
 const PEAK_REV = 528;
+const PEAK_ACTUAL = PEAK_REV * SPEED_SCALE; // 5.28 rev/s actual
 const OUT_DIST = MIRROR_X - FACE0_MID_X;
 const RET_DIST = Math.hypot(MIRROR_X - FACE6_MID_X, FACE0_MID_Y - FACE6_MID_Y);
 const STATIC_RT = OUT_DIST + RET_DIST;
-const N_RAW = Math.round(PEAK_REV * 8 * STATIC_RT / 6000);
+const N_RAW = Math.round(PEAK_ACTUAL * 8 * STATIC_RT / 6000);
 // Adjust to nearest value with mod 8 = 6
 const _rem = N_RAW % 8, _diff = (_rem - 6 + 8) % 8;
 const N_ALIGN = _diff <= 4 ? N_RAW - _diff : N_RAW + (8 - _diff);
-const SIM_SPEED = PEAK_REV * 8 * STATIC_RT / N_ALIGN;
+const SIM_SPEED = PEAK_ACTUAL * 8 * STATIC_RT / N_ALIGN;
 
 // Observer: compute where the return beam arrives after reflecting off face 6.
 // Outgoing dir (1,0) → mirror → return dir → face 6 (normal 315°) → observer dir
@@ -162,7 +165,7 @@ let speedSign = 1, digits = [0, 0, 0];
 let discreteAngleDeg = 0;
 let photons = [], eyeGlow = 0, simTime = 0, photonAccum = 0, prevTS = null;
 
-function getOmega() { return speedSign * (digits[0]*100 + digits[1]*10 + digits[2]); }
+function getOmega() { return speedSign * (digits[0]*100 + digits[1]*10 + digits[2]) * SPEED_SCALE; }
 function octAngle(t) { return discreteAngleDeg * DEG + getOmega() * 2 * Math.PI * t; }
 
 // ── Vector helpers ─────────────────────────────────────
@@ -421,7 +424,7 @@ function update(dt) {
         // spawn interval creates a deterministic phase pattern that can
         // miss the narrow alignment window entirely at 528 rev/s.
         const omega = Math.abs(getOmega());
-        const jitter = omega > 10 ? (Math.random() - 0.5) / (omega * 8) : 0;
+        const jitter = omega > 0.1 ? (Math.random() - 0.5) / (omega * 8) : 0;
         const t = simTime + jitter;
         photons.push({t0:t, segs:computePath(t)});
     }
