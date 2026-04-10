@@ -181,8 +181,8 @@ const DEG = Math.PI / 180;
 // ── Physical constants ───────────────────────────────
 const REAL_DIST_M = 4;
 const C_LIGHT = 3e8;
-const SLOW_FACTOR = 25000000;
-const C_SIM_M = C_LIGHT / SLOW_FACTOR;   // 12 m/s
+const SLOW_FACTOR = 50000000;
+const C_SIM_M = C_LIGHT / SLOW_FACTOR;   // 6 m/s
 
 // ── Layout ───────────────────────────────────────────
 // Flat rotating mirror on far left, source on far right
@@ -222,8 +222,6 @@ let photons = [], simTime = 0, photonAccum = 0, prevTS = null;
 let screenGlow = 0;
 const SCREEN_GLOW_DUR = 0.2;
 const EYE_LINGER = 0.15;
-let lastEmittedSlot = -1;
-const N_PER_REV = 800;
 
 // ── Vector helpers ───────────────────────────────────
 function v(x,y){return{x,y}}
@@ -552,7 +550,7 @@ function drawScaleBar() {
     ctx.fillText(barM + ' m', x0 + barPx / 2, y0 - 7);
     ctx.textAlign = 'right';
     ctx.fillStyle = '#6a8899';
-    ctx.fillText('Slow-motion: 1/25,000,000', W - 10, y0);
+    ctx.fillText('Slow-motion: 1/50,000,000', W - 10, y0);
 }
 
 function drawPhotons(now) {
@@ -571,21 +569,11 @@ function drawPhotons(now) {
 // ── Simulation loop ──────────────────────────────────
 function update(dt) {
     simTime += dt;
-    const omega = Math.abs(getOmega());
-    if (mode === 'spin' && omega > 1e-6) {
-        const phase = N_PER_REV * omega / (2 * Math.PI) * simTime;
-        while (lastEmittedSlot + 1 <= Math.floor(phase)) {
-            lastEmittedSlot++;
-            const t_emit = lastEmittedSlot * 2 * Math.PI / (N_PER_REV * omega);
-            photons.push({t0: t_emit, segs: computePath(t_emit)});
-        }
-    } else {
-        photonAccum += 5 * dt;
-        const nNew = Math.floor(photonAccum);
-        photonAccum -= nNew;
-        for (let i = 0; i < nNew; i++) {
-            photons.push({t0: simTime, segs: computePath(simTime)});
-        }
+    photonAccum += 5 * dt;
+    const nNew = Math.floor(photonAccum);
+    photonAccum -= nNew;
+    for (let i = 0; i < nNew; i++) {
+        photons.push({t0: simTime, segs: computePath(simTime)});
     }
     const alive = [];
     for (const p of photons) {
@@ -624,7 +612,7 @@ function loop() {
 
 // ── Controls ─────────────────────────────────────────
 function resetSim() {
-    simTime = 0; lastEmittedSlot = -1; photons = []; screenGlow = 0;
+    simTime = 0; photons = []; screenGlow = 0;
     photonAccum = 0; prevTS = null;
 }
 function setMode(m) {
@@ -646,17 +634,22 @@ function updateRotDisplay() {
     const total = discreteAngleDeg + fineAngleDeg;
     rotValEl.innerHTML = total.toFixed(1) + '&deg;';
 }
+function recomputePhotonPaths() {
+    for (const p of photons) {
+        p.segs = computePath(p.t0);
+    }
+}
 rotSlider.addEventListener('input', () => {
     discreteAngleDeg = parseFloat(rotSlider.value);
-    resetSim(); updateRotDisplay();
+    recomputePhotonPaths(); updateRotDisplay();
 });
 document.getElementById('fineUp').addEventListener('click', () => {
     fineAngleDeg = Math.round((fineAngleDeg + 0.1) * 10) / 10;
-    resetSim(); updateRotDisplay();
+    recomputePhotonPaths(); updateRotDisplay();
 });
 document.getElementById('fineDown').addEventListener('click', () => {
     fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
-    resetSim(); updateRotDisplay();
+    recomputePhotonPaths(); updateRotDisplay();
 });
 
 // Spin controls
