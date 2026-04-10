@@ -25,8 +25,8 @@
     /* ── Overlay controls ─────────────────────── */
     .speed-ctrl {
         position: absolute;
-        left: 4px;
-        top: 150px;
+        left: 350px;
+        top: 20px;
         display: flex;
         align-items: center;
         gap: 1px;
@@ -35,8 +35,8 @@
         font-size: 10px;
         color: #667;
         position: absolute;
-        left: 4px;
-        top: 140px;
+        left: 350px;
+        top: 8px;
     }
     .sign-btn {
         width: 18px; height: 26px; background: rgba(42,42,74,0.85); border: 1px solid #445;
@@ -59,12 +59,12 @@
     /* Rotation controls */
     .rot-ctrl {
         position: absolute;
-        left: 4px;
-        top: 195px;
+        left: 350px;
+        top: 70px;
         display: flex;
         flex-direction: column;
         gap: 2px;
-        width: 95px;
+        width: 170px;
     }
     .rot-label-row {
         display: flex;
@@ -86,15 +86,25 @@
         gap: 3px;
     }
     .rot-row input[type=range] {
-        width: 90px;
+        width: 140px;
         accent-color: #4fc3f7;
         height: 14px;
     }
-    .rot-fine-label {
+    .fine-btn {
+        width: 20px; height: 18px;
+        background: rgba(42,42,74,0.85);
+        border: 1px solid #445;
+        border-radius: 2px;
+        color: #889;
         font-size: 9px;
-        color: #556;
-        min-width: 18px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        margin-left: 2px;
     }
+    .fine-btn:hover { background: #4a4a6a; color: #fff; }
     /* Reset button */
     .reset-btn {
         position: absolute;
@@ -127,13 +137,11 @@
         <div class="rot-label-row">
             <span class="rot-label">Rotation</span>
             <span class="rot-val" id="rotVal">0.0&deg;</span>
+            <button class="fine-btn" id="fineDown">&#9660;</button>
+            <button class="fine-btn" id="fineUp">&#9650;</button>
         </div>
         <div class="rot-row">
             <input type="range" id="rotSlider" min="0" max="45" step="1" value="0">
-        </div>
-        <div class="rot-row">
-            <span class="rot-fine-label">fine</span>
-            <input type="range" id="fineSlider" min="-2" max="2" step="0.05" value="0">
         </div>
     </div>
     <button class="reset-btn" id="resetBtn">Reset</button>
@@ -144,12 +152,12 @@ const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 420;
 const DEG = Math.PI / 180;
-const TARGET_DOTS = 200;
+const N_PER_FACE = 200;
 const EYE_GLOW_DUR = 0.2;
-const speedScale = 0.0001; // locked at 1/10,000
+const speedScale = 0.0002; // locked at 1/5,000
 
 // ── Layout ─────────────────────────────────────────────
-const OCT_CX = 125, OCT_CY = 220, OCT_R = 22;
+const OCT_CX = 125, OCT_CY = 340, OCT_R = 22;
 const INRADIUS = OCT_R * Math.cos(Math.PI / 8);
 
 const FACE0_MID_X = OCT_CX + INRADIUS * Math.cos(45 * DEG);
@@ -161,7 +169,7 @@ const SOURCE = { x: FACE0_MID_X, y: 390 };
 const PHOTON_DIR = { x: 0, y: -1 };
 
 const MIRROR_X = 530;
-const MIRROR_H = 20;
+const MIRROR_H = 10;
 const MIRROR_TILT = 0.5 * Math.atan((FACE0_MID_Y - FACE6_MID_Y) / (MIRROR_X - FACE0_MID_X));
 const MN = { x: -Math.cos(MIRROR_TILT), y: -Math.sin(MIRROR_TILT) };
 
@@ -170,7 +178,7 @@ const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
 const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
 
 // Physical constants
-const DIST_KM = 35;
+const DIST_KM = 35.4;
 const C_LIGHT_KM = 299792;
 const OUT_DIST = MIRROR_X - FACE0_MID_X;
 const RET_DIST = Math.hypot(MIRROR_X - FACE6_MID_X, FACE0_MID_Y - FACE6_MID_Y);
@@ -189,7 +197,7 @@ const _od = { x: _rd.x - 2*_dn6*_n6.x, y: _rd.y - 2*_dn6*_n6.y };
 const OBS_Y = 55;
 const OBS_X = FACE6_MID_X + _od.x * (OBS_Y - FACE6_MID_Y) / _od.y;
 const OBSERVER = { x: OBS_X, y: OBS_Y };
-const OBS_RADIUS = 25;
+const OBS_RADIUS = 6;
 
 // ── State ──────────────────────────────────────────────
 let speedSign = 1, digits = [0, 0, 0];
@@ -380,22 +388,22 @@ function drawSource() {
 function drawEye(gf) {
     const {x,y} = OBSERVER;
     if (gf > 0.01) {
-        const g2 = ctx.createRadialGradient(x,y,0,x,y,45);
+        const g2 = ctx.createRadialGradient(x,y,0,x,y,30);
         g2.addColorStop(0,`rgba(140,255,200,${0.5*gf})`);
         g2.addColorStop(0.5,`rgba(140,255,200,${0.15*gf})`);
         g2.addColorStop(1,'rgba(140,255,200,0)');
-        ctx.fillStyle = g2; ctx.fillRect(x-48,y-48,96,96);
-        const g = ctx.createRadialGradient(x,y,2,x,y,20);
+        ctx.fillStyle = g2; ctx.fillRect(x-32,y-32,64,64);
+        const g = ctx.createRadialGradient(x,y,1,x,y,12);
         g.addColorStop(0,`rgba(220,255,240,${0.9*gf})`);
         g.addColorStop(1,'rgba(180,255,220,0)');
-        ctx.fillStyle = g; ctx.fillRect(x-22,y-22,44,44);
+        ctx.fillStyle = g; ctx.fillRect(x-14,y-14,28,28);
     }
-    ctx.beginPath(); ctx.ellipse(x,y,12,7,0,0,Math.PI*2);
+    ctx.beginPath(); ctx.ellipse(x,y,6,4,0,0,Math.PI*2);
     ctx.fillStyle = gf>0.01 ? `rgba(220,255,240,${0.4+0.6*gf})` : 'rgba(200,210,220,0.25)';
     ctx.fill();
     ctx.strokeStyle = gf>0.01 ? `rgba(150,255,200,${0.5+0.5*gf})` : '#556';
     ctx.lineWidth = 1.5; ctx.stroke();
-    ctx.beginPath(); ctx.arc(x,y,3.5,0,Math.PI*2);
+    ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2);
     ctx.fillStyle = gf>0.01 ? `rgba(100,255,180,${0.6+0.4*gf})` : '#445';
     ctx.fill();
 }
@@ -426,7 +434,7 @@ function drawScaleBar() {
     // Slow-motion label
     ctx.textAlign = 'right';
     ctx.fillStyle = '#6a8899';
-    ctx.fillText('Slow-motion: 1/10,000', W - 10, y0);
+    ctx.fillText('Slow-motion: 1/5,000', W - 10, y0);
 }
 function drawPhotons(now) {
     for (const p of photons) {
@@ -444,14 +452,14 @@ function drawPhotons(now) {
 // ── Simulation loop ────────────────────────────────────
 function update(dt) {
     simTime += dt;
-    const transitTime = STATIC_RT / getSimSpeed();
-    const photonRate = Math.min(500, TARGET_DOTS / transitTime);
+    const omega = Math.abs(getOmega());
+    const photonRate = omega > 1e-6 ? 8 * N_PER_FACE * omega : 30;
     photonAccum += photonRate * dt;
-    while (photonAccum >= 1) {
-        photonAccum -= 1;
-        const omega = Math.abs(getOmega());
-        const jitter = omega > 1e-6 ? (Math.random() - 0.5) / (omega * 8) : 0;
-        photons.push({t0:simTime, segs:computePath(simTime + jitter)});
+    const nNew = Math.floor(photonAccum);
+    photonAccum -= nNew;
+    for (let i = 0; i < nNew; i++) {
+        const t = nNew > 1 ? simTime - dt + (i + 0.5) * dt / nNew : simTime;
+        photons.push({t0: t, segs: computePath(t)});
     }
     const alive = [];
     for (const p of photons) {
@@ -494,7 +502,6 @@ document.querySelectorAll('.digit-col button').forEach(btn => {
     });
 });
 const rotSlider = document.getElementById('rotSlider');
-const fineSlider = document.getElementById('fineSlider');
 const rotValEl = document.getElementById('rotVal');
 function updateRotDisplay() {
     const total = discreteAngleDeg + fineAngleDeg;
@@ -504,13 +511,17 @@ rotSlider.addEventListener('input', () => {
     discreteAngleDeg = parseFloat(rotSlider.value);
     updateRotDisplay();
 });
-fineSlider.addEventListener('input', () => {
-    fineAngleDeg = parseFloat(fineSlider.value);
+document.getElementById('fineUp').addEventListener('click', () => {
+    fineAngleDeg = Math.round((fineAngleDeg + 0.1) * 10) / 10;
+    updateRotDisplay();
+});
+document.getElementById('fineDown').addEventListener('click', () => {
+    fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
     updateRotDisplay();
 });
 document.getElementById('resetBtn').addEventListener('click', () => {
     speedSign=1; digits=[0,0,0]; discreteAngleDeg=0; fineAngleDeg=0;
-    rotSlider.value=0; fineSlider.value=0; updateRotDisplay();
+    rotSlider.value=0; updateRotDisplay();
     photons=[]; eyeGlow=0; simTime=0; photonAccum=0; prevTS=null;
     updateSpeedDisplay();
 });
