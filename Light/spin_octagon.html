@@ -421,6 +421,53 @@ function update(dt) {
     photons = alive;
     eyeGlow = Math.max(0, eyeGlow - dt);
 }
+// ── Zoomed inset view ──────────────────────────────────
+const ZOOM = 5;
+const INSET_W = 120, INSET_H = 120;
+const INSET_X = 195, INSET_Y = 8;
+
+function drawZoomedInset() {
+    const cx = OBSERVER.x, cy = OBSERVER.y;
+    const srcW = INSET_W / ZOOM, srcH = INSET_H / ZOOM;
+    const sx = cx - srcW / 2, sy = cy - srcH / 2;
+
+    ctx.save();
+
+    // Clip to inset rectangle
+    ctx.beginPath();
+    ctx.rect(INSET_X, INSET_Y, INSET_W, INSET_H);
+    ctx.clip();
+
+    // Fill background
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(INSET_X, INSET_Y, INSET_W, INSET_H);
+
+    // Transform so that drawing commands in world coords appear zoomed
+    ctx.translate(INSET_X - sx * ZOOM, INSET_Y - sy * ZOOM);
+    ctx.scale(ZOOM, ZOOM);
+
+    // Redraw elements that may appear near the observer
+    // Octagon
+    drawOctagon(octAngle(simTime));
+    // Eye
+    drawEye(eyeGlow / EYE_GLOW_DUR);
+    // Photons
+    drawPhotons(simTime);
+
+    ctx.restore();
+
+    // Border
+    ctx.strokeStyle = '#556';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(INSET_X, INSET_Y, INSET_W, INSET_H);
+
+    // Label
+    ctx.font = '9px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText('Zoomed view (5\u00d7)', INSET_X + INSET_W / 2, INSET_Y + INSET_H + 12);
+}
+
 function draw() {
     ctx.clearRect(0, 0, W, H);
     drawMirror();
@@ -430,6 +477,7 @@ function draw() {
     drawPhotons(simTime);
     drawLabels();
     drawScaleBar();
+    drawZoomedInset();
 }
 function loop(ts) {
     if (prevTS === null) prevTS = ts;
