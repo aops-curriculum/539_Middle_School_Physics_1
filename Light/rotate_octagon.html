@@ -176,6 +176,9 @@ const MN = { x: -Math.cos(MIRROR_TILT), y: -Math.sin(MIRROR_TILT) };
 const MIRROR_CY = FACE0_MID_Y;
 const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
 const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
+const MIRROR_HIT_H = 2; // effective hit zone: 1 photon per face
+const MIRROR_HIT_TOP = MIRROR_CY - MIRROR_HIT_H / 2;
+const MIRROR_HIT_BOT = MIRROR_CY + MIRROR_HIT_H / 2;
 
 // Physical constants
 const DIST_KM = 35.4;
@@ -256,7 +259,7 @@ function rayMirror(o, d) {
     const t = (MIRROR_X - o.x) / d.x;
     if (t < 0.01) return null;
     const y = o.y + t * d.y;
-    if (y >= MIRROR_TOP && y <= MIRROR_BOT)
+    if (y >= MIRROR_HIT_TOP && y <= MIRROR_HIT_BOT)
         return { t, pt: v(MIRROR_X, y) };
     return null;
 }
@@ -412,6 +415,7 @@ function drawLabels() {
     ctx.fillStyle = '#778899';
     ctx.textAlign = 'center';
     ctx.fillText('Mt. Wilson', OCT_CX, OCT_CY + OCT_R + 16);
+    ctx.fillText('Mirror', MIRROR_X, MIRROR_TOP - 8);
     ctx.fillText('Mt. San Antonio', MIRROR_X, MIRROR_BOT + 16);
     ctx.fillText('Light source', SOURCE.x, SOURCE.y + 20);
     ctx.fillText('Observer', OBSERVER.x, OBSERVER.y - 18);
