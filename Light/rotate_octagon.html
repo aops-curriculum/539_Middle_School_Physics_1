@@ -89,6 +89,13 @@
             <span class="rotation-val" id="rotVal">0.0&deg;</span>
         </div>
     </div>
+    <div class="control-row">
+        <span class="control-label">Slow-mo:</span>
+        <div class="rotation-control">
+            <input type="range" id="slowSlider" min="2" max="5" step="0.1" value="2">
+            <span class="rotation-val" id="slowVal">1/100</span>
+        </div>
+    </div>
     <button class="reset-btn" id="resetBtn">Reset</button>
 </div>
 
@@ -99,7 +106,7 @@ const W = 600, H = 420;
 const DEG = Math.PI / 180;
 const PHOTON_RATE = 200;
 const EYE_GLOW_DUR = 0.2;
-const SPEED_SCALE = 0.01; // display shows 100× actual rotation speed
+let speedScale = 0.01; // adjustable: display shows 1/speedScale × actual rotation speed
 
 // ── Layout ─────────────────────────────────────────────
 // Octagon center and size
@@ -134,12 +141,11 @@ const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
 const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
 
 // Calibrate SIM_SPEED so peak alignment occurs at displayed 528 rev/s
-// (actual 5.28 rev/s after SPEED_SCALE).
-// Round-trip = outgoing (horizontal) + return (slightly angled) distance.
-// Need N_ALIGN mod 8 = 6 so the net 270° rotation sends return beam
-// upward toward the observer (face normal goes 45° → 315°).
+// at the default slow-mo of 1/100 (actual 5.28 rev/s).
+// SIM_SPEED is fixed; changing slow-mo only changes octagon rotation rate.
 const PEAK_REV = 528;
-const PEAK_ACTUAL = PEAK_REV * SPEED_SCALE; // 5.28 rev/s actual
+const INIT_SCALE = 0.01; // default slow-mo for calibration
+const PEAK_ACTUAL = PEAK_REV * INIT_SCALE;
 const OUT_DIST = MIRROR_X - FACE0_MID_X;
 const RET_DIST = Math.hypot(MIRROR_X - FACE6_MID_X, FACE0_MID_Y - FACE6_MID_Y);
 const STATIC_RT = OUT_DIST + RET_DIST;
@@ -165,7 +171,7 @@ let speedSign = 1, digits = [0, 0, 0];
 let discreteAngleDeg = 0;
 let photons = [], eyeGlow = 0, simTime = 0, photonAccum = 0, prevTS = null;
 
-function getOmega() { return speedSign * (digits[0]*100 + digits[1]*10 + digits[2]) * SPEED_SCALE; }
+function getOmega() { return speedSign * (digits[0]*100 + digits[1]*10 + digits[2]) * speedScale; }
 function octAngle(t) { return discreteAngleDeg * DEG + getOmega() * 2 * Math.PI * t; }
 
 // ── Vector helpers ─────────────────────────────────────
@@ -476,9 +482,20 @@ rotSlider.addEventListener('input', () => {
     discreteAngleDeg = parseFloat(rotSlider.value);
     rotValEl.innerHTML = discreteAngleDeg.toFixed(1) + '&deg;';
 });
+const slowSlider = document.getElementById('slowSlider');
+const slowValEl = document.getElementById('slowVal');
+function updateSlowDisplay() {
+    const denom = Math.round(Math.pow(10, parseFloat(slowSlider.value)));
+    slowValEl.textContent = '1/' + denom.toLocaleString();
+}
+slowSlider.addEventListener('input', () => {
+    speedScale = Math.pow(10, -parseFloat(slowSlider.value));
+    updateSlowDisplay();
+});
 document.getElementById('resetBtn').addEventListener('click', () => {
-    speedSign=1; digits=[0,0,0]; discreteAngleDeg=0;
+    speedSign=1; digits=[0,0,0]; discreteAngleDeg=0; speedScale=0.01;
     rotSlider.value=0; rotValEl.innerHTML='0.0&deg;';
+    slowSlider.value=2; updateSlowDisplay();
     photons=[]; eyeGlow=0; simTime=0; photonAccum=0; prevTS=null;
     updateSpeedDisplay();
 });
