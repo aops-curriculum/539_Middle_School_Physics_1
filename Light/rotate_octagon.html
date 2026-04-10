@@ -104,7 +104,7 @@ const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 420;
 const DEG = Math.PI / 180;
-const PHOTON_RATE = 200;
+const TARGET_DOTS = 20;  // target number of visible photons in transit
 const EYE_GLOW_DUR = 0.2;
 let speedScale = 0.01; // adjustable: display shows 1/speedScale × actual rotation speed
 
@@ -140,20 +140,18 @@ const MIRROR_CY = FACE0_MID_Y;
 const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
 const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
 
-// Calibrate SIM_SPEED so peak alignment occurs at displayed 528 rev/s
-// at the default slow-mo of 1/100 (actual 5.28 rev/s).
-// SIM_SPEED is fixed; changing slow-mo only changes octagon rotation rate.
-const PEAK_REV = 528;
-const INIT_SCALE = 0.01; // default slow-mo for calibration
-const PEAK_ACTUAL = PEAK_REV * INIT_SCALE;
-const OUT_DIST = MIRROR_X - FACE0_MID_X;
+// Physical constants
+const DIST_KM = 35;              // Mt. Wilson to Mt. San Antonio
+const C_LIGHT_KM = 299792;       // speed of light in km/s
+const OUT_DIST = MIRROR_X - FACE0_MID_X;   // pixels
 const RET_DIST = Math.hypot(MIRROR_X - FACE6_MID_X, FACE0_MID_Y - FACE6_MID_Y);
 const STATIC_RT = OUT_DIST + RET_DIST;
-const N_RAW = Math.round(PEAK_ACTUAL * 8 * STATIC_RT / 6000);
-// Adjust to nearest value with mod 8 = 6
-const _rem = N_RAW % 8, _diff = (_rem - 6 + 8) % 8;
-const N_ALIGN = _diff <= 4 ? N_RAW - _diff : N_RAW + (8 - _diff);
-const SIM_SPEED = PEAK_ACTUAL * 8 * STATIC_RT / N_ALIGN;
+const M_PER_PX = DIST_KM * 1000 / OUT_DIST; // meters per pixel (~89.6)
+
+// Dynamic simSpeed: light moves at c × speedScale in simulation units (px/s)
+function getSimSpeed() {
+    return C_LIGHT_KM * 1000 * speedScale / M_PER_PX;
+}
 
 // Observer: compute where the return beam arrives after reflecting off face 6.
 // Outgoing dir (1,0) → mirror → return dir → face 6 (normal 315°) → observer dir
@@ -238,74 +236,68 @@ function toEdge(o, d) {
 }
 
 // ── Photon path computation ────────────────────────────
-// At 528 rev/s the octagon rotates ~4 full turns while a photon
-// crosses it — wildly unrealistic (real light crosses in nanoseconds).
-// An iterative solver oscillates chaotically, and temporal-sampling
-// self-consistency checks are too tight to converge.
-//
-// Solution: evaluate the octagon at the EXPECTED face-crossing time
-// for aligned photons. This gives the correct face for photons that
-// happen to arrive when the octagon is aligned. Non-aligned photons
-// get an approximate (slightly wrong) face, but they don't reach
-// the observer anyway — only their visual trajectory matters.
+// Evaluate the octagon at the EXPECTED face-crossing time for aligned
+// photons. This gives the correct face for photons that arrive when
+// the octagon is aligned. Non-aligned photons get an approximate face,
+// but they don't reach the observer anyway.
 function computePath(spawn) {
+    const simSpd = getSimSpeed();
     const segs = [];
     const dir0 = PHOTON_DIR;
 
     // Leg 1: source → octagon
-    // Use distance to expected face midpoint, not to octagon center.
-    // At 528 rev/s this eliminates 456° of angular error in the estimate.
-    let tT = (SOURCE.y - FACE0_MID_Y) / SIM_SPEED;
-    const vs0 = octVerts(octAngle(spawn + tT));
+    // In reality the light source is adjacent to the octagon (~meters away),
+    // so the octagon barely rotates during this leg. Evaluate at spawn time.
+    const vs0 = octVerts(octAngle(spawn));
     const h0 = rayOct(SOURCE, dir0, vs0);
     if (!h0) {
         const edge = toEdge(SOURCE, dir0);
-        segs.push({s:SOURCE, e:edge, dur:vlen(vsub(edge,SOURCE))/SIM_SPEED});
+        segs.push({s:SOURCE, e:edge, dur:vlen(vsub(edge,SOURCE))/simSpd});
         return segs;
     }
-    tT = h0.t / SIM_SPEED;
+    const leg1Dur = h0.t / simSpd;
     const hPt = h0.pt, hF = h0.face;
-    const t1 = spawn + tT;
     const n1 = faceN(vs0, hF);
-    segs.push({s:SOURCE, e:hPt, dur:tT});
+    segs.push({s:SOURCE, e:hPt, dur:leg1Dur});
 
     // Skip if hitting inside of face
     if (vdot(dir0, n1) >= 0) {
         const edge = toEdge(hPt, dir0);
-        segs.push({s:hPt, e:edge, dur:vlen(vsub(edge,hPt))/SIM_SPEED});
+        segs.push({s:hPt, e:edge, dur:vlen(vsub(edge,hPt))/simSpd});
         return segs;
     }
 
     const r1 = vrefl(dir0, n1);
 
-    // Leg 2: octagon → mirror
+    // Leg 2: octagon → mirror (represents the 35 km outgoing path)
     const mH = rayMirror(hPt, r1);
     if (!mH) {
         const edge = toEdge(hPt, r1);
-        segs.push({s:hPt, e:edge, dur:vlen(vsub(edge,hPt))/SIM_SPEED});
+        segs.push({s:hPt, e:edge, dur:vlen(vsub(edge,hPt))/simSpd});
         return segs;
     }
-    segs.push({s:hPt, e:mH.pt, dur:mH.t/SIM_SPEED});
+    const leg2Dur = mH.t / simSpd;
+    segs.push({s:hPt, e:mH.pt, dur:leg2Dur});
 
     // Mirror reflection
     const r2 = vrefl(r1, MN);
-    const t2 = t1 + mH.t / SIM_SPEED;
+    // Physical time for octagon rotation: only count the 35 km legs
+    // (source→octagon and octagon→observer distances are negligible)
+    const tAtMirror = spawn + leg2Dur;
 
-    // Leg 3: mirror → octagon (return)
-    // Use precomputed return distance for aligned photons (RET_DIST).
-    let tR = RET_DIST / SIM_SPEED;
-    const vsR = octVerts(octAngle(t2 + tR));
+    // Leg 3: mirror → octagon (return, another 35 km)
+    const leg3Est = RET_DIST / simSpd;
+    const vsR = octVerts(octAngle(tAtMirror + leg3Est));
     const hR = rayOct(mH.pt, r2, vsR);
     if (!hR) {
         const edge = toEdge(mH.pt, r2);
-        segs.push({s:mH.pt, e:edge, dur:vlen(vsub(edge,mH.pt))/SIM_SPEED});
+        segs.push({s:mH.pt, e:edge, dur:vlen(vsub(edge,mH.pt))/simSpd});
         return segs;
     }
-    tR = hR.t / SIM_SPEED;
+    const leg3Dur = hR.t / simSpd;
     const rPt = hR.pt, rF = hR.face;
-    segs.push({s:mH.pt, e:rPt, dur:tR});
+    segs.push({s:mH.pt, e:rPt, dur:leg3Dur});
 
-    const t3 = t2 + tR;
     const n3 = faceN(vsR, rF);
     const r3 = vrefl(r2, n3);
 
@@ -315,12 +307,12 @@ function computePath(spawn) {
     if (along > 0) {
         const perp = Math.abs(vcross(toObs, r3));
         if (perp < OBS_RADIUS) {
-            segs.push({s:rPt, e:vadd(rPt,vsc(r3,along)), dur:along/SIM_SPEED, eye:true});
+            segs.push({s:rPt, e:vadd(rPt,vsc(r3,along)), dur:along/simSpd, eye:true});
             return segs;
         }
     }
     const edge = toEdge(rPt, r3);
-    segs.push({s:rPt, e:edge, dur:vlen(vsub(edge,rPt))/SIM_SPEED});
+    segs.push({s:rPt, e:edge, dur:vlen(vsub(edge,rPt))/simSpd});
     return segs;
 }
 
@@ -401,10 +393,35 @@ function drawLabels() {
     ctx.font = 'bold 12px Arial,sans-serif';
     ctx.fillStyle = '#778899';
     ctx.textAlign = 'center';
-    ctx.fillText('Octagon', OCT_CX, OCT_CY + OCT_R + 16);
-    ctx.fillText('Mirror', MIRROR_X, MIRROR_BOT + 16);
+    ctx.fillText('Mt. Wilson', OCT_CX, OCT_CY + OCT_R + 16);
+    ctx.fillText('Mt. San Antonio', MIRROR_X, MIRROR_BOT + 16);
     ctx.fillText('Light source', SOURCE.x, SOURCE.y + 20);
     ctx.fillText('Observer', OBSERVER.x, OBSERVER.y - 18);
+}
+function drawScaleBar() {
+    // Pick a nice round distance for the bar
+    const barKm = 10; // 10 km bar
+    const barPx = barKm * 1000 / M_PER_PX;
+    const x0 = 200, y0 = H - 18;
+    ctx.strokeStyle = '#778899';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 - 4); ctx.lineTo(x0, y0 + 4);
+    ctx.moveTo(x0, y0); ctx.lineTo(x0 + barPx, y0);
+    ctx.moveTo(x0 + barPx, y0 - 4); ctx.lineTo(x0 + barPx, y0 + 4);
+    ctx.stroke();
+    ctx.font = '11px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText(barKm + ' km', x0 + barPx / 2, y0 - 7);
+    // Effective light speed
+    const cEff = C_LIGHT_KM * speedScale;
+    let cStr;
+    if (cEff >= 1) cStr = Math.round(cEff).toLocaleString() + ' km/s';
+    else cStr = Math.round(cEff * 1000) + ' m/s';
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#6a8899';
+    ctx.fillText('c = ' + cStr, W - 10, y0);
 }
 function drawPhotons(now) {
     for (const p of photons) {
@@ -422,7 +439,10 @@ function drawPhotons(now) {
 // ── Simulation loop ────────────────────────────────────
 function update(dt) {
     simTime += dt;
-    photonAccum += PHOTON_RATE * dt;
+    // Scale spawn rate so ~TARGET_DOTS are visible in transit at any time
+    const transitTime = STATIC_RT / getSimSpeed();
+    const photonRate = Math.min(200, TARGET_DOTS / transitTime);
+    photonAccum += photonRate * dt;
     while (photonAccum >= 1) {
         photonAccum -= 1;
         // Add random time jitter when octagon is spinning so photons
@@ -430,7 +450,7 @@ function update(dt) {
         // spawn interval creates a deterministic phase pattern that can
         // miss the narrow alignment window entirely at 528 rev/s.
         const omega = Math.abs(getOmega());
-        const jitter = omega > 0.1 ? (Math.random() - 0.5) / (omega * 8) : 0;
+        const jitter = omega > 1e-6 ? (Math.random() - 0.5) / (omega * 8) : 0;
         const t = simTime + jitter;
         photons.push({t0:t, segs:computePath(t)});
     }
@@ -454,6 +474,7 @@ function draw() {
     drawEye(eyeGlow / EYE_GLOW_DUR);
     drawPhotons(simTime);
     drawLabels();
+    drawScaleBar();
 }
 function loop(ts) {
     if (prevTS === null) prevTS = ts;
