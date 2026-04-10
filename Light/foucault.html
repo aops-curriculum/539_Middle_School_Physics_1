@@ -580,7 +580,7 @@ function update(dt) {
             photons.push({t0: t_emit, segs: computePath(t_emit)});
         }
     } else {
-        photonAccum += 15 * dt;
+        photonAccum += 5 * dt;
         const nNew = Math.floor(photonAccum);
         photonAccum -= nNew;
         for (let i = 0; i < nNew; i++) {
