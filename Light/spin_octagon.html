@@ -22,56 +22,39 @@
         background: #0a0a1a;
         display: block;
     }
-    /* ── Overlay controls ─────────────────────── */
-    .rot-ctrl {
+    .speed-ctrl {
         position: absolute;
         left: 350px;
         top: 20px;
         display: flex;
-        flex-direction: column;
-        gap: 2px;
-        width: 170px;
+        align-items: center;
+        gap: 1px;
     }
-    .rot-label-row {
-        display: flex;
-        align-items: baseline;
-        gap: 4px;
-    }
-    .rot-label {
+    .speed-label {
         font-size: 10px;
         color: #667;
+        position: absolute;
+        left: 350px;
+        top: 8px;
     }
-    .rot-val {
-        font-family: 'Consolas',monospace;
-        font-size: 11px;
-        color: #4fc3f7;
+    .sign-btn {
+        width: 18px; height: 26px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        border-radius: 2px; color: #ccc; font-size: 14px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
     }
-    .rot-row {
-        display: flex;
-        align-items: center;
-        gap: 3px;
+    .sign-btn:hover { background: #3a3a5a; }
+    .digit-col { display: flex; flex-direction: column; align-items: center; }
+    .digit-col button {
+        width: 22px; height: 13px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        color: #889; font-size: 8px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center; border-radius: 2px; padding: 0;
     }
-    .rot-row input[type=range] {
-        width: 140px;
-        accent-color: #4fc3f7;
-        height: 14px;
+    .digit-col button:hover { background: #4a4a6a; color: #fff; }
+    .digit-val {
+        font-size: 16px; font-family: 'Consolas','Courier New',monospace;
+        color: #4fc3f7; width: 22px; text-align: center; line-height: 1.2;
     }
-    .fine-btn {
-        width: 20px; height: 18px;
-        background: rgba(42,42,74,0.85);
-        border: 1px solid #445;
-        border-radius: 2px;
-        color: #889;
-        font-size: 9px;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        margin-left: 2px;
-    }
-    .fine-btn:hover { background: #4a4a6a; color: #fff; }
-    /* Reset button */
+    .unit-label { font-size: 10px; color: #889; margin-left: 2px; }
     .reset-btn {
         position: absolute;
         right: 8px;
@@ -91,16 +74,13 @@
 <body>
 <div id="container">
     <canvas id="sim" width="600" height="420"></canvas>
-    <div class="rot-ctrl">
-        <div class="rot-label-row">
-            <span class="rot-label">Rotation</span>
-            <span class="rot-val" id="rotVal">0.0&deg;</span>
-            <button class="fine-btn" id="fineDown">&#9660;</button>
-            <button class="fine-btn" id="fineUp">&#9650;</button>
-        </div>
-        <div class="rot-row">
-            <input type="range" id="rotSlider" min="0" max="45" step="1" value="0">
-        </div>
+    <span class="speed-label">Speed</span>
+    <div class="speed-ctrl">
+        <div class="sign-btn" id="signBtn">+</div>
+        <div class="digit-col"><button data-digit="0" data-dir="up">&#9650;</button><span class="digit-val" id="d0">0</span><button data-digit="0" data-dir="down">&#9660;</button></div>
+        <div class="digit-col"><button data-digit="1" data-dir="up">&#9650;</button><span class="digit-val" id="d1">0</span><button data-digit="1" data-dir="down">&#9660;</button></div>
+        <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
+        <span class="unit-label">rev/s</span>
     </div>
     <button class="reset-btn" id="resetBtn">Reset</button>
 </div>
@@ -110,12 +90,14 @@ const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 420;
 const DEG = Math.PI / 180;
+const N_PER_FACE = 200;
 const EYE_GLOW_DUR = 0.2;
 const speedScale = 0.0002;
 
 // ── Layout ─────────────────────────────────────────────
 const OCT_CX = 125, OCT_CY = 340, OCT_R = 22;
 const INRADIUS = OCT_R * Math.cos(Math.PI / 8);
+const BASE_ANGLE = 22.5 * DEG;
 
 const FACE0_MID_X = OCT_CX + INRADIUS * Math.cos(45 * DEG);
 const FACE0_MID_Y = OCT_CY + INRADIUS * Math.sin(45 * DEG);
@@ -133,6 +115,10 @@ const MN = { x: -Math.cos(MIRROR_TILT), y: -Math.sin(MIRROR_TILT) };
 const MIRROR_CY = FACE0_MID_Y;
 const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
 const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
+const MIRROR_HIT_H = 2;
+const MIRROR_HIT_TOP = MIRROR_CY - MIRROR_HIT_H / 2;
+const MIRROR_HIT_BOT = MIRROR_CY + MIRROR_HIT_H / 2;
+
 // Physical constants
 const DIST_KM = 35.4;
 const C_LIGHT_KM = 299792;
@@ -156,10 +142,12 @@ const OBSERVER = { x: OBS_X, y: OBS_Y };
 const OBS_RADIUS = 6;
 
 // ── State ──────────────────────────────────────────────
-let discreteAngleDeg = 0, fineAngleDeg = 0;
+let speedSign = 1, digits = [0, 0, 0];
 let photons = [], eyeGlow = 0, simTime = 0, photonAccum = 0, prevTS = null;
+let lastEmittedSlot = -1;
 
-function octAngle() { return (discreteAngleDeg + fineAngleDeg) * DEG; }
+function getOmega() { return speedSign * (digits[0]*100 + digits[1]*10 + digits[2]) * speedScale; }
+function octAngle(t) { return BASE_ANGLE + getOmega() * 2 * Math.PI * t; }
 
 // ── Vector helpers ─────────────────────────────────────
 function v(x,y){return{x,y}}
@@ -210,7 +198,7 @@ function rayMirror(o, d) {
     const t = (MIRROR_X - o.x) / d.x;
     if (t < 0.01) return null;
     const y = o.y + t * d.y;
-    if (y >= MIRROR_TOP && y <= MIRROR_BOT)
+    if (y >= MIRROR_HIT_TOP && y <= MIRROR_HIT_BOT)
         return { t, pt: v(MIRROR_X, y) };
     return null;
 }
@@ -229,7 +217,7 @@ function computePath(spawn) {
     const segs = [];
     const dir0 = PHOTON_DIR;
 
-    const vs0 = octVerts(octAngle());
+    const vs0 = octVerts(octAngle(spawn));
     const h0 = rayOct(SOURCE, dir0, vs0);
     if (!h0) {
         const edge = toEdge(SOURCE, dir0);
@@ -259,7 +247,10 @@ function computePath(spawn) {
     segs.push({s:hPt, e:mH.pt, dur:leg2Dur});
 
     const r2 = vrefl(r1, MN);
-    const vsR = octVerts(octAngle());
+    const tAtMirror = spawn + leg2Dur;
+
+    const leg3Est = RET_DIST / simSpd;
+    const vsR = octVerts(octAngle(tAtMirror + leg3Est));
     const hR = rayOct(mH.pt, r2, vsR);
     if (!hR) {
         const edge = toEdge(mH.pt, r2);
@@ -383,7 +374,6 @@ function drawScaleBar() {
     ctx.fillStyle = '#778899';
     ctx.textAlign = 'center';
     ctx.fillText(barKm + ' km', x0 + barPx / 2, y0 - 7);
-    // Slow-motion label
     ctx.textAlign = 'right';
     ctx.fillStyle = '#6a8899';
     ctx.fillText('Slow-motion: 1/5,000', W - 10, y0);
@@ -404,11 +394,23 @@ function drawPhotons(now) {
 // ── Simulation loop ────────────────────────────────────
 function update(dt) {
     simTime += dt;
-    photonAccum += 5 * dt;
-    const nNew = Math.floor(photonAccum);
-    photonAccum -= nNew;
-    for (let i = 0; i < nNew; i++) {
-        photons.push({t0: simTime, segs: computePath(simTime)});
+    const omega = Math.abs(getOmega());
+    if (omega > 1e-6) {
+        // Phase from absolute time — guarantees alignment slots at exact angles
+        const phase = 8 * N_PER_FACE * omega * simTime;
+        while (lastEmittedSlot + 1 <= Math.floor(phase)) {
+            lastEmittedSlot++;
+            // Compute exact spawn time from slot index
+            const t_emit = lastEmittedSlot / (8 * N_PER_FACE * omega);
+            photons.push({t0: t_emit, segs: computePath(t_emit)});
+        }
+    } else {
+        photonAccum += 5 * dt;
+        const nNew = Math.floor(photonAccum);
+        photonAccum -= nNew;
+        for (let i = 0; i < nNew; i++) {
+            photons.push({t0: simTime, segs: computePath(simTime)});
+        }
     }
     const alive = [];
     for (const p of photons) {
@@ -422,7 +424,7 @@ function update(dt) {
 function draw() {
     ctx.clearRect(0, 0, W, H);
     drawMirror();
-    drawOctagon(octAngle());
+    drawOctagon(octAngle(simTime));
     drawSource();
     drawEye(eyeGlow / EYE_GLOW_DUR);
     drawPhotons(simTime);
@@ -438,30 +440,30 @@ function loop(ts) {
 }
 
 // ── Controls ───────────────────────────────────────────
-const rotSlider = document.getElementById('rotSlider');
-const rotValEl = document.getElementById('rotVal');
-function updateRotDisplay() {
-    const total = discreteAngleDeg + fineAngleDeg;
-    rotValEl.innerHTML = total.toFixed(1) + '&deg;';
+function updateSpeedDisplay() {
+    document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '\u2212';
+    for (let i=0;i<3;i++) document.getElementById('d'+i).textContent = digits[i];
 }
-rotSlider.addEventListener('input', () => {
-    discreteAngleDeg = parseFloat(rotSlider.value);
-    updateRotDisplay();
+function resetSim() {
+    simTime = 0; lastEmittedSlot = -1; photons = []; eyeGlow = 0;
+    photonAccum = 0; prevTS = null;
+}
+document.getElementById('signBtn').addEventListener('click', () => {
+    speedSign *= -1; resetSim(); updateSpeedDisplay();
 });
-document.getElementById('fineUp').addEventListener('click', () => {
-    fineAngleDeg = Math.round((fineAngleDeg + 0.1) * 10) / 10;
-    updateRotDisplay();
-});
-document.getElementById('fineDown').addEventListener('click', () => {
-    fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
-    updateRotDisplay();
+document.querySelectorAll('.digit-col button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const i = parseInt(btn.dataset.digit);
+        digits[i] = btn.dataset.dir === 'up' ? (digits[i]+1)%10 : (digits[i]+9)%10;
+        resetSim(); updateSpeedDisplay();
+    });
 });
 document.getElementById('resetBtn').addEventListener('click', () => {
-    discreteAngleDeg=0; fineAngleDeg=0;
-    rotSlider.value=0; updateRotDisplay();
-    photons=[]; eyeGlow=0; simTime=0; photonAccum=0; prevTS=null;
+    speedSign=1; digits=[0,0,0];
+    resetSim(); updateSpeedDisplay();
 });
 
+updateSpeedDisplay();
 requestAnimationFrame(loop);
 </script>
 </body>
