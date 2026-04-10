@@ -7,93 +7,133 @@
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
-        background: #1a1a2e;
+        background: #0a0a1a;
         font-family: Arial, sans-serif;
-        max-width: 600px;
-        margin: 0 auto;
-        padding: 16px;
         user-select: none;
         color: #e0e0e0;
+        overflow: hidden;
+    }
+    #container {
+        position: relative;
+        width: 600px;
+        height: 420px;
     }
     canvas {
         background: #0a0a1a;
-        border: 1px solid #333;
-        border-radius: 6px;
         display: block;
-        width: 600px;
     }
-    .controls {
-        display: flex;
-        flex-direction: column;
-        gap: 12px;
-        margin-top: 14px;
-    }
-    .control-row {
+    /* ── Overlay controls ─────────────────────── */
+    .speed-ctrl {
+        position: absolute;
+        left: 4px;
+        top: 150px;
         display: flex;
         align-items: center;
-        gap: 10px;
+        gap: 1px;
     }
-    .control-label {
-        font-size: 13px;
-        color: #aaa;
-        min-width: 62px;
-        text-align: right;
+    .speed-label {
+        font-size: 10px;
+        color: #667;
+        position: absolute;
+        left: 4px;
+        top: 140px;
     }
-    .speed-control { display: flex; align-items: center; gap: 1px; }
     .sign-btn {
-        width: 22px; height: 30px; background: #2a2a4a; border: 1px solid #555;
-        border-radius: 3px; color: #fff; font-size: 17px; cursor: pointer;
+        width: 18px; height: 26px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        border-radius: 2px; color: #ccc; font-size: 14px; cursor: pointer;
         display: flex; align-items: center; justify-content: center;
     }
     .sign-btn:hover { background: #3a3a5a; }
     .digit-col { display: flex; flex-direction: column; align-items: center; }
     .digit-col button {
-        width: 26px; height: 16px; background: #2a2a4a; border: 1px solid #555;
-        color: #aaa; font-size: 9px; cursor: pointer; display: flex;
+        width: 22px; height: 13px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        color: #889; font-size: 8px; cursor: pointer; display: flex;
         align-items: center; justify-content: center; border-radius: 2px; padding: 0;
     }
     .digit-col button:hover { background: #4a4a6a; color: #fff; }
     .digit-val {
-        font-size: 20px; font-family: 'Consolas','Courier New',monospace;
-        color: #4fc3f7; width: 26px; text-align: center; line-height: 1.2;
+        font-size: 16px; font-family: 'Consolas','Courier New',monospace;
+        color: #4fc3f7; width: 22px; text-align: center; line-height: 1.2;
     }
-    .unit-label { font-size: 13px; color: #aaa; margin-left: 4px; }
-    .rotation-control { display: flex; align-items: center; gap: 8px; flex: 1; }
-    .rotation-control input[type=range] { flex: 1; accent-color: #4fc3f7; }
-    .rotation-val { font-family: 'Consolas',monospace; font-size: 13px; color: #4fc3f7; min-width: 42px; }
+    .unit-label { font-size: 10px; color: #889; margin-left: 2px; }
+    /* Rotation controls */
+    .rot-ctrl {
+        position: absolute;
+        left: 4px;
+        top: 195px;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        width: 95px;
+    }
+    .rot-label-row {
+        display: flex;
+        align-items: baseline;
+        gap: 4px;
+    }
+    .rot-label {
+        font-size: 10px;
+        color: #667;
+    }
+    .rot-val {
+        font-family: 'Consolas',monospace;
+        font-size: 11px;
+        color: #4fc3f7;
+    }
+    .rot-row {
+        display: flex;
+        align-items: center;
+        gap: 3px;
+    }
+    .rot-row input[type=range] {
+        width: 90px;
+        accent-color: #4fc3f7;
+        height: 14px;
+    }
+    .rot-fine-label {
+        font-size: 9px;
+        color: #556;
+        min-width: 18px;
+    }
+    /* Reset button */
     .reset-btn {
-        padding: 8px 16px; background: rgba(76,175,80,0.9); border: none;
-        border-radius: 4px; color: white; font-size: 12px; font-weight: bold;
-        cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.2); align-self: flex-start;
+        position: absolute;
+        right: 8px;
+        top: 8px;
+        padding: 4px 10px;
+        background: rgba(76,175,80,0.8);
+        border: none;
+        border-radius: 3px;
+        color: white;
+        font-size: 11px;
+        font-weight: bold;
+        cursor: pointer;
     }
     .reset-btn:hover { background: rgba(76,175,80,1); }
 </style>
 </head>
 <body>
-<canvas id="sim" width="600" height="420"></canvas>
-<div class="controls">
-    <div class="control-row">
-        <span class="control-label">Speed:</span>
-        <div class="speed-control">
-            <div class="sign-btn" id="signBtn">+</div>
-            <div class="digit-col"><button data-digit="0" data-dir="up">&#9650;</button><span class="digit-val" id="d0">0</span><button data-digit="0" data-dir="down">&#9660;</button></div>
-            <div class="digit-col"><button data-digit="1" data-dir="up">&#9650;</button><span class="digit-val" id="d1">0</span><button data-digit="1" data-dir="down">&#9660;</button></div>
-            <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
-            <span class="unit-label">rev/s</span>
-        </div>
+<div id="container">
+    <canvas id="sim" width="600" height="420"></canvas>
+    <span class="speed-label">Speed</span>
+    <div class="speed-ctrl">
+        <div class="sign-btn" id="signBtn">+</div>
+        <div class="digit-col"><button data-digit="0" data-dir="up">&#9650;</button><span class="digit-val" id="d0">0</span><button data-digit="0" data-dir="down">&#9660;</button></div>
+        <div class="digit-col"><button data-digit="1" data-dir="up">&#9650;</button><span class="digit-val" id="d1">0</span><button data-digit="1" data-dir="down">&#9660;</button></div>
+        <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
+        <span class="unit-label">rev/s</span>
     </div>
-    <div class="control-row">
-        <span class="control-label">Rotation:</span>
-        <div class="rotation-control">
-            <input type="range" id="rotSlider" min="0" max="45" step="0.1" value="0">
-            <span class="rotation-val" id="rotVal">0.0&deg;</span>
+    <div class="rot-ctrl">
+        <div class="rot-label-row">
+            <span class="rot-label">Rotation</span>
+            <span class="rot-val" id="rotVal">0.0&deg;</span>
         </div>
-    </div>
-    <div class="control-row">
-        <span class="control-label">Slow-mo:</span>
-        <div class="rotation-control">
-            <input type="range" id="slowSlider" min="2" max="5" step="0.1" value="2">
-            <span class="rotation-val" id="slowVal">1/100</span>
+        <div class="rot-row">
+            <input type="range" id="rotSlider" min="0" max="45" step="1" value="0">
+        </div>
+        <div class="rot-row">
+            <span class="rot-fine-label">fine</span>
+            <input type="range" id="fineSlider" min="-2" max="2" step="0.05" value="0">
         </div>
     </div>
     <button class="reset-btn" id="resetBtn">Reset</button>
@@ -104,61 +144,48 @@ const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 420;
 const DEG = Math.PI / 180;
-const TARGET_DOTS = 60;  // target number of visible photons in transit
+const TARGET_DOTS = 200;
 const EYE_GLOW_DUR = 0.2;
-let speedScale = 0.01; // adjustable: display shows 1/speedScale × actual rotation speed
+const speedScale = 0.0001; // locked at 1/10,000
 
 // ── Layout ─────────────────────────────────────────────
-// Octagon center and size
 const OCT_CX = 125, OCT_CY = 220, OCT_R = 22;
-const INRADIUS = OCT_R * Math.cos(Math.PI / 8); // ~20.3
+const INRADIUS = OCT_R * Math.cos(Math.PI / 8);
 
-// At discrete rotation 22.5°, face k=0 has normal at 45° (right-down in canvas).
-// Its midpoint is at angle 45° from center at distance INRADIUS.
-// Source is directly below this midpoint so ray goes straight up,
-// misses the bottom face, and hits face k=0.
-const FACE0_MID_X = OCT_CX + INRADIUS * Math.cos(45 * DEG); // ~139.4
-const FACE0_MID_Y = OCT_CY + INRADIUS * Math.sin(45 * DEG); // ~234.4
-
-// Face k=6 (return face) midpoint at angle 315°
-const FACE6_MID_X = OCT_CX + INRADIUS * Math.cos(315 * DEG); // ~139.4
-const FACE6_MID_Y = OCT_CY + INRADIUS * Math.sin(315 * DEG); // ~205.6
+const FACE0_MID_X = OCT_CX + INRADIUS * Math.cos(45 * DEG);
+const FACE0_MID_Y = OCT_CY + INRADIUS * Math.sin(45 * DEG);
+const FACE6_MID_X = OCT_CX + INRADIUS * Math.cos(315 * DEG);
+const FACE6_MID_Y = OCT_CY + INRADIUS * Math.sin(315 * DEG);
 
 const SOURCE = { x: FACE0_MID_X, y: 390 };
-const PHOTON_DIR = { x: 0, y: -1 }; // straight up
+const PHOTON_DIR = { x: 0, y: -1 };
 
-// Mirror: slightly tilted to redirect return beam from face 0 height
-// to face 6 height. Tilt = half the angle subtended by the face
-// separation at the mirror distance.
 const MIRROR_X = 530;
-const MIRROR_H = 80;
+const MIRROR_H = 20;
 const MIRROR_TILT = 0.5 * Math.atan((FACE0_MID_Y - FACE6_MID_Y) / (MIRROR_X - FACE0_MID_X));
 const MN = { x: -Math.cos(MIRROR_TILT), y: -Math.sin(MIRROR_TILT) };
 
-// Mirror vertical center at outgoing beam height
 const MIRROR_CY = FACE0_MID_Y;
 const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
 const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
 
 // Physical constants
-const DIST_KM = 35;              // Mt. Wilson to Mt. San Antonio
-const C_LIGHT_KM = 299792;       // speed of light in km/s
-const OUT_DIST = MIRROR_X - FACE0_MID_X;   // pixels
+const DIST_KM = 35;
+const C_LIGHT_KM = 299792;
+const OUT_DIST = MIRROR_X - FACE0_MID_X;
 const RET_DIST = Math.hypot(MIRROR_X - FACE6_MID_X, FACE0_MID_Y - FACE6_MID_Y);
 const STATIC_RT = OUT_DIST + RET_DIST;
-const M_PER_PX = DIST_KM * 1000 / OUT_DIST; // meters per pixel (~89.6)
+const M_PER_PX = DIST_KM * 1000 / OUT_DIST;
 
-// Dynamic simSpeed: light moves at c × speedScale in simulation units (px/s)
 function getSimSpeed() {
     return C_LIGHT_KM * 1000 * speedScale / M_PER_PX;
 }
 
-// Observer: compute where the return beam arrives after reflecting off face 6.
-// Outgoing dir (1,0) → mirror → return dir → face 6 (normal 315°) → observer dir
-const _rd = { x: 1 - 2*MN.x*MN.x, y: -2*MN.x*MN.y }; // reflect (1,0) off MN
+// Observer
+const _rd = { x: 1 - 2*MN.x*MN.x, y: -2*MN.x*MN.y };
 const _n6 = { x: Math.cos(315*DEG), y: Math.sin(315*DEG) };
 const _dn6 = _rd.x*_n6.x + _rd.y*_n6.y;
-const _od = { x: _rd.x - 2*_dn6*_n6.x, y: _rd.y - 2*_dn6*_n6.y }; // dir toward observer
+const _od = { x: _rd.x - 2*_dn6*_n6.x, y: _rd.y - 2*_dn6*_n6.y };
 const OBS_Y = 55;
 const OBS_X = FACE6_MID_X + _od.x * (OBS_Y - FACE6_MID_Y) / _od.y;
 const OBSERVER = { x: OBS_X, y: OBS_Y };
@@ -166,11 +193,11 @@ const OBS_RADIUS = 25;
 
 // ── State ──────────────────────────────────────────────
 let speedSign = 1, digits = [0, 0, 0];
-let discreteAngleDeg = 0;
+let discreteAngleDeg = 0, fineAngleDeg = 0;
 let photons = [], eyeGlow = 0, simTime = 0, photonAccum = 0, prevTS = null;
 
 function getOmega() { return speedSign * (digits[0]*100 + digits[1]*10 + digits[2]) * speedScale; }
-function octAngle(t) { return discreteAngleDeg * DEG + getOmega() * 2 * Math.PI * t; }
+function octAngle(t) { return (discreteAngleDeg + fineAngleDeg) * DEG + getOmega() * 2 * Math.PI * t; }
 
 // ── Vector helpers ─────────────────────────────────────
 function v(x,y){return{x,y}}
@@ -217,7 +244,6 @@ function rayOct(o, d, vs) {
     return best;
 }
 function rayMirror(o, d) {
-    // Mirror is a vertical line at MIRROR_X
     if (Math.abs(d.x) < 1e-10) return null;
     const t = (MIRROR_X - o.x) / d.x;
     if (t < 0.01) return null;
@@ -236,18 +262,11 @@ function toEdge(o, d) {
 }
 
 // ── Photon path computation ────────────────────────────
-// Evaluate the octagon at the EXPECTED face-crossing time for aligned
-// photons. This gives the correct face for photons that arrive when
-// the octagon is aligned. Non-aligned photons get an approximate face,
-// but they don't reach the observer anyway.
 function computePath(spawn) {
     const simSpd = getSimSpeed();
     const segs = [];
     const dir0 = PHOTON_DIR;
 
-    // Leg 1: source → octagon
-    // In reality the light source is adjacent to the octagon (~meters away),
-    // so the octagon barely rotates during this leg. Evaluate at spawn time.
     const vs0 = octVerts(octAngle(spawn));
     const h0 = rayOct(SOURCE, dir0, vs0);
     if (!h0) {
@@ -260,7 +279,6 @@ function computePath(spawn) {
     const n1 = faceN(vs0, hF);
     segs.push({s:SOURCE, e:hPt, dur:leg1Dur});
 
-    // Skip if hitting inside of face
     if (vdot(dir0, n1) >= 0) {
         const edge = toEdge(hPt, dir0);
         segs.push({s:hPt, e:edge, dur:vlen(vsub(edge,hPt))/simSpd});
@@ -269,7 +287,6 @@ function computePath(spawn) {
 
     const r1 = vrefl(dir0, n1);
 
-    // Leg 2: octagon → mirror (represents the 35 km outgoing path)
     const mH = rayMirror(hPt, r1);
     if (!mH) {
         const edge = toEdge(hPt, r1);
@@ -279,13 +296,9 @@ function computePath(spawn) {
     const leg2Dur = mH.t / simSpd;
     segs.push({s:hPt, e:mH.pt, dur:leg2Dur});
 
-    // Mirror reflection
     const r2 = vrefl(r1, MN);
-    // Physical time for octagon rotation: only count the 35 km legs
-    // (source→octagon and octagon→observer distances are negligible)
     const tAtMirror = spawn + leg2Dur;
 
-    // Leg 3: mirror → octagon (return, another 35 km)
     const leg3Est = RET_DIST / simSpd;
     const vsR = octVerts(octAngle(tAtMirror + leg3Est));
     const hR = rayOct(mH.pt, r2, vsR);
@@ -301,7 +314,6 @@ function computePath(spawn) {
     const n3 = faceN(vsR, rF);
     const r3 = vrefl(r2, n3);
 
-    // Leg 4: octagon → observer or edge
     const toObs = vsub(OBSERVER, rPt);
     const along = vdot(toObs, r3);
     if (along > 0) {
@@ -368,13 +380,11 @@ function drawSource() {
 function drawEye(gf) {
     const {x,y} = OBSERVER;
     if (gf > 0.01) {
-        // Outer glow - large and bright
         const g2 = ctx.createRadialGradient(x,y,0,x,y,45);
         g2.addColorStop(0,`rgba(140,255,200,${0.5*gf})`);
         g2.addColorStop(0.5,`rgba(140,255,200,${0.15*gf})`);
         g2.addColorStop(1,'rgba(140,255,200,0)');
         ctx.fillStyle = g2; ctx.fillRect(x-48,y-48,96,96);
-        // Inner glow
         const g = ctx.createRadialGradient(x,y,2,x,y,20);
         g.addColorStop(0,`rgba(220,255,240,${0.9*gf})`);
         g.addColorStop(1,'rgba(180,255,220,0)');
@@ -399,8 +409,7 @@ function drawLabels() {
     ctx.fillText('Observer', OBSERVER.x, OBSERVER.y - 18);
 }
 function drawScaleBar() {
-    // Pick a nice round distance for the bar
-    const barKm = 10; // 10 km bar
+    const barKm = 10;
     const barPx = barKm * 1000 / M_PER_PX;
     const x0 = 200, y0 = H - 18;
     ctx.strokeStyle = '#778899';
@@ -414,14 +423,10 @@ function drawScaleBar() {
     ctx.fillStyle = '#778899';
     ctx.textAlign = 'center';
     ctx.fillText(barKm + ' km', x0 + barPx / 2, y0 - 7);
-    // Effective light speed
-    const cEff = C_LIGHT_KM * speedScale;
-    let cStr;
-    if (cEff >= 1) cStr = Math.round(cEff).toLocaleString() + ' km/s';
-    else cStr = Math.round(cEff * 1000) + ' m/s';
+    // Slow-motion label
     ctx.textAlign = 'right';
     ctx.fillStyle = '#6a8899';
-    ctx.fillText('c = ' + cStr, W - 10, y0);
+    ctx.fillText('Slow-motion: 1/10,000', W - 10, y0);
 }
 function drawPhotons(now) {
     for (const p of photons) {
@@ -439,15 +444,11 @@ function drawPhotons(now) {
 // ── Simulation loop ────────────────────────────────────
 function update(dt) {
     simTime += dt;
-    // Scale spawn rate so ~TARGET_DOTS are visible in transit at any time
     const transitTime = STATIC_RT / getSimSpeed();
     const photonRate = Math.min(500, TARGET_DOTS / transitTime);
     photonAccum += photonRate * dt;
     while (photonAccum >= 1) {
         photonAccum -= 1;
-        // Jitter the PHYSICS evaluation time so photons sample all octagon
-        // phases uniformly. Visual spawn time (t0) stays at simTime so
-        // photons appear at a constant rate without spurts.
         const omega = Math.abs(getOmega());
         const jitter = omega > 1e-6 ? (Math.random() - 0.5) / (omega * 8) : 0;
         photons.push({t0:simTime, segs:computePath(simTime + jitter)});
@@ -493,25 +494,23 @@ document.querySelectorAll('.digit-col button').forEach(btn => {
     });
 });
 const rotSlider = document.getElementById('rotSlider');
+const fineSlider = document.getElementById('fineSlider');
 const rotValEl = document.getElementById('rotVal');
+function updateRotDisplay() {
+    const total = discreteAngleDeg + fineAngleDeg;
+    rotValEl.innerHTML = total.toFixed(1) + '&deg;';
+}
 rotSlider.addEventListener('input', () => {
     discreteAngleDeg = parseFloat(rotSlider.value);
-    rotValEl.innerHTML = discreteAngleDeg.toFixed(1) + '&deg;';
+    updateRotDisplay();
 });
-const slowSlider = document.getElementById('slowSlider');
-const slowValEl = document.getElementById('slowVal');
-function updateSlowDisplay() {
-    const denom = Math.round(Math.pow(10, parseFloat(slowSlider.value)));
-    slowValEl.textContent = '1/' + denom.toLocaleString();
-}
-slowSlider.addEventListener('input', () => {
-    speedScale = Math.pow(10, -parseFloat(slowSlider.value));
-    updateSlowDisplay();
+fineSlider.addEventListener('input', () => {
+    fineAngleDeg = parseFloat(fineSlider.value);
+    updateRotDisplay();
 });
 document.getElementById('resetBtn').addEventListener('click', () => {
-    speedSign=1; digits=[0,0,0]; discreteAngleDeg=0; speedScale=0.01;
-    rotSlider.value=0; rotValEl.innerHTML='0.0&deg;';
-    slowSlider.value=2; updateSlowDisplay();
+    speedSign=1; digits=[0,0,0]; discreteAngleDeg=0; fineAngleDeg=0;
+    rotSlider.value=0; fineSlider.value=0; updateRotDisplay();
     photons=[]; eyeGlow=0; simTime=0; photonAccum=0; prevTS=null;
     updateSpeedDisplay();
 });
