@@ -511,20 +511,17 @@ function updateRotDisplay() {
     const total = discreteAngleDeg + fineAngleDeg;
     rotValEl.innerHTML = total.toFixed(1) + '&deg;';
 }
-function recomputePhotonPaths() {
-    for (const p of photons) p.segs = computePath(p.t0);
-}
 rotSlider.addEventListener('input', () => {
     discreteAngleDeg = parseFloat(rotSlider.value);
-    recomputePhotonPaths(); updateRotDisplay();
+    updateRotDisplay();
 });
 document.getElementById('fineUp').addEventListener('click', () => {
     fineAngleDeg = Math.round((fineAngleDeg + 0.1) * 10) / 10;
-    recomputePhotonPaths(); updateRotDisplay();
+    updateRotDisplay();
 });
 document.getElementById('fineDown').addEventListener('click', () => {
     fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
-    recomputePhotonPaths(); updateRotDisplay();
+    updateRotDisplay();
 });
 
 // Spin controls
@@ -555,7 +552,6 @@ document.getElementById('aimBtn').addEventListener('click', () => {
         discreteAngleDeg = 0;
         fineAngleDeg = 0;
         rotSlider.value = 0;
-        recomputePhotonPaths();
         updateRotDisplay();
     } else {
         // Snap simTime so current mirror angle ≡ 0 (mod π)
