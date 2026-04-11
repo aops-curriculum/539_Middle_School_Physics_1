@@ -548,14 +548,24 @@ document.getElementById('resetBtn').addEventListener('click', () => {
     resetSim(); updateSpeedDisplay();
 });
 
-// Aim button — sets mirror to aim at concave mirror (θ=0)
+// Aim button — snaps mirror to aim at concave mirror (θ=0), keeps current mode
 document.getElementById('aimBtn').addEventListener('click', () => {
-    setMode('rotate');
-    discreteAngleDeg = 0;
-    fineAngleDeg = 0;
-    rotSlider.value = 0;
-    recomputePhotonPaths();
-    updateRotDisplay();
+    if (mode === 'rotate') {
+        discreteAngleDeg = 0;
+        fineAngleDeg = 0;
+        rotSlider.value = 0;
+        recomputePhotonPaths();
+        updateRotDisplay();
+    } else {
+        // Snap simTime so current mirror angle ≡ 0 (mod π)
+        const revPerSec = speedSign * (digits[0]*100000 + digits[1]*10000 + digits[2]*1000);
+        const omega = (revPerSec / SLOW_FACTOR) * 2 * Math.PI;
+        if (Math.abs(omega) > 1e-12) {
+            const periods = simTime * omega / Math.PI;
+            simTime = Math.round(periods) * Math.PI / omega;
+        }
+        photons = []; screenGlow = 0; screenGlowPos = null; photonAccum = 0;
+    }
 });
 
 setMode('rotate');
