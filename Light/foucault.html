@@ -247,14 +247,14 @@ function getMirrorAngle(t) {
     if (mode === 'rotate') {
         return (discreteAngleDeg + fineAngleDeg) * DEG;
     }
-    // Spin: d0.d1d2 × 10^4 rev/s
+    // Spin: d0.d1d2 × 10^4 rev/s (real), slowed by SLOW_FACTOR for sim
     const revPerSec = speedSign * (digits[0]*10000 + digits[1]*1000 + digits[2]*100);
-    return revPerSec * 2 * Math.PI * t;
+    return (revPerSec / SLOW_FACTOR) * 2 * Math.PI * t;
 }
 
 function getOmega() {
     if (mode === 'rotate') return 0;
-    return speedSign * (digits[0]*10000 + digits[1]*1000 + digits[2]*100) * 2 * Math.PI;
+    return speedSign * (digits[0]*10000 + digits[1]*1000 + digits[2]*100) / SLOW_FACTOR * 2 * Math.PI;
 }
 
 // ── Concave mirror hit test ──────────────────────────
@@ -569,7 +569,7 @@ function drawPhotons(now) {
 // ── Simulation loop ──────────────────────────────────
 function update(dt) {
     simTime += dt;
-    photonAccum += 5 * dt;
+    photonAccum += 2.5 * dt;
     const nNew = Math.floor(photonAccum);
     photonAccum -= nNew;
     for (let i = 0; i < nNew; i++) {
