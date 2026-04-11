@@ -190,13 +190,13 @@ function toEdge(o, d) {
 }
 
 // ── Path computation ─────────────────────────────────
-function computePath(spawn) {
+const LEG1_DUR = DIAG_DIST / SIM_SPEED;
+
+// Compute legs 2-4 given an explicit mirror angle for the first reflection
+// and an angle for the return reflection.
+function computePostMirror(spawn, angle0, angleR) {
     const segs = [];
     const R = v(MIRROR_X, MIRROR_CY);
-    const angle0 = getMirrorAngle(spawn);
-
-    // Leg 1: Source → rotating mirror
-    segs.push({s: v(SRC.x, SRC.y), e: R, dur: DIAG_DIST / SIM_SPEED});
 
     // Reflection at rotating mirror (outgoing)
     let n0 = mirrorNormal(angle0);
@@ -212,24 +212,22 @@ function computePath(spawn) {
         return segs;
     }
 
-    // Leg 2: Rotating mirror → concave mirror (hit point along r1)
+    // Leg 2: Rotating mirror → concave mirror
     const hitM = vadd(R, vsc(r1, DIAG_DIST));
     segs.push({s: R, e: hitM, dur: DIAG_DIST / SIM_SPEED});
 
-    // Concave mirror reflects back toward R (center of curvature)
+    // Concave mirror reflects back toward R
     const returnDir = vsc(r1, -1);
 
     // Leg 3: Concave mirror → rotating mirror
     segs.push({s: hitM, e: R, dur: DIAG_DIST / SIM_SPEED});
 
-    // Mirror angle at return time
-    const timeAtReturn = spawn + segs.reduce((s,seg) => s+seg.dur, 0);
-    const angleR = getMirrorAngle(timeAtReturn);
+    // Return reflection
     let nR = mirrorNormal(angleR);
     if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
     const r3 = vrefl(returnDir, nR);
 
-    // Leg 4: Rotating mirror → screen (check intersection with screen plane)
+    // Leg 4: Rotating mirror → screen
     const drs = vdot(r3, DIR_RS);
     if (drs > 0.01) {
         const t = DIAG_DIST / drs;
@@ -239,7 +237,7 @@ function computePath(spawn) {
         if (Math.abs(offset) <= SCREEN_HALF) {
             const throughHole = Math.abs(offset) <= HOLE_HALF;
             segs.push({s: R, e: hitPt, dur: t / SIM_SPEED,
-                        screen: !throughHole && segs.length >= 3});
+                        screen: !throughHole && segs.length >= 2});
         } else {
             const edge = toEdge(R, r3);
             segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
@@ -249,6 +247,14 @@ function computePath(spawn) {
         segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
     }
     return segs;
+}
+
+function computePath(spawn) {
+    const angle0 = getMirrorAngle(spawn);
+    const leg1 = {s: v(SRC.x, SRC.y), e: v(MIRROR_X, MIRROR_CY), dur: LEG1_DUR};
+    const timeAtReturn = spawn + LEG1_DUR + LEG1_DUR + LEG1_DUR;
+    const angleR = getMirrorAngle(timeAtReturn);
+    return [leg1, ...computePostMirror(spawn, angle0, angleR)];
 }
 
 // ── Photon tracking ──────────────────────────────────
@@ -448,8 +454,52 @@ function update(dt) {
     const nNew = Math.floor(photonAccum);
     photonAccum -= nNew;
     for (let i = 0; i < nNew; i++) {
-        photons.push({t0: simTime, segs: computePath(simTime)});
+        const segs = computePath(simTime);
+        photons.push({t0: simTime, segs, a1: getMirrorAngle(simTime), a2: getMirrorAngle(simTime)});
     }
+
+    // In rotate mode, update reflections for photons that haven't hit the mirror yet
+    if (mode === 'rotate') {
+        const curAngle = getMirrorAngle(0);
+        for (const p of photons) {
+            const age = simTime - p.t0;
+            if (age < LEG1_DUR && p.a1 !== curAngle) {
+                // Still approaching mirror: recompute all reflections
+                p.segs = [p.segs[0], ...computePostMirror(p.t0, curAngle, curAngle)];
+                p.a1 = curAngle;
+                p.a2 = curAngle;
+            } else if (age >= LEG1_DUR && age < LEG1_DUR * 3 && p.a2 !== curAngle) {
+                // Between first and second reflection: recompute return reflection only
+                const r1Dir = vnorm(vsub(p.segs[1].e, p.segs[1].s));
+                const returnDir = vsc(r1Dir, -1);
+                let nR = mirrorNormal(curAngle);
+                if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
+                const r3 = vrefl(returnDir, nR);
+                const R = v(MIRROR_X, MIRROR_CY);
+                const drs = vdot(r3, DIR_RS);
+                let leg4;
+                if (drs > 0.01) {
+                    const t = DIAG_DIST / drs;
+                    const hitPt = vadd(R, vsc(r3, t));
+                    const offset = vdot(vsub(hitPt, SRC), SCREEN_DIR);
+                    if (Math.abs(offset) <= SCREEN_HALF) {
+                        const throughHole = Math.abs(offset) <= HOLE_HALF;
+                        leg4 = {s: R, e: hitPt, dur: t / SIM_SPEED,
+                                    screen: !throughHole};
+                    } else {
+                        const edge = toEdge(R, r3);
+                        leg4 = {s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED};
+                    }
+                } else {
+                    const edge = toEdge(R, r3);
+                    leg4 = {s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED};
+                }
+                p.segs = [p.segs[0], p.segs[1], p.segs[2], leg4];
+                p.a2 = curAngle;
+            }
+        }
+    }
+
     const alive = [];
     for (const p of photons) {
         const td = tDur(p), age = simTime - p.t0;
