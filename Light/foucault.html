@@ -344,30 +344,38 @@ function computePath(spawn) {
     if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
     const r3 = vrefl(returnDir, nR);
 
-    // Leg 5: Flat mirror → beam splitter
-    if (r3.x > 0.05) {
-        const tToHS = (HALFSIL_X - MIRROR_X) / r3.x;
-        const yAtHS = MIRROR_CY + r3.y * tToHS;
-        const hsHit = v(HALFSIL_X, yAtHS);
-        segs.push({s: mirrorCenter, e: hsHit, dur: tToHS / SIM_SPEED});
+    // Leg 5: Flat mirror → beam splitter (only if beam actually hits the BS segment)
+    // BS is a 45° line segment: y = x + (HALFSIL_Y - HALFSIL_X), centered at (HALFSIL_X, HALFSIL_Y)
+    // Ray-line intersection: solve for t where ray hits the BS line
+    const bsDenom = r3.x - r3.y;
+    const bsHalfExt = 22 * Math.SQRT1_2 + 3; // segment half-extent in x, with tolerance
+    let bsHitPt = null, bsDist = 0;
+    if (Math.abs(bsDenom) > 1e-6) {
+        const bsT = (MIRROR_CY - MIRROR_X + HALFSIL_X - HALFSIL_Y) / bsDenom;
+        if (bsT > 0) {
+            const hx = MIRROR_X + r3.x * bsT;
+            if (Math.abs(hx - HALFSIL_X) <= bsHalfExt) {
+                bsHitPt = v(hx, MIRROR_CY + r3.y * bsT);
+                bsDist = bsT;
+            }
+        }
+    }
 
-        // Half-silvered mirror reflects beam: rotate 90° CW
-        // Incoming (mostly rightward) → deflects downward
-        // Use actual reflection off 45° mirror normal = (cos(-45°), sin(-45°))
-        // but simplified: reflected dir = (sin α, cos α) for incoming (cos α, sin α)
-        // For exact reflection off n=(0.707, -0.707):
+    if (bsHitPt) {
+        segs.push({s: mirrorCenter, e: bsHitPt, dur: bsDist / SIM_SPEED});
+
         const hsN = vnorm(v(1, -1));  // normal of 45° mirror
         const r4 = vrefl(r3, hsN);
 
         if (r4.y > 0.05) {
             // Beam goes downward toward screen
-            const tToScreen = (SCREEN_Y - yAtHS) / r4.y;
-            const xAtScreen = hsHit.x + r4.x * tToScreen;
+            const tToScreen = (SCREEN_Y - bsHitPt.y) / r4.y;
+            const xAtScreen = bsHitPt.x + r4.x * tToScreen;
             const screenPt = v(xAtScreen, SCREEN_Y);
-            segs.push({s: hsHit, e: screenPt, dur: tToScreen / SIM_SPEED, screen: segs.length >= 6});
+            segs.push({s: bsHitPt, e: screenPt, dur: tToScreen / SIM_SPEED, screen: segs.length >= 6});
         } else {
-            const edge = toEdge(hsHit, r4);
-            segs.push({s: hsHit, e: edge, dur: vlen(vsub(edge, hsHit)) / SIM_SPEED});
+            const edge = toEdge(bsHitPt, r4);
+            segs.push({s: bsHitPt, e: edge, dur: vlen(vsub(edge, bsHitPt)) / SIM_SPEED});
         }
     } else {
         const edge = toEdge(mirrorCenter, r3);
