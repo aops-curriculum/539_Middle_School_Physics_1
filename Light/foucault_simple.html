@@ -277,17 +277,18 @@ function drawFlatMirror(angle) {
     ctx.save();
     ctx.translate(MIRROR_X, MIRROR_CY);
     ctx.rotate(angle);
-    ctx.fillStyle = '#b0b8c8';
+    // Metallic gradient: bright edges (both reflective faces), darker center
+    const g = ctx.createLinearGradient(-4, 0, 4, 0);
+    g.addColorStop(0, '#e8eef6');
+    g.addColorStop(0.25, '#b0b8c8');
+    g.addColorStop(0.5, '#8890a0');
+    g.addColorStop(0.75, '#b0b8c8');
+    g.addColorStop(1, '#e8eef6');
+    ctx.fillStyle = g;
     ctx.fillRect(-4, -halfLen, 8, FLAT_MIRROR_LEN);
     ctx.strokeStyle = '#d0d8e0';
     ctx.lineWidth = 1;
     ctx.strokeRect(-4, -halfLen, 8, FLAT_MIRROR_LEN);
-    ctx.strokeStyle = '#e0e8f0';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(4, -halfLen); ctx.lineTo(4, halfLen);
-    ctx.moveTo(-4, -halfLen); ctx.lineTo(-4, halfLen);
-    ctx.stroke();
     ctx.restore();
 }
 
