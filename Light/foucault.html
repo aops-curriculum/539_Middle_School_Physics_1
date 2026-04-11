@@ -140,6 +140,19 @@
         cursor: pointer;
     }
     .reset-btn:hover { background: rgba(76,175,80,1); }
+    .aim-btn {
+        position: absolute;
+        padding: 2px 8px;
+        border: 1px solid #445;
+        border-radius: 3px;
+        font-size: 10px;
+        font-weight: bold;
+        cursor: pointer;
+        background: rgba(42,42,74,0.85);
+    }
+    .aim-btn:hover { filter: brightness(1.3); }
+    #aimTop { left: 340px; top: 130px; color: #4caf50; border-color: #4caf50; }
+    #aimBot { left: 300px; top: 400px; color: #e05050; border-color: #e05050; }
 </style>
 </head>
 <body>
@@ -170,6 +183,8 @@
         <span class="unit-label">&times;10<sup>5</sup> rev/s</span>
     </div>
     <button class="reset-btn" id="resetBtn">Reset</button>
+    <button class="aim-btn" id="aimTop">Aim</button>
+    <button class="aim-btn" id="aimBot">Aim</button>
 </div>
 
 <script>
@@ -204,10 +219,11 @@ const CONCAVE_BOT = {
     x: MIRROR_X + DIAG_DIST * Math.cos(DIAG_ANGLE),
     y: MIRROR_CY + DIAG_DIST * Math.sin(DIAG_ANGLE)
 };
-const CONCAVE_ACCEPT = 10 * DEG;  // acceptance half-angle
+const CONCAVE_ACCEPT = 20 * DEG;  // acceptance half-angle
 
 // Half-silvered mirror and screen near the source
-const HALFSIL_X = 460, HALFSIL_Y = 250;
+const HALFSIL_X = 360, HALFSIL_Y = 250;
+const BS_HALF_LEN = 44;
 const SCREEN_X = HALFSIL_X, SCREEN_Y = 350;
 const SCREEN_W = 80;
 
@@ -348,7 +364,7 @@ function computePath(spawn) {
     // BS is a 45° line segment: y = x + (HALFSIL_Y - HALFSIL_X), centered at (HALFSIL_X, HALFSIL_Y)
     // Ray-line intersection: solve for t where ray hits the BS line
     const bsDenom = r3.x - r3.y;
-    const bsHalfExt = 22 * Math.SQRT1_2 + 3; // segment half-extent in x, with tolerance
+    const bsHalfExt = BS_HALF_LEN * Math.SQRT1_2 + 3; // segment half-extent in x, with tolerance
     let bsHitPt = null, bsDist = 0;
     if (Math.abs(bsDenom) > 1e-6) {
         const bsT = (MIRROR_CY - MIRROR_X + HALFSIL_X - HALFSIL_Y) / bsDenom;
@@ -430,7 +446,7 @@ function drawConcaveMirror(pos, color, highlight) {
     // Arc of circle centered at flat mirror, at distance DIAG_DIST
     const dx = pos.x - MIRROR_X, dy = pos.y - MIRROR_CY;
     const centerAngle = Math.atan2(dy, dx);
-    const arcExtent = 6 * DEG;
+    const arcExtent = 12 * DEG;
     ctx.beginPath();
     ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST, centerAngle - arcExtent, centerAngle + arcExtent);
     ctx.strokeStyle = color || '#b0b8c8';
@@ -445,7 +461,7 @@ function drawConcaveMirror(pos, color, highlight) {
 }
 
 function drawHalfSilveredMirror() {
-    const halfLen = 22;
+    const halfLen = BS_HALF_LEN;
     ctx.save();
     ctx.translate(HALFSIL_X, HALFSIL_Y);
     ctx.rotate(-45 * DEG);
@@ -704,6 +720,18 @@ document.getElementById('resetBtn').addEventListener('click', () => {
     rotSlider.value=0; updateRotDisplay();
     resetSim(); updateSpeedDisplay();
 });
+
+// ── Aim buttons ──────────────────────────────────────
+function aimAt(angleDeg) {
+    setMode('rotate');
+    discreteAngleDeg = angleDeg;
+    fineAngleDeg = 0;
+    rotSlider.value = angleDeg;
+    recomputePhotonPaths();
+    updateRotDisplay();
+}
+document.getElementById('aimTop').addEventListener('click', () => aimAt(-DIAG_ANGLE / DEG / 2));
+document.getElementById('aimBot').addEventListener('click', () => aimAt(DIAG_ANGLE / DEG / 2));
 
 // ── Arrow dragging ───────────────────────────────────
 canvas.addEventListener('mousedown', e => {
