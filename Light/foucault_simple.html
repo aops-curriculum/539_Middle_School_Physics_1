@@ -1,0 +1,566 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Foucault Speed of Light — Simplified</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        background: #0a0a1a;
+        font-family: Arial, sans-serif;
+        user-select: none;
+        color: #e0e0e0;
+        overflow: hidden;
+    }
+    #container { position: relative; width: 600px; height: 500px; }
+    canvas { background: #0a0a1a; display: block; }
+    .mode-tabs { position: absolute; left: 8px; top: 8px; display: flex; gap: 2px; }
+    .mode-tab {
+        padding: 3px 10px; background: rgba(42,42,74,0.85);
+        border: 1px solid #445; border-radius: 3px;
+        color: #889; font-size: 11px; cursor: pointer;
+    }
+    .mode-tab:hover { background: #3a3a5a; }
+    .mode-tab.active { background: rgba(76,175,80,0.6); color: #fff; border-color: #6a6; }
+    .rot-ctrl {
+        position: absolute; left: 350px; top: 8px;
+        display: none; flex-direction: column; gap: 2px; width: 170px;
+    }
+    .rot-label-row { display: flex; align-items: baseline; gap: 4px; }
+    .rot-label { font-size: 10px; color: #667; }
+    .rot-val { font-family: 'Consolas',monospace; font-size: 11px; color: #4fc3f7; }
+    .rot-row { display: flex; align-items: center; gap: 3px; }
+    .rot-row input[type=range] { width: 140px; accent-color: #4fc3f7; height: 14px; }
+    .fine-btn {
+        width: 20px; height: 18px; background: rgba(42,42,74,0.85);
+        border: 1px solid #445; border-radius: 2px; color: #889;
+        font-size: 9px; cursor: pointer; display: inline-flex;
+        align-items: center; justify-content: center; padding: 0; margin-left: 2px;
+    }
+    .fine-btn:hover { background: #4a4a6a; color: #fff; }
+    .speed-ctrl { position: absolute; left: 350px; top: 20px; display: none; align-items: center; gap: 1px; }
+    .speed-label { font-size: 10px; color: #667; position: absolute; left: 350px; top: 8px; display: none; }
+    .sign-btn {
+        width: 18px; height: 26px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        border-radius: 2px; color: #ccc; font-size: 14px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .sign-btn:hover { background: #3a3a5a; }
+    .digit-col { display: flex; flex-direction: column; align-items: center; }
+    .digit-col button {
+        width: 22px; height: 13px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        color: #889; font-size: 8px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center; border-radius: 2px; padding: 0;
+    }
+    .digit-col button:hover { background: #4a4a6a; color: #fff; }
+    .digit-val {
+        font-size: 16px; font-family: 'Consolas','Courier New',monospace;
+        color: #4fc3f7; width: 22px; text-align: center; line-height: 1.2;
+    }
+    .unit-label { font-size: 10px; color: #889; margin-left: 2px; white-space: nowrap; }
+    .dot-sep { font-size: 16px; font-family: 'Consolas','Courier New',monospace; color: #4fc3f7; line-height: 1.2; }
+    .reset-btn {
+        position: absolute; right: 8px; top: 8px;
+        padding: 4px 10px; background: rgba(76,175,80,0.8);
+        border: none; border-radius: 3px; color: white;
+        font-size: 11px; font-weight: bold; cursor: pointer;
+    }
+    .reset-btn:hover { background: rgba(76,175,80,1); }
+    .aim-btn {
+        position: absolute; padding: 2px 8px;
+        border: 1px solid #d0d8e0; border-radius: 3px;
+        font-size: 10px; font-weight: bold; cursor: pointer;
+        background: rgba(42,42,74,0.85); color: #d0d8e0;
+        left: 430px; top: 76px;
+    }
+    .aim-btn:hover { filter: brightness(1.3); }
+</style>
+</head>
+<body>
+<div id="container">
+    <canvas id="sim" width="600" height="500"></canvas>
+    <div class="mode-tabs">
+        <div class="mode-tab active" id="tabRotate">Rotate</div>
+        <div class="mode-tab" id="tabSpin">Spin</div>
+    </div>
+    <div class="rot-ctrl" id="rotCtrl">
+        <div class="rot-label-row">
+            <span class="rot-label">Rotation</span>
+            <span class="rot-val" id="rotVal">0.0&deg;</span>
+            <button class="fine-btn" id="fineDown">&#9660;</button>
+            <button class="fine-btn" id="fineUp">&#9650;</button>
+        </div>
+        <div class="rot-row">
+            <input type="range" id="rotSlider" min="-45" max="45" step="1" value="0">
+        </div>
+    </div>
+    <span class="speed-label" id="speedLbl">Speed</span>
+    <div class="speed-ctrl" id="speedCtrl">
+        <div class="sign-btn" id="signBtn">+</div>
+        <div class="digit-col"><button data-digit="0" data-dir="up">&#9650;</button><span class="digit-val" id="d0">0</span><button data-digit="0" data-dir="down">&#9660;</button></div>
+        <span class="dot-sep">.</span>
+        <div class="digit-col"><button data-digit="1" data-dir="up">&#9650;</button><span class="digit-val" id="d1">0</span><button data-digit="1" data-dir="down">&#9660;</button></div>
+        <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
+        <span class="unit-label">&times;10<sup>5</sup> rev/s</span>
+    </div>
+    <button class="reset-btn" id="resetBtn">Reset</button>
+    <button class="aim-btn" id="aimBtn">Aim</button>
+</div>
+
+<script>
+const canvas = document.getElementById('sim');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 500;
+const DEG = Math.PI / 180;
+
+// ── Vector helpers ───────────────────────────────────
+function v(x,y){return{x,y}}
+function vadd(a,b){return v(a.x+b.x,a.y+b.y)}
+function vsub(a,b){return v(a.x-b.x,a.y-b.y)}
+function vsc(a,s){return v(a.x*s,a.y*s)}
+function vdot(a,b){return a.x*b.x+a.y*b.y}
+function vlen(a){return Math.hypot(a.x,a.y)}
+function vnorm(a){const l=vlen(a);return l<1e-12?v(0,0):v(a.x/l,a.y/l)}
+function vrefl(d,n){return vsub(d,vsc(n,2*vdot(d,n)))}
+
+// ── Physical constants ───────────────────────────────
+const REAL_DIST_M = 4;
+const C_LIGHT = 3e8;
+const SLOW_FACTOR = 50000000;
+const C_SIM_M = C_LIGHT / SLOW_FACTOR;
+
+// ── Layout ───────────────────────────────────────────
+// R (rotating mirror) on far left, M (concave) upper-right, S (source) lower-right
+const MIRROR_X = 100, MIRROR_CY = 250;
+const DIAG_ANGLE = 25 * DEG;
+const DIAG_DIST = 340;
+
+const CONCAVE = {
+    x: MIRROR_X + DIAG_DIST * Math.cos(DIAG_ANGLE),
+    y: MIRROR_CY - DIAG_DIST * Math.sin(DIAG_ANGLE)
+};
+const SRC = {
+    x: MIRROR_X + DIAG_DIST * Math.cos(DIAG_ANGLE),
+    y: MIRROR_CY + DIAG_DIST * Math.sin(DIAG_ANGLE)
+};
+
+const M_PER_PX = REAL_DIST_M / DIAG_DIST;
+const SIM_SPEED = C_SIM_M / M_PER_PX;
+
+const CONCAVE_ACCEPT = 20 * DEG;
+const FLAT_MIRROR_LEN = 60;
+
+// Screen: perpendicular to R→S line, centered at source, with hole
+const DIR_RS = vnorm(vsub(SRC, v(MIRROR_X, MIRROR_CY)));
+const SCREEN_DIR = v(-DIR_RS.y, DIR_RS.x); // perpendicular to beam path
+const SCREEN_HALF = 110;
+const HOLE_HALF = 6;
+
+// ── State ────────────────────────────────────────────
+let mode = 'rotate';
+let discreteAngleDeg = 0, fineAngleDeg = 0;
+let speedSign = 1, digits = [0, 0, 0];
+let photons = [], simTime = 0, photonAccum = 0, prevTS = null;
+let screenGlow = 0, screenGlowPos = null;
+const SCREEN_GLOW_DUR = 0.25;
+const EYE_LINGER = 0.15;
+
+// ── Mirror angle & normal ────────────────────────────
+function mirrorNormal(angle) {
+    return v(Math.cos(angle), Math.sin(angle));
+}
+
+function getMirrorAngle(t) {
+    if (mode === 'rotate') {
+        return (discreteAngleDeg + fineAngleDeg) * DEG;
+    }
+    const revPerSec = speedSign * (digits[0]*100000 + digits[1]*10000 + digits[2]*1000);
+    return (revPerSec / SLOW_FACTOR) * 2 * Math.PI * t;
+}
+
+// ── Edge helper ──────────────────────────────────────
+function toEdge(o, d) {
+    let tm = 1e9;
+    if (d.x > 1e-10) tm = Math.min(tm, (W-o.x)/d.x);
+    if (d.x < -1e-10) tm = Math.min(tm, -o.x/d.x);
+    if (d.y > 1e-10) tm = Math.min(tm, (H-o.y)/d.y);
+    if (d.y < -1e-10) tm = Math.min(tm, -o.y/d.y);
+    return vadd(o, vsc(d, Math.max(Math.min(tm, 2000), 1)));
+}
+
+// ── Path computation ─────────────────────────────────
+function computePath(spawn) {
+    const segs = [];
+    const R = v(MIRROR_X, MIRROR_CY);
+    const angle0 = getMirrorAngle(spawn);
+
+    // Leg 1: Source → rotating mirror
+    segs.push({s: v(SRC.x, SRC.y), e: R, dur: DIAG_DIST / SIM_SPEED});
+
+    // Reflection at rotating mirror (outgoing)
+    let n0 = mirrorNormal(angle0);
+    const inDir = vnorm(vsub(R, SRC));
+    if (vdot(inDir, n0) > 0) n0 = vsc(n0, -1);
+    const r1 = vrefl(inDir, n0);
+
+    // Check if reflected beam hits concave mirror
+    const dirToM = vnorm(vsub(CONCAVE, R));
+    if (vdot(r1, dirToM) < Math.cos(CONCAVE_ACCEPT)) {
+        const edge = toEdge(R, r1);
+        segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
+        return segs;
+    }
+
+    // Leg 2: Rotating mirror → concave mirror (hit point along r1)
+    const hitM = vadd(R, vsc(r1, DIAG_DIST));
+    segs.push({s: R, e: hitM, dur: DIAG_DIST / SIM_SPEED});
+
+    // Concave mirror reflects back toward R (center of curvature)
+    const returnDir = vsc(r1, -1);
+
+    // Leg 3: Concave mirror → rotating mirror
+    segs.push({s: hitM, e: R, dur: DIAG_DIST / SIM_SPEED});
+
+    // Mirror angle at return time
+    const timeAtReturn = spawn + segs.reduce((s,seg) => s+seg.dur, 0);
+    const angleR = getMirrorAngle(timeAtReturn);
+    let nR = mirrorNormal(angleR);
+    if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
+    const r3 = vrefl(returnDir, nR);
+
+    // Leg 4: Rotating mirror → screen (check intersection with screen plane)
+    const drs = vdot(r3, DIR_RS);
+    if (drs > 0.01) {
+        const t = DIAG_DIST / drs;
+        const hitPt = vadd(R, vsc(r3, t));
+        const offset = vdot(vsub(hitPt, SRC), SCREEN_DIR);
+
+        if (Math.abs(offset) <= SCREEN_HALF) {
+            const throughHole = Math.abs(offset) <= HOLE_HALF;
+            segs.push({s: R, e: hitPt, dur: t / SIM_SPEED,
+                        screen: !throughHole && segs.length >= 3});
+        } else {
+            const edge = toEdge(R, r3);
+            segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
+        }
+    } else {
+        const edge = toEdge(R, r3);
+        segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
+    }
+    return segs;
+}
+
+// ── Photon tracking ──────────────────────────────────
+function pPos(p, now) {
+    let el = now - p.t0;
+    for (const seg of p.segs) {
+        if (el <= seg.dur + 0.0003) {
+            const f = Math.max(0, Math.min(1, seg.dur > 0 ? el / seg.dur : 1));
+            return {x:seg.s.x+f*(seg.e.x-seg.s.x), y:seg.s.y+f*(seg.e.y-seg.s.y), ok:true};
+        }
+        el -= seg.dur;
+    }
+    if (hitsScreen(p)) {
+        const last = p.segs[p.segs.length - 1];
+        const overAge = now - p.t0 - tDur(p);
+        if (overAge < EYE_LINGER) return {x:last.e.x, y:last.e.y, ok:true};
+    }
+    return {ok:false};
+}
+function tDur(p) { let t=0; for (const s of p.segs) t+=s.dur; return t; }
+function hitsScreen(p) { return p.segs.length>0 && p.segs[p.segs.length-1].screen; }
+
+// ── Drawing ──────────────────────────────────────────
+function drawFlatMirror(angle) {
+    const halfLen = FLAT_MIRROR_LEN / 2;
+    ctx.save();
+    ctx.translate(MIRROR_X, MIRROR_CY);
+    ctx.rotate(angle);
+    ctx.fillStyle = '#b0b8c8';
+    ctx.fillRect(-4, -halfLen, 8, FLAT_MIRROR_LEN);
+    ctx.strokeStyle = '#d0d8e0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-4, -halfLen, 8, FLAT_MIRROR_LEN);
+    ctx.strokeStyle = '#e0e8f0';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(4, -halfLen); ctx.lineTo(4, halfLen);
+    ctx.moveTo(-4, -halfLen); ctx.lineTo(-4, halfLen);
+    ctx.stroke();
+    ctx.restore();
+}
+
+function drawConcaveMirror() {
+    const dx = CONCAVE.x - MIRROR_X, dy = CONCAVE.y - MIRROR_CY;
+    const centerAngle = Math.atan2(dy, dx);
+    const arcExtent = 15 * DEG;
+    ctx.beginPath();
+    ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST, centerAngle - arcExtent, centerAngle + arcExtent);
+    ctx.strokeStyle = '#b0b8c8';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST + 2, centerAngle - arcExtent * 0.7, centerAngle + arcExtent * 0.7);
+    ctx.strokeStyle = '#d0d8e0';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+}
+
+function drawScreen() {
+    const s1a = vadd(SRC, vsc(SCREEN_DIR, -SCREEN_HALF));
+    const s1b = vadd(SRC, vsc(SCREEN_DIR, -HOLE_HALF));
+    const s2a = vadd(SRC, vsc(SCREEN_DIR, HOLE_HALF));
+    const s2b = vadd(SRC, vsc(SCREEN_DIR, SCREEN_HALF));
+
+    ctx.strokeStyle = '#778899';
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(s1a.x, s1a.y); ctx.lineTo(s1b.x, s1b.y);
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(s2a.x, s2a.y); ctx.lineTo(s2b.x, s2b.y);
+    ctx.stroke();
+
+    // Screen glow at hit position
+    if (screenGlow > 0.01 && screenGlowPos) {
+        const gf = screenGlow / SCREEN_GLOW_DUR;
+        const g = ctx.createRadialGradient(
+            screenGlowPos.x, screenGlowPos.y, 0,
+            screenGlowPos.x, screenGlowPos.y, 25);
+        g.addColorStop(0, `rgba(255,253,220,${0.6*gf})`);
+        g.addColorStop(0.5, `rgba(255,240,180,${0.2*gf})`);
+        g.addColorStop(1, 'rgba(255,240,180,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(screenGlowPos.x - 30, screenGlowPos.y - 30, 60, 60);
+    }
+}
+
+function drawSource() {
+    const x = SRC.x, y = SRC.y;
+    const g = ctx.createRadialGradient(x,y,2,x,y,14);
+    g.addColorStop(0,'rgba(255,230,150,0.9)');
+    g.addColorStop(0.5,'rgba(255,200,80,0.3)');
+    g.addColorStop(1,'rgba(255,200,80,0)');
+    ctx.fillStyle = g; ctx.fillRect(x-16,y-16,32,32);
+    ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2);
+    ctx.fillStyle='#ffe090'; ctx.fill();
+}
+
+function drawBeamGuides() {
+    ctx.save();
+    ctx.setLineDash([4, 6]);
+    ctx.strokeStyle = 'rgba(100,160,220,0.3)';
+    ctx.lineWidth = 1;
+    // Source → rotating mirror
+    ctx.beginPath();
+    ctx.moveTo(SRC.x, SRC.y);
+    ctx.lineTo(MIRROR_X, MIRROR_CY);
+    ctx.stroke();
+    // Rotating mirror → concave mirror
+    ctx.beginPath();
+    ctx.moveTo(MIRROR_X, MIRROR_CY);
+    ctx.lineTo(CONCAVE.x, CONCAVE.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+}
+
+function drawLabels() {
+    ctx.font = 'bold 12px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText('Rotating mirror', MIRROR_X, MIRROR_CY + FLAT_MIRROR_LEN/2 + 20);
+
+    ctx.font = 'bold 14px Arial,sans-serif';
+    ctx.fillStyle = '#99aabb';
+    ctx.fillText('R', MIRROR_X, MIRROR_CY + FLAT_MIRROR_LEN/2 + 35);
+
+    ctx.font = 'bold 11px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.fillText('Fixed mirror', CONCAVE.x + 40, CONCAVE.y - 5);
+
+    ctx.font = 'bold 14px Arial,sans-serif';
+    ctx.fillStyle = '#99aabb';
+    ctx.fillText('M', CONCAVE.x + 40, CONCAVE.y + 10);
+
+    ctx.font = 'bold 12px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    // Source label offset away from screen
+    const lblOff = vadd(SRC, vsc(DIR_RS, 18));
+    ctx.fillText('Source', lblOff.x, lblOff.y + 5);
+
+    ctx.font = 'bold 14px Arial,sans-serif';
+    ctx.fillStyle = '#99aabb';
+    const sOff = vadd(SRC, vsc(DIR_RS, 30));
+    ctx.fillText('S', sOff.x, sOff.y + 5);
+
+    // Screen label
+    ctx.font = 'bold 11px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    const scrLbl = vadd(SRC, vsc(SCREEN_DIR, -SCREEN_HALF - 5));
+    ctx.save();
+    ctx.translate(scrLbl.x, scrLbl.y);
+    ctx.rotate(Math.atan2(SCREEN_DIR.y, SCREEN_DIR.x));
+    ctx.textAlign = 'right';
+    ctx.fillText('Screen', 0, -6);
+    ctx.restore();
+}
+
+function drawScaleBar() {
+    const barM = 1;
+    const barPx = barM / M_PER_PX;
+    const x0 = 180, y0 = H - 18;
+    ctx.strokeStyle = '#778899';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 - 4); ctx.lineTo(x0, y0 + 4);
+    ctx.moveTo(x0, y0); ctx.lineTo(x0 + barPx, y0);
+    ctx.moveTo(x0 + barPx, y0 - 4); ctx.lineTo(x0 + barPx, y0 + 4);
+    ctx.stroke();
+    ctx.font = '11px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText(barM + ' m', x0 + barPx / 2, y0 - 7);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#6a8899';
+    ctx.fillText('Slow-motion: 1/50,000,000', W - 10, y0);
+}
+
+function drawPhotons(now) {
+    for (const p of photons) {
+        const pos = pPos(p, now);
+        if (!pos.ok) continue;
+        ctx.beginPath(); ctx.arc(pos.x,pos.y,1.8,0,Math.PI*2);
+        ctx.fillStyle='#fffde0'; ctx.fill();
+        const g = ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,4);
+        g.addColorStop(0,'rgba(255,253,220,0.45)');
+        g.addColorStop(1,'rgba(255,253,220,0)');
+        ctx.fillStyle = g; ctx.fillRect(pos.x-5,pos.y-5,10,10);
+    }
+}
+
+// ── Simulation loop ──────────────────────────────────
+function update(dt) {
+    simTime += dt;
+    photonAccum += 2.5 * dt;
+    const nNew = Math.floor(photonAccum);
+    photonAccum -= nNew;
+    for (let i = 0; i < nNew; i++) {
+        photons.push({t0: simTime, segs: computePath(simTime)});
+    }
+    const alive = [];
+    for (const p of photons) {
+        const td = tDur(p), age = simTime - p.t0;
+        if (hitsScreen(p) && age >= td && age - dt < td) {
+            screenGlow = SCREEN_GLOW_DUR;
+            const last = p.segs[p.segs.length - 1];
+            screenGlowPos = {x: last.e.x, y: last.e.y};
+        }
+        const keepFor = hitsScreen(p) ? td + EYE_LINGER : td + 0.05;
+        if (age < keepFor) alive.push(p);
+    }
+    photons = alive;
+    screenGlow = Math.max(0, screenGlow - dt);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+    const angle = mode === 'rotate' ? getMirrorAngle(0) : getMirrorAngle(simTime);
+    drawBeamGuides();
+    drawFlatMirror(angle);
+    drawConcaveMirror();
+    drawScreen();
+    drawSource();
+    drawPhotons(simTime);
+    drawLabels();
+    drawScaleBar();
+}
+
+function loop() {
+    const now = performance.now();
+    if (prevTS === null) prevTS = now;
+    const dt = Math.min((now - prevTS) / 1000, 0.05);
+    prevTS = now;
+    update(dt); draw();
+    setTimeout(loop, 16);
+}
+
+// ── Controls ─────────────────────────────────────────
+function resetSim() {
+    simTime = 0; photons = []; screenGlow = 0;
+    screenGlowPos = null; photonAccum = 0; prevTS = null;
+}
+function setMode(m) {
+    mode = m;
+    document.getElementById('tabRotate').classList.toggle('active', m === 'rotate');
+    document.getElementById('tabSpin').classList.toggle('active', m === 'spin');
+    document.getElementById('rotCtrl').style.display = m === 'rotate' ? 'flex' : 'none';
+    document.getElementById('speedCtrl').style.display = m === 'spin' ? 'flex' : 'none';
+    document.getElementById('speedLbl').style.display = m === 'spin' ? 'block' : 'none';
+    resetSim();
+}
+document.getElementById('tabRotate').addEventListener('click', () => setMode('rotate'));
+document.getElementById('tabSpin').addEventListener('click', () => setMode('spin'));
+
+// Rotate controls
+const rotSlider = document.getElementById('rotSlider');
+const rotValEl = document.getElementById('rotVal');
+function updateRotDisplay() {
+    const total = discreteAngleDeg + fineAngleDeg;
+    rotValEl.innerHTML = total.toFixed(1) + '&deg;';
+}
+function recomputePhotonPaths() {
+    for (const p of photons) p.segs = computePath(p.t0);
+}
+rotSlider.addEventListener('input', () => {
+    discreteAngleDeg = parseFloat(rotSlider.value);
+    recomputePhotonPaths(); updateRotDisplay();
+});
+document.getElementById('fineUp').addEventListener('click', () => {
+    fineAngleDeg = Math.round((fineAngleDeg + 0.1) * 10) / 10;
+    recomputePhotonPaths(); updateRotDisplay();
+});
+document.getElementById('fineDown').addEventListener('click', () => {
+    fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
+    recomputePhotonPaths(); updateRotDisplay();
+});
+
+// Spin controls
+function updateSpeedDisplay() {
+    document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '\u2212';
+    for (let i=0;i<3;i++) document.getElementById('d'+i).textContent = digits[i];
+}
+document.getElementById('signBtn').addEventListener('click', () => {
+    speedSign *= -1; resetSim(); updateSpeedDisplay();
+});
+document.querySelectorAll('.digit-col button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const i = parseInt(btn.dataset.digit);
+        digits[i] = btn.dataset.dir === 'up' ? (digits[i]+1)%10 : (digits[i]+9)%10;
+        resetSim(); updateSpeedDisplay();
+    });
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+    speedSign=1; digits=[0,0,0];
+    discreteAngleDeg=0; fineAngleDeg=0;
+    rotSlider.value=0; updateRotDisplay();
+    resetSim(); updateSpeedDisplay();
+});
+
+// Aim button — sets mirror to aim at concave mirror (θ=0)
+document.getElementById('aimBtn').addEventListener('click', () => {
+    setMode('rotate');
+    discreteAngleDeg = 0;
+    fineAngleDeg = 0;
+    rotSlider.value = 0;
+    recomputePhotonPaths();
+    updateRotDisplay();
+});
+
+setMode('rotate');
+updateSpeedDisplay();
+loop();
+</script>
+</body>
+</html>
