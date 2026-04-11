@@ -223,6 +223,11 @@ let screenGlow = 0;
 const SCREEN_GLOW_DUR = 0.2;
 const EYE_LINGER = 0.15;
 
+// ── Draggable marker arrows ─────────────────────────
+let greenArrow = {x: SCREEN_X - 20, y: SCREEN_Y + 30};
+let redArrow = {x: SCREEN_X + 20, y: SCREEN_Y + 30};
+let dragging = null;
+
 // ── Vector helpers ───────────────────────────────────
 function v(x,y){return{x,y}}
 function vadd(a,b){return v(a.x+b.x,a.y+b.y)}
@@ -305,14 +310,10 @@ function computePath(spawn) {
     segs.push({s: hsPos, e: mirrorCenter, dur: leg2Dist / SIM_SPEED});
 
     // Reflection at flat mirror (outgoing)
-    const n0 = mirrorNormal(angle0);
+    let n0 = mirrorNormal(angle0);
     const inDir = v(-1, 0);
-    if (vdot(inDir, n0) >= 0) {
-        // Back of mirror — beam goes through
-        const edge = toEdge(mirrorCenter, inDir);
-        segs.push({s: mirrorCenter, e: edge, dur: vlen(vsub(edge, mirrorCenter)) / SIM_SPEED});
-        return segs;
-    }
+    // Double-sided mirror: flip normal if it faces away from incoming beam
+    if (vdot(inDir, n0) > 0) n0 = vsc(n0, -1);
     const r1 = vrefl(inDir, n0);
 
     // Check if reflected beam hits a concave mirror
@@ -337,14 +338,10 @@ function computePath(spawn) {
     // Mirror angle at return time
     const timeAtReturn = spawn + segs.reduce((s,seg) => s+seg.dur, 0);
     const angleR = getMirrorAngle(timeAtReturn);
-    const nR = mirrorNormal(angleR);
+    let nR = mirrorNormal(angleR);
 
-    if (vdot(returnDir, nR) >= 0) {
-        // Back of mirror on return
-        const edge = toEdge(mirrorCenter, returnDir);
-        segs.push({s: mirrorCenter, e: edge, dur: vlen(vsub(edge, mirrorCenter)) / SIM_SPEED});
-        return segs;
-    }
+    // Double-sided mirror: flip normal if it faces away from return beam
+    if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
     const r3 = vrefl(returnDir, nR);
 
     // Leg 5: Flat mirror → beam splitter
@@ -367,7 +364,7 @@ function computePath(spawn) {
             const tToScreen = (SCREEN_Y - yAtHS) / r4.y;
             const xAtScreen = hsHit.x + r4.x * tToScreen;
             const screenPt = v(xAtScreen, SCREEN_Y);
-            segs.push({s: hsHit, e: screenPt, dur: tToScreen / SIM_SPEED, screen: true});
+            segs.push({s: hsHit, e: screenPt, dur: tToScreen / SIM_SPEED, screen: segs.length >= 6});
         } else {
             const edge = toEdge(hsHit, r4);
             segs.push({s: hsHit, e: edge, dur: vlen(vsub(edge, hsHit)) / SIM_SPEED});
@@ -411,29 +408,30 @@ function drawFlatMirror(angle) {
     ctx.strokeStyle = '#d0d8e0';
     ctx.lineWidth = 1;
     ctx.strokeRect(-3, -halfLen, 6, FLAT_MIRROR_LEN);
-    // Reflective face (right side at θ=0, i.e. the side normal points toward)
+    // Both sides reflective
     ctx.strokeStyle = '#e0e8f0';
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(3, -halfLen); ctx.lineTo(3, halfLen);
+    ctx.moveTo(-3, -halfLen); ctx.lineTo(-3, halfLen);
     ctx.stroke();
     ctx.restore();
 }
 
-function drawConcaveMirror(pos) {
+function drawConcaveMirror(pos, color, highlight) {
     // Arc of circle centered at flat mirror, at distance DIAG_DIST
     const dx = pos.x - MIRROR_X, dy = pos.y - MIRROR_CY;
     const centerAngle = Math.atan2(dy, dx);
     const arcExtent = 6 * DEG;
     ctx.beginPath();
     ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST, centerAngle - arcExtent, centerAngle + arcExtent);
-    ctx.strokeStyle = '#b0b8c8';
+    ctx.strokeStyle = color || '#b0b8c8';
     ctx.lineWidth = 4;
     ctx.stroke();
     // Reflective highlight
     ctx.beginPath();
     ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST + 2, centerAngle - arcExtent * 0.7, centerAngle + arcExtent * 0.7);
-    ctx.strokeStyle = '#d0d8e0';
+    ctx.strokeStyle = highlight || '#d0d8e0';
     ctx.lineWidth = 1;
     ctx.stroke();
 }
@@ -489,7 +487,7 @@ function drawSource() {
 function drawBeamGuides() {
     ctx.save();
     ctx.setLineDash([4, 6]);
-    ctx.strokeStyle = 'rgba(100,160,220,0.15)';
+    ctx.strokeStyle = 'rgba(100,160,220,0.3)';
     ctx.lineWidth = 1;
     // Horizontal: source → flat mirror
     ctx.beginPath();
@@ -566,6 +564,30 @@ function drawPhotons(now) {
     }
 }
 
+function drawArrow(ax, ay, color) {
+    // Small upward-pointing arrow: triangle head + thin stem, ~15px tall
+    ctx.fillStyle = color;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    // Stem
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax, ay + 10);
+    ctx.stroke();
+    // Triangle head (pointing up)
+    ctx.beginPath();
+    ctx.moveTo(ax, ay - 5);
+    ctx.lineTo(ax - 4, ay + 2);
+    ctx.lineTo(ax + 4, ay + 2);
+    ctx.closePath();
+    ctx.fill();
+}
+
+function drawMarkerArrows() {
+    drawArrow(greenArrow.x, greenArrow.y, '#4caf50');
+    drawArrow(redArrow.x, redArrow.y, '#e05050');
+}
+
 // ── Simulation loop ──────────────────────────────────
 function update(dt) {
     simTime += dt;
@@ -591,14 +613,15 @@ function draw() {
     const angle = mode === 'rotate' ? getMirrorAngle(0) : getMirrorAngle(simTime);
     drawBeamGuides();
     drawFlatMirror(angle);
-    drawConcaveMirror(CONCAVE_TOP);
-    drawConcaveMirror(CONCAVE_BOT);
+    drawConcaveMirror(CONCAVE_TOP, '#4caf50', '#66cc6a');
+    drawConcaveMirror(CONCAVE_BOT, '#e05050', '#f06060');
     drawHalfSilveredMirror();
     drawScreen();
     drawSource();
     drawPhotons(simTime);
     drawLabels();
     drawScaleBar();
+    drawMarkerArrows();
 }
 
 function loop() {
@@ -673,6 +696,25 @@ document.getElementById('resetBtn').addEventListener('click', () => {
     rotSlider.value=0; updateRotDisplay();
     resetSim(); updateSpeedDisplay();
 });
+
+// ── Arrow dragging ───────────────────────────────────
+canvas.addEventListener('mousedown', e => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const dg = Math.hypot(mx - greenArrow.x, my - greenArrow.y);
+    const dr = Math.hypot(mx - redArrow.x, my - redArrow.y);
+    if (dg < 10 && dg <= dr) dragging = 'green';
+    else if (dr < 10) dragging = 'red';
+});
+canvas.addEventListener('mousemove', e => {
+    if (!dragging) return;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    if (dragging === 'green') { greenArrow.x = mx; greenArrow.y = my; }
+    else { redArrow.x = mx; redArrow.y = my; }
+});
+canvas.addEventListener('mouseup', () => { dragging = null; });
+canvas.addEventListener('mouseleave', () => { dragging = null; });
 
 setMode('rotate');
 updateSpeedDisplay();
