@@ -167,7 +167,7 @@
         <span class="dot-sep">.</span>
         <div class="digit-col"><button data-digit="1" data-dir="up">&#9650;</button><span class="digit-val" id="d1">0</span><button data-digit="1" data-dir="down">&#9660;</button></div>
         <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
-        <span class="unit-label">&times;10<sup>4</sup> rev/s</span>
+        <span class="unit-label">&times;10<sup>5</sup> rev/s</span>
     </div>
     <button class="reset-btn" id="resetBtn">Reset</button>
 </div>
@@ -247,14 +247,14 @@ function getMirrorAngle(t) {
     if (mode === 'rotate') {
         return (discreteAngleDeg + fineAngleDeg) * DEG;
     }
-    // Spin: d0.d1d2 × 10^4 rev/s (real), slowed by SLOW_FACTOR for sim
-    const revPerSec = speedSign * (digits[0]*10000 + digits[1]*1000 + digits[2]*100);
+    // Spin: d0.d1d2 × 10^5 rev/s (real), slowed by SLOW_FACTOR for sim
+    const revPerSec = speedSign * (digits[0]*100000 + digits[1]*10000 + digits[2]*1000);
     return (revPerSec / SLOW_FACTOR) * 2 * Math.PI * t;
 }
 
 function getOmega() {
     if (mode === 'rotate') return 0;
-    return speedSign * (digits[0]*10000 + digits[1]*1000 + digits[2]*100) / SLOW_FACTOR * 2 * Math.PI;
+    return speedSign * (digits[0]*100000 + digits[1]*10000 + digits[2]*1000) / SLOW_FACTOR * 2 * Math.PI;
 }
 
 // ── Concave mirror hit test ──────────────────────────
