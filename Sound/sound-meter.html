@@ -182,14 +182,7 @@
             white-space: nowrap;
         }
 
-        /* ── Scale note ── */
-        .scale-note {
-            position: absolute;
-            bottom: 10px;
-            right: 14px;
-            font-size: 10px;
-            color: #aaa;
-        }
+
     </style>
 </head>
 <body>
@@ -204,7 +197,7 @@
         <div class="sound-source" id="soundSource">
             <span class="sound-source-icon">🔊</span>
         </div>
-        <div class="source-label">100 dB source</div>
+
 
         <!-- SVG arrow layer -->
         <svg class="arrow-layer" id="arrowLayer">
@@ -235,7 +228,7 @@
             </div>
         </div>
 
-        <div class="scale-note">Radius ≈ 100 m</div>
+
     </div>
 
     <script>
@@ -267,9 +260,9 @@
         const CONTAINER_R       = 300;          // radius in pixels
         const CENTER_X          = 300;          // container centre x
         const CENTER_Y          = 300;          // container centre y
-        const METERS_PER_PIXEL  = 100 / 300;    // ≈ 0.333 m / px
-        const SOURCE_SPL        = 100;          // dB SPL at centre
-        const REF_DIST_PX       = 0.03;         // reference distance in pixels (≈ 0.01 m)
+        const METERS_PER_PIXEL  = 10 / 300;     // 300 px = 10 m  →  0.0333 m / px
+        const SOURCE_SPL        = 60;           // dB SPL at 1 m reference distance
+        const REF_DIST_PX       = 30;           // reference distance in pixels = 1 m
         const P_REF             = 20e-6;        // 20 μPa — standard reference pressure
 
         // ── Helpers ──
@@ -350,11 +343,19 @@
             const dist = Math.sqrt(dx * dx + dy * dy);
 
             const maxR = CONTAINER_R - 12;       // small margin
+            const minR = REF_DIST_PX;            // 1 m minimum distance
             if (dist > maxR) {
                 const angle = Math.atan2(dy, dx);
                 return {
                     x: CENTER_X + maxR * Math.cos(angle) - micOffX,
                     y: CENTER_Y + maxR * Math.sin(angle) - micOffY
+                };
+            }
+            if (dist < minR) {
+                const angle = Math.atan2(dy, dx) || 0;
+                return {
+                    x: CENTER_X + minR * Math.cos(angle) - micOffX,
+                    y: CENTER_Y + minR * Math.sin(angle) - micOffY
                 };
             }
             return { x: meterLeft, y: meterTop };
@@ -373,13 +374,13 @@
             pressureVal.textContent  = fmt.value;
             pressureUnit.textContent = fmt.unit;
 
-            // Screen colour hint
-            if (spl > 85) {
-                meterScreen.style.background = '#fce0df';   // red-ish
-            } else if (spl > 70) {
-                meterScreen.style.background = '#fdf4db';   // amber
+            // Screen colour hint (range is 40–60 dB)
+            if (spl > 55) {
+                meterScreen.style.background = '#fce0df';   // red-ish  (< ~1.8 m)
+            } else if (spl > 48) {
+                meterScreen.style.background = '#fdf4db';   // amber    (~1.8–4.5 m)
             } else {
-                meterScreen.style.background = '#eaf5e4';   // green
+                meterScreen.style.background = '#eaf5e4';   // green    (> ~4.5 m)
             }
 
             // Arrow from source to mic
