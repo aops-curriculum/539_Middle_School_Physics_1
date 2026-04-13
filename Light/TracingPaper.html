@@ -159,6 +159,10 @@
             font-size: 0.95em;
             color: #333;
         }
+        .table-scroll {
+            max-height: 100px;
+            overflow-y: auto;
+        }
         table {
             width: 100%;
             border-collapse: collapse;
@@ -169,6 +173,9 @@
             color: white;
             padding: 6px;
             text-align: center;
+            position: sticky;
+            top: 0;
+            z-index: 1;
         }
         td {
             padding: 5px;
@@ -247,18 +254,20 @@
                 <h4>Simulation History</h4>
                 <button id="clearTableBtn" onclick="clearTable()">Clear</button>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>p</th>
-                        <th>s</th>
-                        <th>N</th>
-                        <th>T</th>
-                        <th>T%</th>
-                    </tr>
-                </thead>
-                <tbody id="dataTableBody"></tbody>
-            </table>
+            <div class="table-scroll">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>p</th>
+                            <th>s</th>
+                            <th>N</th>
+                            <th>T</th>
+                            <th>T%</th>
+                        </tr>
+                    </thead>
+                    <tbody id="dataTableBody"></tbody>
+                </table>
+            </div>
         </div>
     </div>
 
