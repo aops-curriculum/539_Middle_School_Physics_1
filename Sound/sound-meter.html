@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sound Pressure Meter</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: #e9ecf0;
+            width: 600px;
+            height: 600px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            overflow: hidden;
+        }
+
+        .simulation-container {
+            position: relative;
+            width: 600px;
+            height: 600px;
+            background: #f4f6f9;
+            overflow: hidden;
+        }
+
+        /* ── Sound source ── */
+        .sound-source {
+            position: absolute;
+            width: 56px;
+            height: 56px;
+            background: #e05450;
+            border-radius: 50%;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 10;
+        }
+
+        .sound-source-icon {
+            font-size: 24px;
+            color: #fff;
+            line-height: 1;
+        }
+
+        .source-label {
+            position: absolute;
+            top: calc(50% + 38px);
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 11px;
+            color: #888;
+            white-space: nowrap;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* ── Expanding wave rings ── */
+        .sound-wave {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            border: 1.5px solid rgba(224, 84, 80, 0.25);
+            border-radius: 50%;
+            animation: pulse 3s linear infinite;
+            pointer-events: none;
+        }
+
+        .sound-wave:nth-child(2) { animation-delay: 0.75s; }
+        .sound-wave:nth-child(3) { animation-delay: 1.5s; }
+        .sound-wave:nth-child(4) { animation-delay: 2.25s; }
+
+        @keyframes pulse {
+            0%   { width: 56px; height: 56px; opacity: 0.5; }
+            100% { width: 520px; height: 520px; opacity: 0; }
+        }
+
+        /* ── SVG overlay for arrow ── */
+        .arrow-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 600px;
+            height: 600px;
+            pointer-events: none;
+            z-index: 5;
+        }
+
+        /* ── Draggable meter ── */
+        .spl-meter {
+            position: absolute;
+            width: 90px;
+            cursor: grab;
+            z-index: 20;
+            user-select: none;
+            /* start position: upper-right area */
+            top: 120px;
+            left: 380px;
+        }
+
+        .spl-meter:active { cursor: grabbing; }
+
+        /* Microphone dot */
+        .mic-dot {
+            width: 20px;
+            height: 20px;
+            background: #3a3a3a;
+            border-radius: 50%;
+            margin: 0 auto 2px;
+        }
+
+        /* Stem */
+        .mic-stem {
+            width: 4px;
+            height: 8px;
+            background: #888;
+            margin: 0 auto 0;
+            border-radius: 1px;
+        }
+
+        /* Meter body */
+        .meter-body {
+            width: 100%;
+            background: #fff;
+            border: 2px solid #ccc;
+            border-radius: 8px;
+            padding: 6px 6px 8px;
+            text-align: center;
+        }
+
+        .meter-title {
+            font-size: 8px;
+            text-transform: uppercase;
+            letter-spacing: 0.6px;
+            color: #999;
+            margin-bottom: 4px;
+        }
+
+        /* Readout screen */
+        .meter-screen {
+            background: #eaf5e4;
+            border: 1.5px solid #bbb;
+            border-radius: 4px;
+            padding: 5px 4px 4px;
+            margin-bottom: 0;
+        }
+
+        .pressure-value {
+            font-family: 'Courier New', Courier, monospace;
+            font-size: 19px;
+            font-weight: bold;
+            color: #222;
+            line-height: 1.1;
+        }
+
+        .pressure-unit {
+            font-family: 'Segoe UI', Tahoma, sans-serif;
+            font-size: 11px;
+            color: #555;
+            margin-top: 1px;
+        }
+
+        /* ── Distance label (shown on the arrow) ── */
+        .distance-label {
+            position: absolute;
+            font-size: 12px;
+            color: #555;
+            background: rgba(244, 246, 249, 0.85);
+            padding: 2px 6px;
+            border-radius: 4px;
+            pointer-events: none;
+            z-index: 15;
+            white-space: nowrap;
+        }
+
+        /* ── Scale note ── */
+        .scale-note {
+            position: absolute;
+            bottom: 10px;
+            right: 14px;
+            font-size: 10px;
+            color: #aaa;
+        }
+    </style>
+</head>
+<body>
+    <div class="simulation-container" id="container">
+        <!-- Wave rings -->
+        <div class="sound-wave"></div>
+        <div class="sound-wave"></div>
+        <div class="sound-wave"></div>
+        <div class="sound-wave"></div>
+
+        <!-- Sound source -->
+        <div class="sound-source" id="soundSource">
+            <span class="sound-source-icon">🔊</span>
+        </div>
+        <div class="source-label">100 dB source</div>
+
+        <!-- SVG arrow layer -->
+        <svg class="arrow-layer" id="arrowLayer">
+            <defs>
+                <marker id="arrowhead" markerWidth="8" markerHeight="6"
+                        refX="8" refY="3" orient="auto" fill="#999">
+                    <polygon points="0 0, 8 3, 0 6" />
+                </marker>
+            </defs>
+            <line id="arrowLine"
+                  stroke="#999" stroke-width="1.5" stroke-dasharray="6,4"
+                  marker-end="url(#arrowhead)" />
+        </svg>
+
+        <!-- Distance label (repositioned by JS) -->
+        <div class="distance-label" id="distanceLabel">0.0 m</div>
+
+        <!-- Draggable meter -->
+        <div class="spl-meter" id="splMeter">
+            <div class="mic-dot" id="micDot"></div>
+            <div class="mic-stem"></div>
+            <div class="meter-body">
+                <div class="meter-title">Pressure</div>
+                <div class="meter-screen" id="meterScreen">
+                    <div class="pressure-value" id="pressureValue">0</div>
+                    <div class="pressure-unit" id="pressureUnit">μPa</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="scale-note">Radius ≈ 100 m</div>
+    </div>
+
+    <script>
+        // ── DOM references ──
+        const container    = document.getElementById('container');
+        const splMeter     = document.getElementById('splMeter');
+        const soundSource  = document.getElementById('soundSource');
+        const micDot       = document.getElementById('micDot');
+        const pressureVal  = document.getElementById('pressureValue');
+        const pressureUnit = document.getElementById('pressureUnit');
+        const meterScreen  = document.getElementById('meterScreen');
+        const arrowLine    = document.getElementById('arrowLine');
+        const distLabel    = document.getElementById('distanceLabel');
+
+        // ── Drag state ──
+        let isDragging = false;
+        let offsetX, offsetY;
+
+        // ── Physics constants (same model as original) ──
+        //
+        //  The simulation maps 300 pixels to 100 metres.
+        //  A 100 dB SPL source sits at the centre.
+        //  Inverse-square-law fall-off gives ≈ 20 dB at the 100 m edge.
+        //
+        //  SPL_dB  = SOURCE_SPL − 20 · log₁₀( d_px / REF_DIST_PX )
+        //  Then convert dB → Pascals:  P = P_ref · 10^(SPL_dB / 20)
+        //  Finally display in μPa or mPa.
+
+        const CONTAINER_R       = 300;          // radius in pixels
+        const CENTER_X          = 300;          // container centre x
+        const CENTER_Y          = 300;          // container centre y
+        const METERS_PER_PIXEL  = 100 / 300;    // ≈ 0.333 m / px
+        const SOURCE_SPL        = 100;          // dB SPL at centre
+        const REF_DIST_PX       = 0.03;         // reference distance in pixels (≈ 0.01 m)
+        const P_REF             = 20e-6;        // 20 μPa — standard reference pressure
+
+        // ── Helpers ──
+
+        /** Return {x, y} of the mic dot centre, in container coordinates. */
+        function micPosition() {
+            const micRect = micDot.getBoundingClientRect();
+            const boxRect = container.getBoundingClientRect();
+            return {
+                x: micRect.left - boxRect.left + micRect.width  / 2,
+                y: micRect.top  - boxRect.top  + micRect.height / 2
+            };
+        }
+
+        /** Pixel distance from mic dot to source centre. */
+        function pixelDistance() {
+            const mic = micPosition();
+            const dx  = mic.x - CENTER_X;
+            const dy  = mic.y - CENTER_Y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        /** dB SPL from pixel distance (inverse square law). */
+        function calcSPL(dPx) {
+            const safe = Math.max(dPx, 0.01);
+            return Math.max(20, Math.min(100, SOURCE_SPL - 20 * Math.log10(safe / REF_DIST_PX)));
+        }
+
+        /** dB → Pascals. */
+        function dBtoPa(dB) {
+            return P_REF * Math.pow(10, dB / 20);
+        }
+
+        /**
+         *  Format pressure with the right SI prefix.
+         *  Returns { value: string, unit: string }.
+         *
+         *  Strategy:
+         *    < 1 000 μPa  →  show in μPa   (e.g. "200 μPa")
+         *    ≥ 1 000 μPa  →  show in mPa   (e.g. "4.50 mPa")
+         *
+         *  The crossover at 1 000 μPa = 1 mPa keeps the displayed
+         *  number between roughly 20 and 999 for the μPa range,
+         *  and 1.00–2000 for the mPa range.
+         */
+        function formatPressure(pa) {
+            const microPa = pa * 1e6;            // convert Pa → μPa
+
+            if (microPa < 1000) {
+                // Show in μPa
+                return {
+                    value: microPa < 100 ? microPa.toFixed(1) : microPa.toFixed(0),
+                    unit: 'μPa'
+                };
+            } else {
+                // Show in mPa  (1 mPa = 1000 μPa)
+                const milliPa = pa * 1e3;
+                if (milliPa < 10) {
+                    return { value: milliPa.toFixed(2), unit: 'mPa' };
+                } else if (milliPa < 100) {
+                    return { value: milliPa.toFixed(1), unit: 'mPa' };
+                } else {
+                    return { value: milliPa.toFixed(0), unit: 'mPa' };
+                }
+            }
+        }
+
+        /** Keep the mic dot inside the circular boundary. */
+        function constrainToCircle(meterLeft, meterTop) {
+            // Mic dot centre relative to meter element
+            const micOffX = 45;   // half of meter width (90 / 2)
+            const micOffY = 10;   // approx centre of mic dot from top of meter
+
+            const micX = meterLeft + micOffX;
+            const micY = meterTop  + micOffY;
+            const dx   = micX - CENTER_X;
+            const dy   = micY - CENTER_Y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+
+            const maxR = CONTAINER_R - 12;       // small margin
+            if (dist > maxR) {
+                const angle = Math.atan2(dy, dx);
+                return {
+                    x: CENTER_X + maxR * Math.cos(angle) - micOffX,
+                    y: CENTER_Y + maxR * Math.sin(angle) - micOffY
+                };
+            }
+            return { x: meterLeft, y: meterTop };
+        }
+
+        // ── Update readout + arrow ──
+
+        function updateDisplay() {
+            const dPx      = pixelDistance();
+            const dMeters  = dPx * METERS_PER_PIXEL;
+            const spl      = calcSPL(dPx);
+            const pa       = dBtoPa(spl);
+            const fmt      = formatPressure(pa);
+
+            // Readout
+            pressureVal.textContent  = fmt.value;
+            pressureUnit.textContent = fmt.unit;
+
+            // Screen colour hint
+            if (spl > 85) {
+                meterScreen.style.background = '#fce0df';   // red-ish
+            } else if (spl > 70) {
+                meterScreen.style.background = '#fdf4db';   // amber
+            } else {
+                meterScreen.style.background = '#eaf5e4';   // green
+            }
+
+            // Arrow from source to mic
+            const mic = micPosition();
+            arrowLine.setAttribute('x1', CENTER_X);
+            arrowLine.setAttribute('y1', CENTER_Y);
+            arrowLine.setAttribute('x2', mic.x);
+            arrowLine.setAttribute('y2', mic.y);
+
+            // Distance label at midpoint of arrow
+            const midX = (CENTER_X + mic.x) / 2;
+            const midY = (CENTER_Y + mic.y) / 2;
+
+            // Offset the label perpendicular to the line so it doesn't overlap
+            const angle  = Math.atan2(mic.y - CENTER_Y, mic.x - CENTER_X);
+            const perpX  = -Math.sin(angle) * 14;
+            const perpY  =  Math.cos(angle) * 14;
+
+            let distStr;
+            if (dMeters < 1) {
+                distStr = (dMeters * 100).toFixed(1) + ' cm';
+            } else if (dMeters < 10) {
+                distStr = dMeters.toFixed(2) + ' m';
+            } else {
+                distStr = dMeters.toFixed(1) + ' m';
+            }
+            distLabel.textContent = distStr;
+            distLabel.style.left = (midX + perpX) + 'px';
+            distLabel.style.top  = (midY + perpY) + 'px';
+            distLabel.style.transform = 'translate(-50%, -50%)';
+        }
+
+        // ── Mouse drag ──
+
+        splMeter.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            const rect = splMeter.getBoundingClientRect();
+            offsetX = e.clientX - rect.left;
+            offsetY = e.clientY - rect.top;
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            const boxRect = container.getBoundingClientRect();
+            let newX = e.clientX - boxRect.left - offsetX;
+            let newY = e.clientY - boxRect.top  - offsetY;
+            const c  = constrainToCircle(newX, newY);
+            splMeter.style.left = c.x + 'px';
+            splMeter.style.top  = c.y + 'px';
+            updateDisplay();
+        });
+
+        document.addEventListener('mouseup', () => { isDragging = false; });
+
+        // ── Touch drag ──
+
+        splMeter.addEventListener('touchstart', (e) => {
+            isDragging = true;
+            const t    = e.touches[0];
+            const rect = splMeter.getBoundingClientRect();
+            offsetX = t.clientX - rect.left;
+            offsetY = t.clientY - rect.top;
+            e.preventDefault();
+        });
+
+        document.addEventListener('touchmove', (e) => {
+            if (!isDragging) return;
+            const t       = e.touches[0];
+            const boxRect = container.getBoundingClientRect();
+            let newX = t.clientX - boxRect.left - offsetX;
+            let newY = t.clientY - boxRect.top  - offsetY;
+            const c  = constrainToCircle(newX, newY);
+            splMeter.style.left = c.x + 'px';
+            splMeter.style.top  = c.y + 'px';
+            updateDisplay();
+            e.preventDefault();
+        });
+
+        document.addEventListener('touchend', () => { isDragging = false; });
+
+        // ── Initial draw ──
+        updateDisplay();
+    </script>
+</body>
+</html>
