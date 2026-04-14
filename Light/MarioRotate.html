@@ -194,15 +194,20 @@ floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 scene.add(floor);
 
+/* ============ MIRRORS ============ */
+const MW = 2.5, MH = 2.4;
+
 /* ============ MIRROR GROUP (hinge + both panels) ============ */
 const mirrorGroup = new THREE.Group();
+mirrorGroup.position.y = MH / 2;   // pivot at mirror center height
 scene.add(mirrorGroup);
 
 const hinge = new THREE.Mesh(
     new THREE.CylinderGeometry(0.035, 0.035, 2.6, 12),
     new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.85, roughness: 0.18 })
 );
-hinge.position.y = 1.3;
+// Hinge stays at group-local y=0 (which is world MH/2)
+hinge.position.y = 0;
 mirrorGroup.add(hinge);
 
 /* ============ CREATE MARIO ============ */
@@ -218,9 +223,10 @@ function createMario(isReflection) {
     const white = mat(0xFFFFFF);
     const black = mat(0x111111);
     const gold = mat(0xFFD700);
+    const yellow = mat(0xFFD700);
 
     if (isReflection) {
-        [skin, red, blue, brown, darkBrown, white, black, gold].forEach(m => {
+        [skin, red, blue, brown, darkBrown, white, black, gold, yellow].forEach(m => {
             m.transparent = true;
             m.opacity = 0.72;
         });
@@ -266,18 +272,42 @@ function createMario(isReflection) {
         g.add(btn);
     });
 
-    // Arms
-    const armG = new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8);
-    [-1, 1].forEach(s => {
+    // RIGHT arm: down at side (s = 1 = Mario's right = +x in local space)
+    {
+        const armG = new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8);
         const arm = new THREE.Mesh(armG, red);
-        arm.position.set(s * 0.26, 0.74, 0);
-        arm.rotation.z = s * 0.25;
+        arm.position.set(0.26, 0.74, 0);
+        arm.rotation.z = 0.25;
         arm.castShadow = true;
         g.add(arm);
         const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), white);
-        hand.position.set(s * 0.3, 0.57, 0);
+        hand.position.set(0.3, 0.57, 0);
         g.add(hand);
-    });
+    }
+
+    // LEFT arm: raised up high waving (s = -1 = Mario's left = -x in local space)
+    {
+        const armG = new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8);
+        const arm = new THREE.Mesh(armG, red);
+        // Arm raised: rotated so it points up and slightly out
+        arm.position.set(-0.26, 1.0, 0);
+        arm.rotation.z = -1.2;  // tilted up
+        arm.castShadow = true;
+        g.add(arm);
+        // Hand at end of raised arm
+        const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), white);
+        hand.position.set(-0.42, 1.18, 0);
+        g.add(hand);
+
+        // Star in raised hand to make it extra visible
+        const star = new THREE.Mesh(
+            new THREE.OctahedronGeometry(0.06, 0),
+            yellow
+        );
+        star.position.set(-0.42, 1.30, 0);
+        star.rotation.z = Math.PI / 4;
+        g.add(star);
+    }
 
     // Head
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.175, 14, 10), skin);
@@ -354,9 +384,6 @@ function createMario(isReflection) {
     return g;
 }
 
-/* ============ MIRRORS ============ */
-const MW = 2.5, MH = 2.4;
-
 const mirrorMat = new THREE.MeshPhysicalMaterial({
     color: 0xc8ddf8,
     metalness: 0.92,
@@ -370,11 +397,11 @@ const frameMat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, metalness: 0.
 function createMirrorPanel() {
     const grp = new THREE.Group();
     const surf = new THREE.Mesh(new THREE.PlaneGeometry(MW, MH), mirrorMat);
-    surf.position.set(MW / 2, MH / 2, 0);
+    surf.position.set(MW / 2, 0, 0);   // centered on y=0 in group-local
     grp.add(surf);
     const ft = 0.035;
     const topBot = new THREE.BoxGeometry(MW + ft * 2, ft, ft);
-    [0, MH].forEach(y => {
+    [-MH / 2, MH / 2].forEach(y => {
         const f = new THREE.Mesh(topBot, frameMat);
         f.position.set(MW / 2, y, 0);
         grp.add(f);
@@ -382,7 +409,7 @@ function createMirrorPanel() {
     const sideGeo = new THREE.BoxGeometry(ft, MH, ft);
     [0, MW].forEach(x => {
         const f = new THREE.Mesh(sideGeo, frameMat);
-        f.position.set(x, MH / 2, 0);
+        f.position.set(x, 0, 0);
         grp.add(f);
     });
     return grp;
@@ -421,13 +448,17 @@ function reflectPoint(p, n) {
     return p.clone().sub(n.clone().multiplyScalar(2 * d));
 }
 
-function computeReflections3D(marioLocalPos, thetaRad) {
+// Reflect a direction vector across a plane with given normal
+function reflectDir(v, n) {
+    const d = v.dot(n);
+    return v.clone().sub(n.clone().multiplyScalar(2 * d));
+}
+
+function computeReflections3D(marioLocalPos, marioLocalFacing, thetaRad) {
     const n = Math.round(2 * Math.PI / thetaRad);
     const maxImages = n - 1;
 
     // Mirror plane normals (inward-facing) in group-local frame
-    // Base config: bisector = +Z, hinge = Y
-    // Mirror 1 at angle -theta/2 from +Z, Mirror 2 at +theta/2
     const n1 = new THREE.Vector3( Math.cos(thetaRad / 2), 0, Math.sin(thetaRad / 2));
     const n2 = new THREE.Vector3(-Math.cos(thetaRad / 2), 0, Math.sin(thetaRad / 2));
 
@@ -439,15 +470,25 @@ function computeReflections3D(marioLocalPos, thetaRad) {
 
     // Chain 1: start reflecting across Mirror 1, then alternate
     let p = marioLocalPos.clone();
+    let facing = marioLocalFacing.clone();
+    let parity = 1;   // +1 = even reflections, -1 = odd (mirrored)
     for (let i = 0; i < maxImages + 2 && images.length < maxImages; i++) {
-        p = reflectPoint(p, i % 2 === 0 ? n1 : n2);
-        if (!isDup(p)) images.push({ position: p.clone(), flipped: (i + 1) % 2 !== 0 });
+        const normal = i % 2 === 0 ? n1 : n2;
+        p = reflectPoint(p, normal);
+        facing = reflectDir(facing, normal);
+        parity *= -1;
+        if (!isDup(p)) images.push({ position: p.clone(), facing: facing.clone(), parity });
     }
     // Chain 2: start reflecting across Mirror 2, then alternate
     p = marioLocalPos.clone();
+    facing = marioLocalFacing.clone();
+    parity = 1;
     for (let i = 0; i < maxImages + 2 && images.length < maxImages; i++) {
-        p = reflectPoint(p, i % 2 === 0 ? n2 : n1);
-        if (!isDup(p)) images.push({ position: p.clone(), flipped: (i + 1) % 2 !== 0 });
+        const normal = i % 2 === 0 ? n2 : n1;
+        p = reflectPoint(p, normal);
+        facing = reflectDir(facing, normal);
+        parity *= -1;
+        if (!isDup(p)) images.push({ position: p.clone(), facing: facing.clone(), parity });
     }
     return images.slice(0, maxImages);
 }
@@ -485,16 +526,24 @@ function updateScene() {
     // In group-local frame, sector spans -theta/2 to +theta/2 from +Z.
     // Mario's local angle from +Z = phi - theta/2
     const localAngle = phi - thetaRad / 2;
+    // Mario is on the floor (y=0 in world), but group origin is at MH/2,
+    // so in group-local coords Mario is at y = -MH/2
     const marioLocal = new THREE.Vector3(
         MARIO_DIST * Math.sin(localAngle),
-        0,
+        -MH / 2,
         MARIO_DIST * Math.cos(localAngle)
     );
 
-    // Transform to world using group's quaternion
-    const marioWorld = marioLocal.clone().applyQuaternion(mirrorGroup.quaternion);
+    // Transform to world using group's quaternion + position
+    const marioWorld = marioLocal.clone().applyQuaternion(mirrorGroup.quaternion)
+        .add(mirrorGroup.position);
     mario.position.copy(marioWorld);
     faceOrigin(mario);
+
+    // Mario's facing direction in group-local XZ (points toward hinge)
+    const marioLocalFacing = new THREE.Vector3(
+        -Math.sin(localAngle), 0, -Math.cos(localAngle)
+    ).normalize();
 
     // --- Sector shading (XZ-plane projection, approximate) ---
     sectorMesh.geometry.dispose();
@@ -513,13 +562,29 @@ function updateScene() {
     reflectionClones = [];
 
     // --- Compute and place reflections ---
-    const images = computeReflections3D(marioLocal, thetaRad);
+    const marioLocalXZ = new THREE.Vector3(marioLocal.x, 0, marioLocal.z);
+    const images = computeReflections3D(marioLocalXZ, marioLocalFacing, thetaRad);
     for (const img of images) {
         const clone = createMario(true);
-        const worldPos = img.position.clone().applyQuaternion(mirrorGroup.quaternion);
+        // Position: reflect was computed in XZ group-local; add back Y offset
+        const localPos = new THREE.Vector3(img.position.x, -MH / 2, img.position.z);
+        const worldPos = localPos.clone().applyQuaternion(mirrorGroup.quaternion)
+            .add(mirrorGroup.position);
         clone.position.copy(worldPos);
-        faceOrigin(clone);
-        if (img.flipped) clone.scale.x = -1;
+
+        // Orientation: use the reflected facing direction
+        // facing is in group-local XZ, transform to world
+        const worldFacing = img.facing.clone().applyQuaternion(mirrorGroup.quaternion);
+        // rotation.y so that local -z aligns with worldFacing
+        // local -z = (-sin(ry), 0, -cos(ry)), want = worldFacing
+        // sin(ry) = -worldFacing.x, cos(ry) = -worldFacing.z
+        clone.rotation.y = Math.atan2(-worldFacing.x, -worldFacing.z);
+
+        // Odd number of reflections = mirror image: flip the local x-axis
+        if (img.parity < 0) {
+            clone.scale.x = -1;
+        }
+
         scene.add(clone);
         reflectionClones.push(clone);
     }
