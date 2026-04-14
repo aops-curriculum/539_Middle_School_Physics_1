@@ -480,7 +480,7 @@ function updateScene() {
         // Mario looks into the corner along the (1,1,1) diagonal
         const s = MARIO_DIST / Math.sqrt(3);
         mario.position.set(s, s - 0.65, s);
-        faceTarget(mario, new THREE.Vector3(0, 0, 0));
+        faceTarget(mario, new THREE.Vector3(0, s - 0.65, 0));
 
         // Apply Mario rotation around the bisector axis = (1,1,1) normalized
         const bisector = new THREE.Vector3(1, 1, 1).normalize();
@@ -553,7 +553,7 @@ function updateScene() {
 
         // Mario on bisector (+Z), facing the hinge
         mario.position.set(0, -0.65, MARIO_DIST);
-        faceTarget(mario, new THREE.Vector3(0, 0, 0));
+        faceTarget(mario, new THREE.Vector3(0, -0.65, 0));
 
         // Apply Mario rotation around the bisector axis (world Z)
         const marioSpinQ = new THREE.Quaternion().setFromAxisAngle(
