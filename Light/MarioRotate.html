@@ -58,6 +58,24 @@ input[type="range"] {
     margin-top: 2px;
 }
 
+.check-group { display: flex; flex-direction: column; gap: 6px; }
+.check-group label {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-weight: normal;
+    color: #ddd;
+    font-size: 13px;
+    cursor: pointer;
+    margin-bottom: 0;
+}
+.check-group input[type="checkbox"] {
+    accent-color: #c0392b;
+    width: 15px;
+    height: 15px;
+    cursor: pointer;
+}
+
 .slider-val {
     text-align: center;
     color: #999;
@@ -108,6 +126,13 @@ input[type="range"] {
         <div class="btn-group" id="viewBtns">
             <button data-view="third" class="active">Third Person</button>
             <button data-view="first">Mario's Eyes</button>
+        </div>
+    </div>
+    <div class="control-group">
+        <label>Show</label>
+        <div class="check-group">
+            <label><input type="checkbox" id="showMario" checked> Mario</label>
+            <label><input type="checkbox" id="showMirrors" checked> Mirrors</label>
         </div>
     </div>
 </div>
@@ -412,6 +437,8 @@ let mirrorAngle = 90;
 let mirrorType = 'hinged';   // 'hinged' or 'corner'
 let mirrorTilt = 0;
 let marioRotation = 0;       // degrees, rotation around bisector axis
+let showMario = true;
+let showMirrors = true;
 
 /* ============ 3D REFLECTION MATH ============ */
 
@@ -625,8 +652,10 @@ function updateScene() {
         cam1.lookAt(cam1.position.clone().add(lookDir));
         mario.visible = false;
     } else {
-        mario.visible = true;
+        mario.visible = showMario;
     }
+    reflectionClones.forEach(c => { c.visible = showMario; });
+    mirrorGroup.visible = showMirrors;
 
     document.getElementById('marioRotVal').textContent = marioRotation + '\u00B0';
     document.getElementById('mirrorRotVal').textContent = mirrorTilt + '\u00B0';
@@ -664,6 +693,14 @@ document.querySelectorAll('#viewBtns button').forEach(btn => {
         orbit.enabled = viewMode === 'third';
         updateScene();
     });
+});
+document.getElementById('showMario').addEventListener('change', e => {
+    showMario = e.target.checked;
+    updateScene();
+});
+document.getElementById('showMirrors').addEventListener('change', e => {
+    showMirrors = e.target.checked;
+    updateScene();
 });
 
 /* ============ RENDER LOOP ============ */
