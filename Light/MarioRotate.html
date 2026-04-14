@@ -539,12 +539,13 @@ function updateScene() {
     if (isCorner) {
         // --- CORNER REFLECTOR ---
         mirrorGroup.position.set(0, 0, 0);
-        mirrorGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), tiltRad);
+        // Rotate mirrors about the corner-to-Mario axis: (1,1,1)
+        mirrorGroup.quaternion.setFromAxisAngle(new THREE.Vector3(1, 1, 1).normalize(), tiltRad);
 
         // Mario looks into the corner along the (1,1,1) diagonal
         const s = MARIO_DIST / Math.sqrt(3);
-        mario.position.set(s, s - 0.65, s);
-        faceTarget(mario, new THREE.Vector3(0, s - 0.65, 0));
+        mario.position.set(s, s, s);
+        faceTarget(mario, new THREE.Vector3(0, 0, 0));
         const bisector = new THREE.Vector3(1, 1, 1).normalize();
         const marioSpinQ = new THREE.Quaternion().setFromAxisAngle(bisector, marioRotRad);
         mario.position.applyQuaternion(marioSpinQ);
