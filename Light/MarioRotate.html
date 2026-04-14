@@ -85,22 +85,23 @@ input[type="range"] {
 
 <div id="controls">
     <div class="control-group">
-        <label>Mirror Angle</label>
+        <label>Mirror Type</label>
         <div class="btn-group" id="angleBtns">
-            <button data-angle="180">180°</button>
-            <button data-angle="90" class="active">90°</button>
-            <button data-angle="60">60°</button>
+            <button data-angle="180">180&deg;</button>
+            <button data-angle="90" class="active">90&deg;</button>
+            <button data-angle="60">60&deg;</button>
+            <button data-angle="corner">Corner</button>
         </div>
     </div>
     <div class="control-group">
-        <label>Rotate Mirrors (tilt)</label>
+        <label>Rotate Mirrors</label>
         <input type="range" id="mirrorRot" min="0" max="360" value="0" step="1">
-        <div class="slider-val" id="mirrorRotVal">0°</div>
+        <div class="slider-val" id="mirrorRotVal">0&deg;</div>
     </div>
     <div class="control-group">
-        <label>Mario Position (within sector)</label>
-        <input type="range" id="marioPos" min="10" max="90" value="50" step="1">
-        <div class="slider-val" id="marioPosVal">50%</div>
+        <label>Rotate Mario</label>
+        <input type="range" id="marioRot" min="0" max="360" value="0" step="1">
+        <div class="slider-val" id="marioRotVal">0&deg;</div>
     </div>
     <div class="control-group">
         <label>View</label>
@@ -113,7 +114,7 @@ input[type="range"] {
 
 <div id="info">
     Reflections visible: <span class="num" id="numRef">3</span>
-    &nbsp;|&nbsp; Mirror angle: <span class="num" id="angLabel">90°</span>
+    &nbsp;|&nbsp; Mirror: <span class="num" id="angLabel">90&deg;</span>
 </div>
 
 <script type="importmap">
@@ -136,22 +137,19 @@ scene.fog = new THREE.Fog(0x6EB5FF, 18, 30);
 const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(innerWidth, innerHeight);
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
-renderer.shadowMap.enabled = true;
-renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 // Cameras
 const cam3 = new THREE.PerspectiveCamera(55, innerWidth / innerHeight, 0.1, 100);
-cam3.position.set(1, 5, 6);
+cam3.position.set(1, 3, 6);
 const cam1 = new THREE.PerspectiveCamera(75, innerWidth / innerHeight, 0.05, 100);
 let activeCam = cam3;
 let viewMode = 'third';
 
 const orbit = new OrbitControls(cam3, renderer.domElement);
-orbit.target.set(0, 0.8, 0);
+orbit.target.set(0, 0.5, 0);
 orbit.enableDamping = true;
 orbit.dampingFactor = 0.07;
-orbit.maxPolarAngle = Math.PI / 2 + 0.15;
 orbit.update();
 
 // Prevent OrbitControls from capturing events on the UI panel
@@ -159,56 +157,96 @@ document.getElementById('controls').addEventListener('pointerdown', e => e.stopP
 document.getElementById('controls').addEventListener('pointermove', e => e.stopPropagation());
 
 // Lighting
-scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+scene.add(new THREE.AmbientLight(0xffffff, 0.6));
 const sun = new THREE.DirectionalLight(0xffffff, 1.0);
 sun.position.set(4, 8, 3);
-sun.castShadow = true;
-sun.shadow.mapSize.set(1024, 1024);
-sun.shadow.camera.near = 0.5;
-sun.shadow.camera.far = 25;
-sun.shadow.camera.left = -6;
-sun.shadow.camera.right = 6;
-sun.shadow.camera.top = 6;
-sun.shadow.camera.bottom = -6;
 scene.add(sun);
 scene.add(new THREE.HemisphereLight(0x87ceeb, 0x556633, 0.3));
 
-/* ============ FLOOR ============ */
-const floorCanvas = document.createElement('canvas');
-floorCanvas.width = floorCanvas.height = 512;
-const fctx = floorCanvas.getContext('2d');
-const sq = 32;
-for (let i = 0; i < 512 / sq; i++)
-    for (let j = 0; j < 512 / sq; j++) {
-        fctx.fillStyle = (i + j) % 2 === 0 ? '#b5b5b5' : '#9a9a9a';
-        fctx.fillRect(i * sq, j * sq, sq, sq);
-    }
-const floorTex = new THREE.CanvasTexture(floorCanvas);
-floorTex.wrapS = floorTex.wrapT = THREE.RepeatWrapping;
-floorTex.repeat.set(5, 5);
-const floor = new THREE.Mesh(
-    new THREE.PlaneGeometry(24, 24),
-    new THREE.MeshStandardMaterial({ map: floorTex, roughness: 0.85 })
-);
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-scene.add(floor);
-
 /* ============ MIRRORS ============ */
 const MW = 2.5, MH = 2.4;
+const CS = 2.0;   // corner reflector panel size
 
-/* ============ MIRROR GROUP (hinge + both panels) ============ */
+const mirrorMat = new THREE.MeshPhysicalMaterial({
+    color: 0xc8ddf8, metalness: 0.92, roughness: 0.05,
+    transparent: true, opacity: 0.35, side: THREE.DoubleSide,
+});
+const frameMat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, metalness: 0.7, roughness: 0.35 });
+
+/* ============ MIRROR GROUP ============ */
 const mirrorGroup = new THREE.Group();
-mirrorGroup.position.y = MH / 2;   // pivot at mirror center height
 scene.add(mirrorGroup);
 
 const hinge = new THREE.Mesh(
     new THREE.CylinderGeometry(0.035, 0.035, 2.6, 12),
     new THREE.MeshStandardMaterial({ color: 0xffd700, metalness: 0.85, roughness: 0.18 })
 );
-// Hinge stays at group-local y=0 (which is world MH/2)
-hinge.position.y = 0;
 mirrorGroup.add(hinge);
+
+/* ============ HINGED MIRROR PANELS ============ */
+function createHingedPanel() {
+    const grp = new THREE.Group();
+    const surf = new THREE.Mesh(new THREE.PlaneGeometry(MW, MH), mirrorMat);
+    surf.position.set(MW / 2, 0, 0);
+    grp.add(surf);
+    const ft = 0.035;
+    const topBot = new THREE.BoxGeometry(MW + ft * 2, ft, ft);
+    [-MH / 2, MH / 2].forEach(y => {
+        const f = new THREE.Mesh(topBot, frameMat);
+        f.position.set(MW / 2, y, 0);
+        grp.add(f);
+    });
+    const sideGeo = new THREE.BoxGeometry(ft, MH, ft);
+    [0, MW].forEach(x => {
+        const f = new THREE.Mesh(sideGeo, frameMat);
+        f.position.set(x, 0, 0);
+        grp.add(f);
+    });
+    return grp;
+}
+
+const mirror1 = createHingedPanel();
+const mirror2 = createHingedPanel();
+mirrorGroup.add(mirror1);
+mirrorGroup.add(mirror2);
+
+/* ============ CORNER REFLECTOR PANELS ============ */
+function createCornerPanel(w, h) {
+    const grp = new THREE.Group();
+    const surf = new THREE.Mesh(new THREE.PlaneGeometry(w, h), mirrorMat.clone());
+    grp.add(surf);
+    const ft = 0.035;
+    const topBot = new THREE.BoxGeometry(w + ft * 2, ft, ft);
+    [-h / 2, h / 2].forEach(y => {
+        const f = new THREE.Mesh(topBot, frameMat);
+        f.position.set(0, y, 0);
+        grp.add(f);
+    });
+    const sideGeo = new THREE.BoxGeometry(ft, h, ft);
+    [-w / 2, w / 2].forEach(x => {
+        const f = new THREE.Mesh(sideGeo, frameMat);
+        f.position.set(x, 0, 0);
+        grp.add(f);
+    });
+    return grp;
+}
+
+// Panel A: yz-plane (x=0), faces +x, extends in y and z
+const cornerA = createCornerPanel(CS, CS);
+cornerA.rotation.y = Math.PI / 2;
+cornerA.position.set(0, CS / 2, CS / 2);
+mirrorGroup.add(cornerA);
+
+// Panel B: xz-plane (y=0), faces +y, extends in x and z
+const cornerB = createCornerPanel(CS, CS);
+cornerB.rotation.x = -Math.PI / 2;
+cornerB.position.set(CS / 2, 0, CS / 2);
+mirrorGroup.add(cornerB);
+
+// Panel C: xy-plane (z=0), faces +z, extends in x and y
+const cornerC = createCornerPanel(CS, CS);
+cornerC.position.set(CS / 2, CS / 2, 0);
+mirrorGroup.add(cornerC);
 
 /* ============ CREATE MARIO ============ */
 function createMario(isReflection) {
@@ -237,7 +275,6 @@ function createMario(isReflection) {
     [-1, 1].forEach(s => {
         const shoe = new THREE.Mesh(shoeG, brown);
         shoe.position.set(s * 0.1, 0.05, 0.02);
-        shoe.castShadow = true;
         g.add(shoe);
     });
 
@@ -246,20 +283,17 @@ function createMario(isReflection) {
     [-1, 1].forEach(s => {
         const leg = new THREE.Mesh(legG, blue);
         leg.position.set(s * 0.1, 0.27, 0);
-        leg.castShadow = true;
         g.add(leg);
     });
 
     // Body (overalls)
     const body = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.17, 0.32, 10), blue);
     body.position.y = 0.60;
-    body.castShadow = true;
     g.add(body);
 
     // Shirt
     const shirt = new THREE.Mesh(new THREE.CylinderGeometry(0.18, 0.19, 0.18, 10), red);
     shirt.position.y = 0.83;
-    shirt.castShadow = true;
     g.add(shirt);
 
     // Overall straps
@@ -272,38 +306,30 @@ function createMario(isReflection) {
         g.add(btn);
     });
 
-    // RIGHT arm: down at side (s = 1 = Mario's right = +x in local space)
+    // RIGHT arm: down at side
     {
         const armG = new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8);
         const arm = new THREE.Mesh(armG, red);
         arm.position.set(0.26, 0.74, 0);
         arm.rotation.z = 0.25;
-        arm.castShadow = true;
         g.add(arm);
         const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), white);
         hand.position.set(0.3, 0.57, 0);
         g.add(hand);
     }
 
-    // LEFT arm: raised up high waving (s = -1 = Mario's left = -x in local space)
+    // LEFT arm: raised up high waving
     {
         const armG = new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8);
         const arm = new THREE.Mesh(armG, red);
-        // Arm raised: rotated so it points up and slightly out
         arm.position.set(-0.26, 1.0, 0);
-        arm.rotation.z = -1.2;  // tilted up
-        arm.castShadow = true;
+        arm.rotation.z = -1.2;
         g.add(arm);
-        // Hand at end of raised arm
         const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), white);
         hand.position.set(-0.42, 1.18, 0);
         g.add(hand);
 
-        // Star in raised hand to make it extra visible
-        const star = new THREE.Mesh(
-            new THREE.OctahedronGeometry(0.06, 0),
-            yellow
-        );
+        const star = new THREE.Mesh(new THREE.OctahedronGeometry(0.06, 0), yellow);
         star.position.set(-0.42, 1.30, 0);
         star.rotation.z = Math.PI / 4;
         g.add(star);
@@ -312,7 +338,6 @@ function createMario(isReflection) {
     // Head
     const head = new THREE.Mesh(new THREE.SphereGeometry(0.175, 14, 10), skin);
     head.position.set(0, 1.1, 0);
-    head.castShadow = true;
     g.add(head);
 
     // Ears
@@ -324,13 +349,11 @@ function createMario(isReflection) {
 
     // Cap
     const capTop = new THREE.Mesh(
-        new THREE.SphereGeometry(0.185, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.45),
-        red
+        new THREE.SphereGeometry(0.185, 14, 8, 0, Math.PI * 2, 0, Math.PI * 0.45), red
     );
     capTop.position.set(0, 1.14, 0);
     g.add(capTop);
 
-    // Brim — facing -z (forward)
     const brimShape = new THREE.Shape();
     brimShape.absarc(0, 0, 0.20, 0, Math.PI, false);
     const brimGeo = new THREE.ExtrudeGeometry(brimShape, { depth: 0.025, bevelEnabled: false });
@@ -339,7 +362,6 @@ function createMario(isReflection) {
     brim.position.set(0, 1.16, -0.13);
     g.add(brim);
 
-    // Cap badge (white circle)
     const badge = new THREE.Mesh(new THREE.CircleGeometry(0.06, 12), white);
     badge.position.set(0, 1.22, -0.16);
     badge.lookAt(0, 1.22 + 0.3, -0.16 - 1);
@@ -354,7 +376,6 @@ function createMario(isReflection) {
     const mustache = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.035, 0.05), darkBrown);
     mustache.position.set(0, 1.01, -0.16);
     g.add(mustache);
-    // Mustache side curls
     [-1, 1].forEach(s => {
         const curl = new THREE.Mesh(new THREE.SphereGeometry(0.035, 6, 6), darkBrown);
         curl.position.set(s * 0.1, 1.01, -0.14);
@@ -384,51 +405,6 @@ function createMario(isReflection) {
     return g;
 }
 
-const mirrorMat = new THREE.MeshPhysicalMaterial({
-    color: 0xc8ddf8,
-    metalness: 0.92,
-    roughness: 0.05,
-    transparent: true,
-    opacity: 0.35,
-    side: THREE.DoubleSide,
-});
-const frameMat = new THREE.MeshStandardMaterial({ color: 0x2c2c2c, metalness: 0.7, roughness: 0.35 });
-
-function createMirrorPanel() {
-    const grp = new THREE.Group();
-    const surf = new THREE.Mesh(new THREE.PlaneGeometry(MW, MH), mirrorMat);
-    surf.position.set(MW / 2, 0, 0);   // centered on y=0 in group-local
-    grp.add(surf);
-    const ft = 0.035;
-    const topBot = new THREE.BoxGeometry(MW + ft * 2, ft, ft);
-    [-MH / 2, MH / 2].forEach(y => {
-        const f = new THREE.Mesh(topBot, frameMat);
-        f.position.set(MW / 2, y, 0);
-        grp.add(f);
-    });
-    const sideGeo = new THREE.BoxGeometry(ft, MH, ft);
-    [0, MW].forEach(x => {
-        const f = new THREE.Mesh(sideGeo, frameMat);
-        f.position.set(x, 0, 0);
-        grp.add(f);
-    });
-    return grp;
-}
-
-const mirror1 = createMirrorPanel();
-const mirror2 = createMirrorPanel();
-mirrorGroup.add(mirror1);
-mirrorGroup.add(mirror2);
-
-// Sector shading on floor
-const sectorMesh = new THREE.Mesh(
-    new THREE.RingGeometry(0.15, 3.2, 64, 1, 0, Math.PI / 2),
-    new THREE.MeshBasicMaterial({ color: 0xffff88, transparent: true, opacity: 0.10, side: THREE.DoubleSide })
-);
-sectorMesh.rotation.x = -Math.PI / 2;
-sectorMesh.position.y = 0.005;
-scene.add(sectorMesh);
-
 /* ============ MARIO ============ */
 const MARIO_DIST = 1.8;
 const mario = createMario(false);
@@ -438,15 +414,15 @@ let reflectionClones = [];
 
 /* ============ STATE ============ */
 let mirrorAngle = 90;
-let mirrorTilt = 0;       // rotation around bisector axis (degrees)
-let marioPosPercent = 50;
+let mirrorType = 'hinged';   // 'hinged' or 'corner'
+let mirrorTilt = 0;
+let marioRotation = 0;       // degrees, rotation around bisector axis
 
 /* ============ 3D REFLECTION MATH ============ */
 
 // Build a 4x4 reflection matrix for a plane with unit normal n passing through point p.
-// For plane  n·(x − p) = 0,  the reflection of x is  x − 2(n·(x−p)) n.
 function makeReflectionMatrix(n, p) {
-    const d = n.dot(p);          // n·p
+    const d = n.dot(p);
     const nx = n.x, ny = n.y, nz = n.z;
     const m = new THREE.Matrix4();
     m.set(
@@ -458,55 +434,23 @@ function makeReflectionMatrix(n, p) {
     return m;
 }
 
-/* ============ Helper: make a character face the origin ============ */
-// Object3D.lookAt for non-cameras makes +z face the target,
-// so the model's -z face ends up pointing AWAY. Use manual rotation instead.
-function faceOrigin(obj) {
-    const p = obj.position;
-    // rotation.y = α  →  local -z maps to (-sinα, 0, -cosα)
-    // We want -z to point from p toward origin = direction (-px, 0, -pz)
-    // So sinα = px/r, cosα = pz/r  →  α = atan2(px, pz)
-    obj.rotation.y = Math.atan2(p.x, p.z);
+// Orient obj so its local -Z points from obj.position toward target, with a stable up vector.
+function faceTarget(obj, target) {
+    const forward = new THREE.Vector3().subVectors(target, obj.position).normalize();
+    const zAxis = forward.clone().negate();     // local +Z = away from target
+    let up = new THREE.Vector3(0, 1, 0);
+    // If forward is nearly parallel to up, pick a different up
+    if (Math.abs(forward.dot(up)) > 0.99) up.set(1, 0, 0);
+    const xAxis = new THREE.Vector3().crossVectors(up, zAxis).normalize();
+    const yAxis = new THREE.Vector3().crossVectors(zAxis, xAxis);
+    const rotMat = new THREE.Matrix4().makeBasis(xAxis, yAxis, zAxis);
+    obj.quaternion.setFromRotationMatrix(rotMat);
 }
 
 /* ============ UPDATE ============ */
 function updateScene() {
-    const thetaRad = THREE.MathUtils.degToRad(mirrorAngle);
     const tiltRad = THREE.MathUtils.degToRad(mirrorTilt);
-
-    // --- Mirror base config inside group (bisector = +Z, hinge = Y) ---
-    // PlaneGeometry faces +Z, extends along +X from origin.
-    // After rotation.y = ry, +X maps to (cos ry, 0, -sin ry).
-    // Mirror 1 extends at angle -theta/2 from +Z:
-    mirror1.rotation.y = -(Math.PI + thetaRad) / 2;
-    // Mirror 2 extends at angle +theta/2 from +Z:
-    mirror2.rotation.y =  (thetaRad - Math.PI) / 2;
-
-    // --- Apply tilt: rotate group around local Z (the bisector / surface normal) ---
-    mirrorGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), tiltRad);
-
-    // --- Mario position (independent of mirror tilt) ---
-    // phi = angle within sector measured from Mirror 1 edge
-    const phi = thetaRad * marioPosPercent / 100;
-    // Sector spans -theta/2 to +theta/2 from +Z.
-    // Mario's angle from +Z = phi - theta/2
-    const localAngle = phi - thetaRad / 2;
-    // Place Mario directly in world space on the floor
-    mario.position.set(
-        MARIO_DIST * Math.sin(localAngle),
-        0,
-        MARIO_DIST * Math.cos(localAngle)
-    );
-    faceOrigin(mario);
-
-    // --- Sector shading (XZ-plane projection, approximate) ---
-    sectorMesh.geometry.dispose();
-    sectorMesh.geometry = new THREE.RingGeometry(
-        0.15, 3.2, 64, 1,
-        Math.PI / 2 - thetaRad / 2,   // thetaStart from +X (90° = +Z)
-        thetaRad
-    );
-    sectorMesh.rotation.set(-Math.PI / 2, 0, 0);
+    const marioRotRad = THREE.MathUtils.degToRad(marioRotation);
 
     // --- Remove old clones ---
     for (const c of reflectionClones) {
@@ -515,86 +459,182 @@ function updateScene() {
     }
     reflectionClones = [];
 
-    // --- Compute reflections by actually reflecting Mario across mirror planes ---
-    // Mirror plane normals in group-local space, transformed to world
-    const n1World = new THREE.Vector3( Math.cos(thetaRad/2), 0, Math.sin(thetaRad/2))
-        .applyQuaternion(mirrorGroup.quaternion);
-    const n2World = new THREE.Vector3(-Math.cos(thetaRad/2), 0, Math.sin(thetaRad/2))
-        .applyQuaternion(mirrorGroup.quaternion);
-    const hingePoint = mirrorGroup.position;   // point on both mirror planes
+    const isCorner = mirrorType === 'corner';
 
-    const refMat1 = makeReflectionMatrix(n1World, hingePoint);
-    const refMat2 = makeReflectionMatrix(n2World, hingePoint);
+    // --- Show/hide mirror parts ---
+    mirror1.visible = !isCorner;
+    mirror2.visible = !isCorner;
+    hinge.visible = !isCorner;
+    cornerA.visible = isCorner;
+    cornerB.visible = isCorner;
+    cornerC.visible = isCorner;
 
-    const maxImages = Math.round(2 * Math.PI / thetaRad) - 1;
+    // World-space origin for reflection planes
+    const origin = mirrorGroup.position;
 
-    // Mario's world-space basis vectors
-    const mQ = mario.quaternion;
-    const mRight = new THREE.Vector3(1,0,0).applyQuaternion(mQ);
-    const mUp    = new THREE.Vector3(0,1,0).applyQuaternion(mQ);
-    const mFwd   = new THREE.Vector3(0,0,1).applyQuaternion(mQ);
+    if (isCorner) {
+        // --- CORNER REFLECTOR ---
+        mirrorGroup.position.set(0, 0, 0);
+        mirrorGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), tiltRad);
 
-    const images = [];
-    function isDup(pos) {
-        return images.some(im => im.pos.distanceTo(pos) < 0.01)
-            || mario.position.distanceTo(pos) < 0.01;
-    }
+        // Mario looks into the corner along the (1,1,1) diagonal
+        const s = MARIO_DIST / Math.sqrt(3);
+        mario.position.set(s, s, s);
+        faceTarget(mario, new THREE.Vector3(0, 0, 0));
 
-    // Two chains: one starting with mirror 1, one starting with mirror 2
-    for (let startMirror = 0; startMirror < 2; startMirror++) {
-        let cumMat = new THREE.Matrix4();   // identity
-        let depth = 0;
-        for (let i = 0; i < maxImages + 2 && images.length < maxImages; i++) {
-            const mat = (i + startMirror) % 2 === 0 ? refMat1 : refMat2;
-            cumMat = mat.clone().multiply(cumMat);   // mat applied after previous
-            depth++;
+        // Apply Mario rotation around the bisector axis = (1,1,1) normalized
+        const bisector = new THREE.Vector3(1, 1, 1).normalize();
+        const marioSpinQ = new THREE.Quaternion().setFromAxisAngle(bisector, marioRotRad);
+        mario.quaternion.premultiply(marioSpinQ);
+
+        // Three mutually perpendicular mirror planes through origin
+        // In group-local: normals are (1,0,0), (0,1,0), (0,0,1)
+        // Transform to world:
+        const norms = [
+            new THREE.Vector3(1, 0, 0).applyQuaternion(mirrorGroup.quaternion),
+            new THREE.Vector3(0, 1, 0).applyQuaternion(mirrorGroup.quaternion),
+            new THREE.Vector3(0, 0, 1).applyQuaternion(mirrorGroup.quaternion),
+        ];
+        const refMats = norms.map(n => makeReflectionMatrix(n, origin));
+
+        // Mario's world-space basis vectors
+        const mQ = mario.quaternion;
+        const mRight = new THREE.Vector3(1, 0, 0).applyQuaternion(mQ);
+        const mUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(mQ);
+        const mFwd   = new THREE.Vector3(0, 0, 1).applyQuaternion(mQ);
+
+        // All 7 images: every non-empty subset of {0,1,2}
+        const images = [];
+        for (let mask = 1; mask < 8; mask++) {
+            let cumMat = new THREE.Matrix4();
+            let depth = 0;
+            for (let j = 0; j < 3; j++) {
+                if (mask & (1 << j)) {
+                    cumMat = refMats[j].clone().multiply(cumMat);
+                    depth++;
+                }
+            }
             const pos = mario.position.clone().applyMatrix4(cumMat);
-            if (!isDup(pos)) {
-                // Reflect Mario's basis vectors through the cumulative reflection
-                const rRight = mRight.clone().transformDirection(cumMat);
-                const rUp    = mUp.clone().transformDirection(cumMat);
-                const rFwd   = mFwd.clone().transformDirection(cumMat);
-                images.push({ pos, right: rRight, up: rUp, fwd: rFwd, depth });
+            const rRight = mRight.clone().transformDirection(cumMat);
+            const rUp    = mUp.clone().transformDirection(cumMat);
+            const rFwd   = mFwd.clone().transformDirection(cumMat);
+            images.push({ pos, right: rRight, up: rUp, fwd: rFwd, depth });
+        }
+
+        // Place clones
+        for (const img of images) {
+            const clone = createMario(true);
+            clone.position.copy(img.pos);
+            const isOdd = img.depth % 2 === 1;
+            const right = isOdd ? img.right.clone().negate() : img.right;
+            const rotMat = new THREE.Matrix4().makeBasis(right, img.up, img.fwd);
+            clone.quaternion.setFromRotationMatrix(rotMat);
+            if (isOdd) clone.scale.x = -1;
+            scene.add(clone);
+            reflectionClones.push(clone);
+        }
+
+        // Info bar
+        document.getElementById('numRef').textContent = '7';
+        document.getElementById('angLabel').textContent = 'Corner';
+
+    } else {
+        // --- HINGED MIRRORS ---
+        const thetaRad = THREE.MathUtils.degToRad(mirrorAngle);
+
+        mirrorGroup.position.set(0, 0, 0);
+
+        // Mirror orientations inside group
+        mirror1.rotation.y = -(Math.PI + thetaRad) / 2;
+        mirror2.rotation.y =  (thetaRad - Math.PI) / 2;
+
+        // Apply tilt
+        mirrorGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), tiltRad);
+
+        // Mario on bisector (+Z), facing the hinge
+        mario.position.set(0, 0, MARIO_DIST);
+        faceTarget(mario, new THREE.Vector3(0, 0, 0));
+
+        // Apply Mario rotation around the bisector axis (world Z)
+        const marioSpinQ = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(0, 0, 1), marioRotRad
+        );
+        mario.quaternion.premultiply(marioSpinQ);
+
+        // Mirror plane normals in group-local, transformed to world
+        const n1World = new THREE.Vector3( Math.cos(thetaRad / 2), 0, Math.sin(thetaRad / 2))
+            .applyQuaternion(mirrorGroup.quaternion);
+        const n2World = new THREE.Vector3(-Math.cos(thetaRad / 2), 0, Math.sin(thetaRad / 2))
+            .applyQuaternion(mirrorGroup.quaternion);
+
+        const refMat1 = makeReflectionMatrix(n1World, origin);
+        const refMat2 = makeReflectionMatrix(n2World, origin);
+
+        const maxImages = Math.round(2 * Math.PI / thetaRad) - 1;
+
+        // Mario's world-space basis vectors
+        const mQ = mario.quaternion;
+        const mRight = new THREE.Vector3(1, 0, 0).applyQuaternion(mQ);
+        const mUp    = new THREE.Vector3(0, 1, 0).applyQuaternion(mQ);
+        const mFwd   = new THREE.Vector3(0, 0, 1).applyQuaternion(mQ);
+
+        const images = [];
+        function isDup(pos) {
+            return images.some(im => im.pos.distanceTo(pos) < 0.01)
+                || mario.position.distanceTo(pos) < 0.01;
+        }
+
+        // Two chains: one starting with mirror 1, one starting with mirror 2
+        for (let startMirror = 0; startMirror < 2; startMirror++) {
+            let cumMat = new THREE.Matrix4();
+            let depth = 0;
+            for (let i = 0; i < maxImages + 2 && images.length < maxImages; i++) {
+                const mat = (i + startMirror) % 2 === 0 ? refMat1 : refMat2;
+                cumMat = mat.clone().multiply(cumMat);
+                depth++;
+                const pos = mario.position.clone().applyMatrix4(cumMat);
+                if (!isDup(pos)) {
+                    const rRight = mRight.clone().transformDirection(cumMat);
+                    const rUp    = mUp.clone().transformDirection(cumMat);
+                    const rFwd   = mFwd.clone().transformDirection(cumMat);
+                    images.push({ pos, right: rRight, up: rUp, fwd: rFwd, depth });
+                }
             }
         }
-    }
 
-    // Place reflection clones
-    for (const img of images.slice(0, maxImages)) {
-        const clone = createMario(true);
-        clone.position.copy(img.pos);
+        // Place clones
+        for (const img of images.slice(0, maxImages)) {
+            const clone = createMario(true);
+            clone.position.copy(img.pos);
+            const isOdd = img.depth % 2 === 1;
+            const right = isOdd ? img.right.clone().negate() : img.right;
+            const rotMat = new THREE.Matrix4().makeBasis(right, img.up, img.fwd);
+            clone.quaternion.setFromRotationMatrix(rotMat);
+            if (isOdd) clone.scale.x = -1;
+            scene.add(clone);
+            reflectionClones.push(clone);
+        }
 
-        const isOdd = img.depth % 2 === 1;
-        // For odd reflections the reflected basis is left-handed.
-        // Negate the right vector to make a proper rotation, compensate with scale.x = -1.
-        const right = isOdd ? img.right.clone().negate() : img.right;
-        const rotMat = new THREE.Matrix4().makeBasis(right, img.up, img.fwd);
-        clone.quaternion.setFromRotationMatrix(rotMat);
-
-        if (isOdd) clone.scale.x = -1;
-
-        scene.add(clone);
-        reflectionClones.push(clone);
+        // Info bar
+        const numImages = Math.round(360 / mirrorAngle) - 1;
+        document.getElementById('numRef').textContent = numImages;
+        document.getElementById('angLabel').textContent = mirrorAngle + '\u00B0';
     }
 
     // --- First-person camera ---
     if (viewMode === 'first') {
-        const eyeOffset = new THREE.Vector3(0, 1.12, 0);
-        cam1.position.copy(mario.position).add(eyeOffset);
-        // Camera.lookAt correctly makes -z face target
-        cam1.lookAt(new THREE.Vector3(0, 1.12, 0));
+        const eyeLocal = new THREE.Vector3(0, 1.12, 0);
+        eyeLocal.applyQuaternion(mario.quaternion);
+        cam1.position.copy(mario.position).add(eyeLocal);
+        const lookDir = new THREE.Vector3(0, 0, -1).applyQuaternion(mario.quaternion);
+        cam1.lookAt(cam1.position.clone().add(lookDir));
         mario.visible = false;
     } else {
         mario.visible = true;
     }
 
-    // --- Info bar ---
-    const numImages = Math.round(360 / mirrorAngle) - 1;
-    document.getElementById('numRef').textContent = numImages;
-    document.getElementById('angLabel').textContent = mirrorAngle + '°';
-    const phiDeg = (mirrorAngle * marioPosPercent / 100).toFixed(0);
-    document.getElementById('marioPosVal').textContent = phiDeg + '° from mirror 1';
-    document.getElementById('mirrorRotVal').textContent = mirrorTilt + '°';
+    document.getElementById('marioRotVal').textContent = marioRotation + '\u00B0';
+    document.getElementById('mirrorRotVal').textContent = mirrorTilt + '\u00B0';
 }
 
 /* ============ CONTROLS ============ */
@@ -602,7 +642,13 @@ document.querySelectorAll('#angleBtns button').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('#angleBtns button').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
-        mirrorAngle = parseInt(btn.dataset.angle);
+        const val = btn.dataset.angle;
+        if (val === 'corner') {
+            mirrorType = 'corner';
+        } else {
+            mirrorType = 'hinged';
+            mirrorAngle = parseInt(val);
+        }
         updateScene();
     });
 });
@@ -610,8 +656,8 @@ document.getElementById('mirrorRot').addEventListener('input', e => {
     mirrorTilt = parseInt(e.target.value);
     updateScene();
 });
-document.getElementById('marioPos').addEventListener('input', e => {
-    marioPosPercent = parseInt(e.target.value);
+document.getElementById('marioRot').addEventListener('input', e => {
+    marioRotation = parseInt(e.target.value);
     updateScene();
 });
 document.querySelectorAll('#viewBtns button').forEach(btn => {
