@@ -487,6 +487,10 @@ function updateScene() {
     mirror1.visible = !isCorner;
     mirror2.visible = !isCorner;
     hinge.visible = !isCorner && mirrorAngle !== 180;
+    // Hide inner side frames for 180° so the two panels look like one continuous mirror
+    const hideInner = !isCorner && mirrorAngle === 180;
+    mirror1.children[3].visible = !hideInner;
+    mirror2.children[3].visible = !hideInner;
     cornerA.visible = isCorner;
     cornerB.visible = isCorner;
     cornerC.visible = isCorner;
