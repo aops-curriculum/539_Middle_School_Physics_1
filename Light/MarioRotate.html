@@ -506,13 +506,11 @@ function updateScene() {
 
         // Mario looks into the corner along the (1,1,1) diagonal
         const s = MARIO_DIST / Math.sqrt(3);
-        mario.position.set(s, s - 0.65, s);
-        faceTarget(mario, new THREE.Vector3(0, s - 0.65, 0));
-
-        // Apply Mario rotation around the bisector axis = (1,1,1) normalized
+        // Mario orbits around the same (1,1,1) bisector axis as the corner mirrors
         const bisector = new THREE.Vector3(1, 1, 1).normalize();
         const marioSpinQ = new THREE.Quaternion().setFromAxisAngle(bisector, marioRotRad);
-        mario.quaternion.premultiply(marioSpinQ);
+        mario.position.copy(new THREE.Vector3(s, s - 0.65, s).applyQuaternion(marioSpinQ));
+        faceTarget(mario, new THREE.Vector3(0, s - 0.65, 0).applyQuaternion(marioSpinQ));
 
         // Three mutually perpendicular mirror planes through origin
         // In group-local: normals are (1,0,0), (0,1,0), (0,0,1)
@@ -578,15 +576,12 @@ function updateScene() {
         // Apply tilt
         mirrorGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), tiltRad);
 
-        // Mario on bisector (+Z), facing the hinge
-        mario.position.set(0, -0.65, MARIO_DIST);
-        faceTarget(mario, new THREE.Vector3(0, -0.65, 0));
-
-        // Apply Mario rotation around the bisector axis (world Z)
+        // Mario orbits around the same Z axis as the mirrors
         const marioSpinQ = new THREE.Quaternion().setFromAxisAngle(
             new THREE.Vector3(0, 0, 1), marioRotRad
         );
-        mario.quaternion.premultiply(marioSpinQ);
+        mario.position.copy(new THREE.Vector3(0, -0.65, MARIO_DIST).applyQuaternion(marioSpinQ));
+        faceTarget(mario, new THREE.Vector3(0, -0.65, 0).applyQuaternion(marioSpinQ));
 
         // Mirror plane normals in group-local, transformed to world
         const n1World = new THREE.Vector3( Math.cos(thetaRad / 2), 0, Math.sin(thetaRad / 2))
