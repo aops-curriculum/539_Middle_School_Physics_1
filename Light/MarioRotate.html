@@ -520,30 +520,30 @@ function updateScene() {
     // --- Apply tilt: rotate group around local Z (the bisector / surface normal) ---
     mirrorGroup.quaternion.setFromAxisAngle(new THREE.Vector3(0, 0, 1), tiltRad);
 
-    // --- Mario position ---
+    // --- Mario position (independent of mirror tilt) ---
     // phi = angle within sector measured from Mirror 1 edge
     const phi = thetaRad * marioPosPercent / 100;
-    // In group-local frame, sector spans -theta/2 to +theta/2 from +Z.
-    // Mario's local angle from +Z = phi - theta/2
+    // Sector spans -theta/2 to +theta/2 from +Z.
+    // Mario's angle from +Z = phi - theta/2
     const localAngle = phi - thetaRad / 2;
-    // Mario is on the floor (y=0 in world), but group origin is at MH/2,
-    // so in group-local coords Mario is at y = -MH/2
-    const marioLocal = new THREE.Vector3(
+    // Place Mario directly in world space on the floor
+    mario.position.set(
         MARIO_DIST * Math.sin(localAngle),
-        -MH / 2,
+        0,
         MARIO_DIST * Math.cos(localAngle)
     );
-
-    // Transform to world using group's quaternion + position
-    const marioWorld = marioLocal.clone().applyQuaternion(mirrorGroup.quaternion)
-        .add(mirrorGroup.position);
-    mario.position.copy(marioWorld);
     faceOrigin(mario);
 
-    // Mario's facing direction in group-local XZ (points toward hinge)
-    const marioLocalFacing = new THREE.Vector3(
+    // Mario's facing direction in world XZ (points toward hinge)
+    const marioWorldFacing = new THREE.Vector3(
         -Math.sin(localAngle), 0, -Math.cos(localAngle)
     ).normalize();
+
+    // Transform Mario into mirror-group-local frame for reflection math
+    const invQ = mirrorGroup.quaternion.clone().invert();
+    const marioGroupLocal = mario.position.clone()
+        .sub(mirrorGroup.position).applyQuaternion(invQ);
+    const marioGroupLocalFacing = marioWorldFacing.clone().applyQuaternion(invQ);
 
     // --- Sector shading (XZ-plane projection, approximate) ---
     sectorMesh.geometry.dispose();
@@ -562,22 +562,18 @@ function updateScene() {
     reflectionClones = [];
 
     // --- Compute and place reflections ---
-    const marioLocalXZ = new THREE.Vector3(marioLocal.x, 0, marioLocal.z);
-    const images = computeReflections3D(marioLocalXZ, marioLocalFacing, thetaRad);
+    const marioLocalXZ = new THREE.Vector3(marioGroupLocal.x, 0, marioGroupLocal.z);
+    const images = computeReflections3D(marioLocalXZ, marioGroupLocalFacing, thetaRad);
     for (const img of images) {
         const clone = createMario(true);
-        // Position: reflect was computed in XZ group-local; add back Y offset
-        const localPos = new THREE.Vector3(img.position.x, -MH / 2, img.position.z);
+        // Position: reflect was computed in group-local XZ; add back Y offset, transform to world
+        const localPos = new THREE.Vector3(img.position.x, marioGroupLocal.y, img.position.z);
         const worldPos = localPos.clone().applyQuaternion(mirrorGroup.quaternion)
             .add(mirrorGroup.position);
         clone.position.copy(worldPos);
 
-        // Orientation: use the reflected facing direction
-        // facing is in group-local XZ, transform to world
+        // Orientation: transform reflected facing from group-local back to world
         const worldFacing = img.facing.clone().applyQuaternion(mirrorGroup.quaternion);
-        // rotation.y so that local -z aligns with worldFacing
-        // local -z = (-sin(ry), 0, -cos(ry)), want = worldFacing
-        // sin(ry) = -worldFacing.x, cos(ry) = -worldFacing.z
         clone.rotation.y = Math.atan2(-worldFacing.x, -worldFacing.z);
 
         // Odd number of reflections = mirror image: flip the local x-axis
