@@ -16,6 +16,7 @@
             flex-direction: column;
             align-items: center;
         }
+        #canvas-container { position: relative; display: inline-block; }
         canvas { display: block; border: 1px solid #333; border-radius: 6px; }
         #controls {
             display: flex; align-items: center; justify-content: center;
@@ -45,30 +46,42 @@
         #feedback.toobig   { color: #4488ff; }
         #feedback.toosmall { color: #ff5555; }
         #password-reveal {
-            display: none; text-align: center; margin: 2px 0 8px;
-            padding: 9px 20px; width: 100%;
-            background: rgba(68,255,136,0.1);
-            border: 2px solid rgba(68,255,136,0.4);
-            border-radius: 8px; font-size: 13px; color: #aaa;
+            display: none; position: absolute;
+            top: 50%; left: 50%; transform: translate(-50%, -50%);
+            text-align: center; padding: 22px 36px;
+            background: rgba(20,20,40,0.93);
+            border: 2px solid rgba(68,255,136,0.6);
+            border-radius: 12px; font-size: 14px; color: #aaa;
+            z-index: 10; min-width: 280px;
         }
         #password-reveal .pw {
-            font-size: 22px; font-weight: bold;
-            color: #44ff88; letter-spacing: 4px; margin-top: 4px;
+            font-size: 26px; font-weight: bold;
+            color: #44ff88; letter-spacing: 5px; margin: 8px 0 14px;
         }
+        #play-again-btn {
+            background: rgba(68,255,136,0.15); color: #44ff88;
+            border: 2px solid rgba(68,255,136,0.5); border-radius: 6px;
+            padding: 7px 22px; font-size: 13px; font-weight: bold;
+            cursor: pointer; display: block; margin: 0 auto;
+        }
+        #play-again-btn:hover { background: rgba(68,255,136,0.3); }
     </style>
 </head>
 <body>
-    <canvas id="canvas" width="600" height="340"></canvas>
+    <div id="canvas-container">
+        <canvas id="canvas" width="600" height="340"></canvas>
+        <div id="password-reveal">
+            10 in a row — you earned the password:<br>
+            <div class="pw">chirality</div>
+            <button id="play-again-btn">Play Again</button>
+        </div>
+    </div>
     <div id="controls">
         <label id="guess-label" for="gi">Angle of incidence (0–90°):</label>
         <input id="gi" type="number" min="0" max="90" step="1" placeholder="e.g. 35">
         <button id="action-btn">Submit</button>
     </div>
     <div id="feedback">&nbsp;</div>
-    <div id="password-reveal">
-        10 in a row — you earned the password:<br>
-        <div class="pw">chirality</div>
-    </div>
 
     <script>
     const canvas = document.getElementById('canvas');
@@ -343,6 +356,11 @@
 
     actionBtn.addEventListener('click', handleSubmit);
     guessInput.addEventListener('keydown', e => { if (e.key === 'Enter') handleSubmit(); });
+    document.getElementById('play-again-btn').addEventListener('click', () => {
+        passwordEl.style.display = 'none';
+        streak = 0;
+        newRound();
+    });
 
     // ── Animation system ────────────────────────────────────────────────────
     function startAnim(type) {
