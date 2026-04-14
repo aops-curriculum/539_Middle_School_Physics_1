@@ -58,6 +58,34 @@ input[type="range"] {
     margin-top: 2px;
 }
 
+.slider-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-top: 2px;
+}
+.slider-row input[type="range"] {
+    flex: 1;
+    margin-top: 0;
+}
+.step-btn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    border: 1px solid #555;
+    background: #333;
+    color: #fff;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+    padding: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+.step-btn:hover { background: #444; }
+
 .check-group { display: flex; flex-direction: column; gap: 6px; }
 .check-group label {
     display: flex;
@@ -108,17 +136,26 @@ input[type="range"] {
             <button data-angle="180">180&deg;</button>
             <button data-angle="90" class="active">90&deg;</button>
             <button data-angle="60">60&deg;</button>
+            <button data-angle="45">45&deg;</button>
             <button data-angle="corner">Corner</button>
         </div>
     </div>
     <div class="control-group">
         <label>Rotate Mirrors</label>
-        <input type="range" id="mirrorRot" min="0" max="360" value="0" step="1">
+        <div class="slider-row">
+            <input type="range" id="mirrorRot" min="0" max="360" value="0" step="1">
+            <button class="step-btn" id="mirrorRotUp">&#9650;</button>
+            <button class="step-btn" id="mirrorRotDown">&#9660;</button>
+        </div>
         <div class="slider-val" id="mirrorRotVal">0&deg;</div>
     </div>
     <div class="control-group">
         <label>Rotate Mario</label>
-        <input type="range" id="marioRot" min="0" max="360" value="0" step="1">
+        <div class="slider-row">
+            <input type="range" id="marioRot" min="0" max="360" value="0" step="1">
+            <button class="step-btn" id="marioRotUp">&#9650;</button>
+            <button class="step-btn" id="marioRotDown">&#9660;</button>
+        </div>
         <div class="slider-val" id="marioRotVal">0&deg;</div>
     </div>
     <div class="control-group">
@@ -688,6 +725,22 @@ document.getElementById('marioRot').addEventListener('input', e => {
     marioRotation = parseInt(e.target.value);
     updateScene();
 });
+
+function stepSlider(sliderId, delta, stateVar, setter) {
+    const slider = document.getElementById(sliderId);
+    const newVal = Math.max(parseInt(slider.min), Math.min(parseInt(slider.max), parseInt(slider.value) + delta));
+    slider.value = newVal;
+    setter(newVal);
+    updateScene();
+}
+document.getElementById('mirrorRotUp').addEventListener('click', () =>
+    stepSlider('mirrorRot', 1, mirrorTilt, v => { mirrorTilt = v; }));
+document.getElementById('mirrorRotDown').addEventListener('click', () =>
+    stepSlider('mirrorRot', -1, mirrorTilt, v => { mirrorTilt = v; }));
+document.getElementById('marioRotUp').addEventListener('click', () =>
+    stepSlider('marioRot', 1, marioRotation, v => { marioRotation = v; }));
+document.getElementById('marioRotDown').addEventListener('click', () =>
+    stepSlider('marioRot', -1, marioRotation, v => { marioRotation = v; }));
 document.querySelectorAll('#viewBtns button').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('#viewBtns button').forEach(b => b.classList.remove('active'));
