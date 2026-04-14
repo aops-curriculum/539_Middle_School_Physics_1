@@ -345,10 +345,10 @@ function createMario(isReflection) {
 
     // LEFT arm: pointing up (mirror of right arm)
     {
-        const armG = new THREE.CylinderGeometry(0.05, 0.045, 0.3, 8);
+        const armG = new THREE.CylinderGeometry(0.045, 0.05, 0.3, 8);
         const arm = new THREE.Mesh(armG, red);
         arm.position.set(-0.26, 1.03, 0);
-        arm.rotation.z = -0.25;
+        arm.rotation.z = 0.25;
         g.add(arm);
         const hand = new THREE.Mesh(new THREE.SphereGeometry(0.055, 8, 8), white);
         hand.position.set(-0.3, 1.18, 0);
