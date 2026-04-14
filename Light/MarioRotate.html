@@ -486,7 +486,7 @@ function updateScene() {
     // --- Show/hide mirror parts ---
     mirror1.visible = !isCorner;
     mirror2.visible = !isCorner;
-    hinge.visible = !isCorner;
+    hinge.visible = !isCorner && mirrorAngle !== 180;
     cornerA.visible = isCorner;
     cornerB.visible = isCorner;
     cornerC.visible = isCorner;
