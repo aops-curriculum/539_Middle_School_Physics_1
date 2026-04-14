@@ -651,8 +651,9 @@ function updateScene() {
         const eyeLocal = new THREE.Vector3(0, 1.12, 0);
         eyeLocal.applyQuaternion(mario.quaternion);
         cam1.position.copy(mario.position).add(eyeLocal);
-        const lookDir = new THREE.Vector3(0, 0, -1).applyQuaternion(mario.quaternion);
-        cam1.lookAt(cam1.position.clone().add(lookDir));
+        // Set camera orientation directly from Mario's quaternion so the view
+        // rolls with Mario's rotation (his "up" becomes the camera's up).
+        cam1.quaternion.copy(mario.quaternion);
         mario.visible = false;
     } else {
         mario.visible = showMario;
