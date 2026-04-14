@@ -658,7 +658,7 @@ function updateScene() {
     } else {
         mario.visible = showMario;
     }
-    reflectionClones.forEach(c => { c.visible = showMario; });
+    reflectionClones.forEach(c => { c.visible = showMario && showMirrors; });
     mirrorGroup.visible = showMirrors;
 
     document.getElementById('marioRotVal').textContent = marioRotation + '\u00B0';
