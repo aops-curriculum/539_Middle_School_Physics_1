@@ -442,55 +442,20 @@ let mirrorTilt = 0;       // rotation around bisector axis (degrees)
 let marioPosPercent = 50;
 
 /* ============ 3D REFLECTION MATH ============ */
-// Reflect point across plane through origin with given normal
-function reflectPoint(p, n) {
-    const d = p.dot(n);
-    return p.clone().sub(n.clone().multiplyScalar(2 * d));
-}
 
-// Reflect a direction vector across a plane with given normal
-function reflectDir(v, n) {
-    const d = v.dot(n);
-    return v.clone().sub(n.clone().multiplyScalar(2 * d));
-}
-
-function computeReflections3D(marioLocalPos, marioLocalFacing, thetaRad) {
-    const n = Math.round(2 * Math.PI / thetaRad);
-    const maxImages = n - 1;
-
-    // Mirror plane normals (inward-facing) in group-local frame
-    const n1 = new THREE.Vector3( Math.cos(thetaRad / 2), 0, Math.sin(thetaRad / 2));
-    const n2 = new THREE.Vector3(-Math.cos(thetaRad / 2), 0, Math.sin(thetaRad / 2));
-
-    const images = [];
-    function isDup(pos) {
-        return images.some(im => im.position.distanceTo(pos) < 0.01)
-            || marioLocalPos.distanceTo(pos) < 0.01;
-    }
-
-    // Chain 1: start reflecting across Mirror 1, then alternate
-    let p = marioLocalPos.clone();
-    let facing = marioLocalFacing.clone();
-    let parity = 1;   // +1 = even reflections, -1 = odd (mirrored)
-    for (let i = 0; i < maxImages + 2 && images.length < maxImages; i++) {
-        const normal = i % 2 === 0 ? n1 : n2;
-        p = reflectPoint(p, normal);
-        facing = reflectDir(facing, normal);
-        parity *= -1;
-        if (!isDup(p)) images.push({ position: p.clone(), facing: facing.clone(), parity });
-    }
-    // Chain 2: start reflecting across Mirror 2, then alternate
-    p = marioLocalPos.clone();
-    facing = marioLocalFacing.clone();
-    parity = 1;
-    for (let i = 0; i < maxImages + 2 && images.length < maxImages; i++) {
-        const normal = i % 2 === 0 ? n2 : n1;
-        p = reflectPoint(p, normal);
-        facing = reflectDir(facing, normal);
-        parity *= -1;
-        if (!isDup(p)) images.push({ position: p.clone(), facing: facing.clone(), parity });
-    }
-    return images.slice(0, maxImages);
+// Build a 4x4 reflection matrix for a plane with unit normal n passing through point p.
+// For plane  n·(x − p) = 0,  the reflection of x is  x − 2(n·(x−p)) n.
+function makeReflectionMatrix(n, p) {
+    const d = n.dot(p);          // n·p
+    const nx = n.x, ny = n.y, nz = n.z;
+    const m = new THREE.Matrix4();
+    m.set(
+        1 - 2*nx*nx,  -2*nx*ny,     -2*nx*nz,     2*nx*d,
+        -2*nx*ny,     1 - 2*ny*ny,  -2*ny*nz,     2*ny*d,
+        -2*nx*nz,     -2*ny*nz,     1 - 2*nz*nz,  2*nz*d,
+        0,            0,            0,             1
+    );
+    return m;
 }
 
 /* ============ Helper: make a character face the origin ============ */
@@ -534,17 +499,6 @@ function updateScene() {
     );
     faceOrigin(mario);
 
-    // Mario's facing direction in world XZ (points toward hinge)
-    const marioWorldFacing = new THREE.Vector3(
-        -Math.sin(localAngle), 0, -Math.cos(localAngle)
-    ).normalize();
-
-    // Transform Mario into mirror-group-local frame for reflection math
-    const invQ = mirrorGroup.quaternion.clone().invert();
-    const marioGroupLocal = mario.position.clone()
-        .sub(mirrorGroup.position).applyQuaternion(invQ);
-    const marioGroupLocalFacing = marioWorldFacing.clone().applyQuaternion(invQ);
-
     // --- Sector shading (XZ-plane projection, approximate) ---
     sectorMesh.geometry.dispose();
     sectorMesh.geometry = new THREE.RingGeometry(
@@ -561,30 +515,63 @@ function updateScene() {
     }
     reflectionClones = [];
 
-    // --- Compute and place reflections ---
-    const marioLocalXZ = new THREE.Vector3(marioGroupLocal.x, 0, marioGroupLocal.z);
-    const images = computeReflections3D(marioLocalXZ, marioGroupLocalFacing, thetaRad);
-    for (const img of images) {
-        const clone = createMario(true);
-        // Position: reflect was computed in group-local XZ; add back Y offset, transform to world
-        const localPos = new THREE.Vector3(img.position.x, marioGroupLocal.y, img.position.z);
-        const worldPos = localPos.clone().applyQuaternion(mirrorGroup.quaternion)
-            .add(mirrorGroup.position);
-        clone.position.copy(worldPos);
+    // --- Compute reflections by actually reflecting Mario across mirror planes ---
+    // Mirror plane normals in group-local space, transformed to world
+    const n1World = new THREE.Vector3( Math.cos(thetaRad/2), 0, Math.sin(thetaRad/2))
+        .applyQuaternion(mirrorGroup.quaternion);
+    const n2World = new THREE.Vector3(-Math.cos(thetaRad/2), 0, Math.sin(thetaRad/2))
+        .applyQuaternion(mirrorGroup.quaternion);
+    const hingePoint = mirrorGroup.position;   // point on both mirror planes
 
-        // Orientation: build group-local facing quaternion, then compose with group tilt.
-        // In group-local space the clone faces along img.facing with up=(0,1,0).
-        const localRotY = Math.atan2(-img.facing.x, -img.facing.z);
-        const localQ = new THREE.Quaternion().setFromAxisAngle(
-            new THREE.Vector3(0, 1, 0), localRotY
-        );
-        // World orientation = groupQ * localQ  (applies local rot first, then tilt)
-        clone.quaternion.copy(mirrorGroup.quaternion).multiply(localQ);
+    const refMat1 = makeReflectionMatrix(n1World, hingePoint);
+    const refMat2 = makeReflectionMatrix(n2World, hingePoint);
 
-        // Odd number of reflections = mirror image: flip the local x-axis
-        if (img.parity < 0) {
-            clone.scale.x = -1;
+    const maxImages = Math.round(2 * Math.PI / thetaRad) - 1;
+
+    // Mario's world-space basis vectors
+    const mQ = mario.quaternion;
+    const mRight = new THREE.Vector3(1,0,0).applyQuaternion(mQ);
+    const mUp    = new THREE.Vector3(0,1,0).applyQuaternion(mQ);
+    const mFwd   = new THREE.Vector3(0,0,1).applyQuaternion(mQ);
+
+    const images = [];
+    function isDup(pos) {
+        return images.some(im => im.pos.distanceTo(pos) < 0.01)
+            || mario.position.distanceTo(pos) < 0.01;
+    }
+
+    // Two chains: one starting with mirror 1, one starting with mirror 2
+    for (let startMirror = 0; startMirror < 2; startMirror++) {
+        let cumMat = new THREE.Matrix4();   // identity
+        let depth = 0;
+        for (let i = 0; i < maxImages + 2 && images.length < maxImages; i++) {
+            const mat = (i + startMirror) % 2 === 0 ? refMat1 : refMat2;
+            cumMat = mat.clone().multiply(cumMat);   // mat applied after previous
+            depth++;
+            const pos = mario.position.clone().applyMatrix4(cumMat);
+            if (!isDup(pos)) {
+                // Reflect Mario's basis vectors through the cumulative reflection
+                const rRight = mRight.clone().transformDirection(cumMat);
+                const rUp    = mUp.clone().transformDirection(cumMat);
+                const rFwd   = mFwd.clone().transformDirection(cumMat);
+                images.push({ pos, right: rRight, up: rUp, fwd: rFwd, depth });
+            }
         }
+    }
+
+    // Place reflection clones
+    for (const img of images.slice(0, maxImages)) {
+        const clone = createMario(true);
+        clone.position.copy(img.pos);
+
+        const isOdd = img.depth % 2 === 1;
+        // For odd reflections the reflected basis is left-handed.
+        // Negate the right vector to make a proper rotation, compensate with scale.x = -1.
+        const right = isOdd ? img.right.clone().negate() : img.right;
+        const rotMat = new THREE.Matrix4().makeBasis(right, img.up, img.fwd);
+        clone.quaternion.setFromRotationMatrix(rotMat);
+
+        if (isOdd) clone.scale.x = -1;
 
         scene.add(clone);
         reflectionClones.push(clone);
