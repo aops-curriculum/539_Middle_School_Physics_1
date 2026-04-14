@@ -572,9 +572,14 @@ function updateScene() {
             .add(mirrorGroup.position);
         clone.position.copy(worldPos);
 
-        // Orientation: transform reflected facing from group-local back to world
-        const worldFacing = img.facing.clone().applyQuaternion(mirrorGroup.quaternion);
-        clone.rotation.y = Math.atan2(-worldFacing.x, -worldFacing.z);
+        // Orientation: build group-local facing quaternion, then compose with group tilt.
+        // In group-local space the clone faces along img.facing with up=(0,1,0).
+        const localRotY = Math.atan2(-img.facing.x, -img.facing.z);
+        const localQ = new THREE.Quaternion().setFromAxisAngle(
+            new THREE.Vector3(0, 1, 0), localRotY
+        );
+        // World orientation = groupQ * localQ  (applies local rot first, then tilt)
+        clone.quaternion.copy(mirrorGroup.quaternion).multiply(localQ);
 
         // Odd number of reflections = mirror image: flip the local x-axis
         if (img.parity < 0) {
