@@ -378,13 +378,17 @@ function drawPhotons(now) {
     for (const p of photons) {
         const pos = pPos(p, now);
         if (!pos.ok) continue;
-        ctx.beginPath(); ctx.arc(pos.x,pos.y,1.6*S,0,Math.PI*2);
-        ctx.fillStyle='#fffde0'; ctx.fill();
-        const gr = 3.6*S;
+        const r = Math.min(255, Math.max(200, 255 + p.hu));
+        const g_ = Math.min(255, Math.max(200, 253 + p.sa));
+        const b = Math.min(240, Math.max(180, 220 - p.hu));
+        const rad = 1.6 * S * p.sz;
+        ctx.beginPath(); ctx.arc(pos.x, pos.y, rad, 0, Math.PI*2);
+        ctx.fillStyle = `rgb(${r},${g_},${b})`; ctx.fill();
+        const gr = 3.6 * S * p.sz;
         const g = ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,gr);
-        g.addColorStop(0,'rgba(255,253,220,0.45)');
-        g.addColorStop(1,'rgba(255,253,220,0)');
-        const gd = 4.5*S;
+        g.addColorStop(0, `rgba(${r},${g_},${b},0.45)`);
+        g.addColorStop(1, `rgba(${r},${g_},${b},0)`);
+        const gd = 4.5 * S * p.sz;
         ctx.fillStyle = g; ctx.fillRect(pos.x-gd,pos.y-gd,gd*2,gd*2);
     }
 }
@@ -397,7 +401,10 @@ function update(dt) {
     photonAccum -= nNew;
     for (let i = 0; i < nNew; i++) {
         const segs = computePath(simTime);
-        photons.push({t0: simTime, segs, a1: getMirrorAngle(simTime), a2: getMirrorAngle(simTime)});
+        const sz = 0.7 + Math.random() * 0.6;
+        const hu = Math.floor(Math.random() * 30) - 10;
+        const sa = Math.floor(Math.random() * 40) - 15;
+        photons.push({t0: simTime, segs, a1: getMirrorAngle(simTime), a2: getMirrorAngle(simTime), sz, hu, sa});
     }
 
     const curAngle = getMirrorAngle(0);
