@@ -482,12 +482,13 @@ function resetSim() {
 // Position the rotation control directly above the rotating mirror
 const rotCtrl = document.getElementById('rotCtrl');
 const ctrlW = 153;
-rotCtrl.style.left = (MIRROR_X - ctrlW/2) + 'px';
+const ctrlLeft = Math.max(4, MIRROR_X - ctrlW/2);
+rotCtrl.style.left = ctrlLeft + 'px';
 rotCtrl.style.top = (MIRROR_CY - FLAT_MIRROR_LEN/2 - 42) + 'px';
 
 // Position aim button
 const aimBtn = document.getElementById('aimBtn');
-aimBtn.style.left = (MIRROR_X + ctrlW/2 + 8) + 'px';
+aimBtn.style.left = (ctrlLeft + ctrlW + 8) + 'px';
 aimBtn.style.top = (MIRROR_CY - FLAT_MIRROR_LEN/2 - 38) + 'px';
 
 const rotSlider = document.getElementById('rotSlider');
