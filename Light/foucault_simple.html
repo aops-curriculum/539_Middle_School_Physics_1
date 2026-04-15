@@ -13,73 +13,73 @@
         color: #e0e0e0;
         overflow: hidden;
     }
-    #container { position: relative; width: 600px; height: 500px; }
+    #container { position: relative; width: 540px; height: 450px; }
     canvas { background: #0a0a1a; display: block; }
-    .mode-tabs { position: absolute; left: 8px; top: 8px; display: flex; gap: 2px; }
+    .mode-tabs { position: absolute; left: 7px; top: 7px; display: flex; gap: 2px; }
     .mode-tab {
-        padding: 3px 10px; background: rgba(42,42,74,0.85);
+        padding: 3px 9px; background: rgba(42,42,74,0.85);
         border: 1px solid #445; border-radius: 3px;
-        color: #889; font-size: 11px; cursor: pointer;
+        color: #889; font-size: 10px; cursor: pointer;
     }
     .mode-tab:hover { background: #3a3a5a; }
     .mode-tab.active { background: rgba(76,175,80,0.6); color: #fff; border-color: #6a6; }
     .rot-ctrl {
-        position: absolute; left: 350px; top: 8px;
-        display: none; flex-direction: column; gap: 2px; width: 170px;
+        position: absolute; left: 315px; top: 7px;
+        display: none; flex-direction: column; gap: 2px; width: 153px;
     }
     .rot-label-row { display: flex; align-items: baseline; gap: 4px; }
-    .rot-label { font-size: 10px; color: #667; }
-    .rot-val { font-family: 'Consolas',monospace; font-size: 11px; color: #4fc3f7; }
+    .rot-label { font-size: 9px; color: #667; }
+    .rot-val { font-family: 'Consolas',monospace; font-size: 10px; color: #4fc3f7; }
     .rot-row { display: flex; align-items: center; gap: 3px; }
-    .rot-row input[type=range] { width: 140px; accent-color: #4fc3f7; height: 14px; }
+    .rot-row input[type=range] { width: 126px; accent-color: #4fc3f7; height: 13px; }
     .fine-btn {
-        width: 20px; height: 18px; background: rgba(42,42,74,0.85);
+        width: 18px; height: 16px; background: rgba(42,42,74,0.85);
         border: 1px solid #445; border-radius: 2px; color: #889;
-        font-size: 9px; cursor: pointer; display: inline-flex;
+        font-size: 8px; cursor: pointer; display: inline-flex;
         align-items: center; justify-content: center; padding: 0; margin-left: 2px;
     }
     .fine-btn:hover { background: #4a4a6a; color: #fff; }
-    .speed-ctrl { position: absolute; left: 400px; top: 20px; display: none; align-items: center; gap: 1px; }
-    .speed-label { font-size: 10px; color: #667; position: absolute; left: 400px; top: 8px; display: none; }
+    .speed-ctrl { position: absolute; left: 360px; top: 18px; display: none; align-items: center; gap: 1px; }
+    .speed-label { font-size: 9px; color: #667; position: absolute; left: 360px; top: 7px; display: none; }
     .sign-btn {
-        width: 18px; height: 26px; background: rgba(42,42,74,0.85); border: 1px solid #445;
-        border-radius: 2px; color: #ccc; font-size: 14px; cursor: pointer;
+        width: 16px; height: 23px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        border-radius: 2px; color: #ccc; font-size: 13px; cursor: pointer;
         display: flex; align-items: center; justify-content: center;
     }
     .sign-btn:hover { background: #3a3a5a; }
     .digit-col { display: flex; flex-direction: column; align-items: center; }
     .digit-col button {
-        width: 22px; height: 13px; background: rgba(42,42,74,0.85); border: 1px solid #445;
-        color: #889; font-size: 8px; cursor: pointer; display: flex;
+        width: 20px; height: 12px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        color: #889; font-size: 7px; cursor: pointer; display: flex;
         align-items: center; justify-content: center; border-radius: 2px; padding: 0;
     }
     .digit-col button:hover { background: #4a4a6a; color: #fff; }
     .digit-val {
-        font-size: 16px; font-family: 'Consolas','Courier New',monospace;
-        color: #4fc3f7; width: 22px; text-align: center; line-height: 1.2;
+        font-size: 14px; font-family: 'Consolas','Courier New',monospace;
+        color: #4fc3f7; width: 20px; text-align: center; line-height: 1.2;
     }
-    .unit-label { font-size: 10px; color: #889; margin-left: 2px; white-space: nowrap; }
-    .dot-sep { font-size: 16px; font-family: 'Consolas','Courier New',monospace; color: #4fc3f7; line-height: 1.2; }
+    .unit-label { font-size: 9px; color: #889; margin-left: 2px; white-space: nowrap; }
+    .dot-sep { font-size: 14px; font-family: 'Consolas','Courier New',monospace; color: #4fc3f7; line-height: 1.2; }
     .reset-btn {
-        position: absolute; right: 8px; top: 8px;
-        padding: 4px 10px; background: rgba(76,175,80,0.8);
+        position: absolute; right: 7px; top: 7px;
+        padding: 4px 9px; background: rgba(76,175,80,0.8);
         border: none; border-radius: 3px; color: white;
-        font-size: 11px; font-weight: bold; cursor: pointer;
+        font-size: 10px; font-weight: bold; cursor: pointer;
     }
     .reset-btn:hover { background: rgba(76,175,80,1); }
     .aim-btn {
-        position: absolute; padding: 2px 8px;
+        position: absolute; padding: 2px 7px;
         border: 1px solid #d0d8e0; border-radius: 3px;
-        font-size: 10px; font-weight: bold; cursor: pointer;
+        font-size: 9px; font-weight: bold; cursor: pointer;
         background: rgba(42,42,74,0.85); color: #d0d8e0;
-        left: 430px; top: 76px;
+        left: 387px; top: 68px;
     }
     .aim-btn:hover { filter: brightness(1.3); }
 </style>
 </head>
 <body>
 <div id="container">
-    <canvas id="sim" width="600" height="500"></canvas>
+    <canvas id="sim" width="540" height="450"></canvas>
     <div class="mode-tabs">
         <div class="mode-tab active" id="tabRotate">Rotate</div>
         <div class="mode-tab" id="tabSpin">Spin</div>
@@ -111,7 +111,7 @@
 <script>
 const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
-const W = 600, H = 500;
+const W = 540, H = 450;
 const DEG = Math.PI / 180;
 
 // ── Vector helpers ───────────────────────────────────
@@ -131,10 +131,9 @@ const SLOW_FACTOR = 50000000;
 const C_SIM_M = C_LIGHT / SLOW_FACTOR;
 
 // ── Layout ───────────────────────────────────────────
-// R (rotating mirror) on far left, M (concave) upper-right, S (source) lower-right
-const MIRROR_X = 100, MIRROR_CY = 250;
+const MIRROR_X = 90, MIRROR_CY = 225;
 const DIAG_ANGLE = 25 * DEG;
-const DIAG_DIST = 340;
+const DIAG_DIST = 306;
 
 const CONCAVE = {
     x: MIRROR_X + DIAG_DIST * Math.cos(DIAG_ANGLE),
@@ -149,13 +148,13 @@ const M_PER_PX = REAL_DIST_M / DIAG_DIST;
 const SIM_SPEED = C_SIM_M / M_PER_PX;
 
 const CONCAVE_ACCEPT = 20 * DEG;
-const FLAT_MIRROR_LEN = 60;
+const FLAT_MIRROR_LEN = 54;
 
 // Screen: perpendicular to R→S line, centered at source, with hole
 const DIR_RS = vnorm(vsub(SRC, v(MIRROR_X, MIRROR_CY)));
-const SCREEN_DIR = v(-DIR_RS.y, DIR_RS.x); // perpendicular to beam path
-const SCREEN_HALF = 110;
-const HOLE_HALF = 6;
+const SCREEN_DIR = v(-DIR_RS.y, DIR_RS.x);
+const SCREEN_HALF = 99;
+const HOLE_HALF = 5.4;
 
 // ── State ────────────────────────────────────────────
 let mode = 'rotate';
@@ -192,19 +191,15 @@ function toEdge(o, d) {
 // ── Path computation ─────────────────────────────────
 const LEG1_DUR = DIAG_DIST / SIM_SPEED;
 
-// Compute legs 2-4 given an explicit mirror angle for the first reflection
-// and an angle for the return reflection.
 function computePostMirror(spawn, angle0, angleR) {
     const segs = [];
     const R = v(MIRROR_X, MIRROR_CY);
 
-    // Reflection at rotating mirror (outgoing)
     let n0 = mirrorNormal(angle0);
     const inDir = vnorm(vsub(R, SRC));
     if (vdot(inDir, n0) > 0) n0 = vsc(n0, -1);
     const r1 = vrefl(inDir, n0);
 
-    // Check if reflected beam hits concave mirror
     const dirToM = vnorm(vsub(CONCAVE, R));
     if (vdot(r1, dirToM) < Math.cos(CONCAVE_ACCEPT)) {
         const edge = toEdge(R, r1);
@@ -212,22 +207,17 @@ function computePostMirror(spawn, angle0, angleR) {
         return segs;
     }
 
-    // Leg 2: Rotating mirror → concave mirror
     const hitM = vadd(R, vsc(r1, DIAG_DIST));
     segs.push({s: R, e: hitM, dur: DIAG_DIST / SIM_SPEED});
 
-    // Concave mirror reflects back toward R
     const returnDir = vsc(r1, -1);
 
-    // Leg 3: Concave mirror → rotating mirror
     segs.push({s: hitM, e: R, dur: DIAG_DIST / SIM_SPEED});
 
-    // Return reflection
     let nR = mirrorNormal(angleR);
     if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
     const r3 = vrefl(returnDir, nR);
 
-    // Leg 4: Rotating mirror → screen
     const drs = vdot(r3, DIR_RS);
     if (drs > 0.01) {
         const t = DIAG_DIST / drs;
@@ -283,18 +273,17 @@ function drawFlatMirror(angle) {
     ctx.save();
     ctx.translate(MIRROR_X, MIRROR_CY);
     ctx.rotate(angle);
-    // Metallic gradient: bright edges (both reflective faces), darker center
-    const g = ctx.createLinearGradient(-4, 0, 4, 0);
+    const g = ctx.createLinearGradient(-3.6, 0, 3.6, 0);
     g.addColorStop(0, '#e8eef6');
     g.addColorStop(0.25, '#b0b8c8');
     g.addColorStop(0.5, '#8890a0');
     g.addColorStop(0.75, '#b0b8c8');
     g.addColorStop(1, '#e8eef6');
     ctx.fillStyle = g;
-    ctx.fillRect(-4, -halfLen, 8, FLAT_MIRROR_LEN);
+    ctx.fillRect(-3.6, -halfLen, 7.2, FLAT_MIRROR_LEN);
     ctx.strokeStyle = '#d0d8e0';
     ctx.lineWidth = 1;
-    ctx.strokeRect(-4, -halfLen, 8, FLAT_MIRROR_LEN);
+    ctx.strokeRect(-3.6, -halfLen, 7.2, FLAT_MIRROR_LEN);
     ctx.restore();
 }
 
@@ -305,10 +294,10 @@ function drawConcaveMirror() {
     ctx.beginPath();
     ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST, centerAngle - arcExtent, centerAngle + arcExtent);
     ctx.strokeStyle = '#b0b8c8';
-    ctx.lineWidth = 5;
+    ctx.lineWidth = 4.5;
     ctx.stroke();
     ctx.beginPath();
-    ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST + 2, centerAngle - arcExtent * 0.7, centerAngle + arcExtent * 0.7);
+    ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST + 1.8, centerAngle - arcExtent * 0.7, centerAngle + arcExtent * 0.7);
     ctx.strokeStyle = '#d0d8e0';
     ctx.lineWidth = 1;
     ctx.stroke();
@@ -321,7 +310,7 @@ function drawScreen() {
     const s2b = vadd(SRC, vsc(SCREEN_DIR, SCREEN_HALF));
 
     ctx.strokeStyle = '#778899';
-    ctx.lineWidth = 4;
+    ctx.lineWidth = 3.6;
     ctx.beginPath();
     ctx.moveTo(s1a.x, s1a.y); ctx.lineTo(s1b.x, s1b.y);
     ctx.stroke();
@@ -329,42 +318,39 @@ function drawScreen() {
     ctx.moveTo(s2a.x, s2a.y); ctx.lineTo(s2b.x, s2b.y);
     ctx.stroke();
 
-    // Screen glow at hit position
     if (screenGlow > 0.01 && screenGlowPos) {
         const gf = screenGlow / SCREEN_GLOW_DUR;
         const g = ctx.createRadialGradient(
             screenGlowPos.x, screenGlowPos.y, 0,
-            screenGlowPos.x, screenGlowPos.y, 25);
+            screenGlowPos.x, screenGlowPos.y, 22.5);
         g.addColorStop(0, `rgba(255,253,220,${0.6*gf})`);
         g.addColorStop(0.5, `rgba(255,240,180,${0.2*gf})`);
         g.addColorStop(1, 'rgba(255,240,180,0)');
         ctx.fillStyle = g;
-        ctx.fillRect(screenGlowPos.x - 30, screenGlowPos.y - 30, 60, 60);
+        ctx.fillRect(screenGlowPos.x - 27, screenGlowPos.y - 27, 54, 54);
     }
 }
 
 function drawSource() {
     const x = SRC.x, y = SRC.y;
-    const g = ctx.createRadialGradient(x,y,2,x,y,14);
+    const g = ctx.createRadialGradient(x,y,1.8,x,y,12.6);
     g.addColorStop(0,'rgba(255,230,150,0.9)');
     g.addColorStop(0.5,'rgba(255,200,80,0.3)');
     g.addColorStop(1,'rgba(255,200,80,0)');
-    ctx.fillStyle = g; ctx.fillRect(x-16,y-16,32,32);
-    ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2);
+    ctx.fillStyle = g; ctx.fillRect(x-14.4,y-14.4,28.8,28.8);
+    ctx.beginPath(); ctx.arc(x,y,4.5,0,Math.PI*2);
     ctx.fillStyle='#ffe090'; ctx.fill();
 }
 
 function drawBeamGuides() {
     ctx.save();
-    ctx.setLineDash([4, 6]);
+    ctx.setLineDash([3.6, 5.4]);
     ctx.strokeStyle = 'rgba(100,160,220,0.3)';
     ctx.lineWidth = 1;
-    // Source → rotating mirror
     ctx.beginPath();
     ctx.moveTo(SRC.x, SRC.y);
     ctx.lineTo(MIRROR_X, MIRROR_CY);
     ctx.stroke();
-    // Rotating mirror → concave mirror
     ctx.beginPath();
     ctx.moveTo(MIRROR_X, MIRROR_CY);
     ctx.lineTo(CONCAVE.x, CONCAVE.y);
@@ -374,76 +360,74 @@ function drawBeamGuides() {
 }
 
 function drawLabels() {
-    ctx.font = 'bold 12px Arial,sans-serif';
+    ctx.font = 'bold 11px Arial,sans-serif';
     ctx.fillStyle = '#778899';
     ctx.textAlign = 'center';
-    ctx.fillText('Rotating mirror', MIRROR_X, MIRROR_CY + FLAT_MIRROR_LEN/2 + 20);
+    ctx.fillText('Rotating mirror', MIRROR_X, MIRROR_CY + FLAT_MIRROR_LEN/2 + 18);
 
-    ctx.font = 'bold 14px Arial,sans-serif';
+    ctx.font = 'bold 13px Arial,sans-serif';
     ctx.fillStyle = '#99aabb';
-    ctx.fillText('R', MIRROR_X, MIRROR_CY + FLAT_MIRROR_LEN/2 + 35);
+    ctx.fillText('R', MIRROR_X, MIRROR_CY + FLAT_MIRROR_LEN/2 + 31.5);
+
+    ctx.font = 'bold 10px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.fillText('Fixed mirror', CONCAVE.x + 36, CONCAVE.y - 4.5);
+
+    ctx.font = 'bold 13px Arial,sans-serif';
+    ctx.fillStyle = '#99aabb';
+    ctx.fillText('M', CONCAVE.x + 36, CONCAVE.y + 9);
 
     ctx.font = 'bold 11px Arial,sans-serif';
     ctx.fillStyle = '#778899';
-    ctx.fillText('Fixed mirror', CONCAVE.x + 40, CONCAVE.y - 5);
+    const lblOff = vadd(SRC, vsc(DIR_RS, 16.2));
+    ctx.fillText('Source', lblOff.x, lblOff.y + 4.5);
 
-    ctx.font = 'bold 14px Arial,sans-serif';
+    ctx.font = 'bold 13px Arial,sans-serif';
     ctx.fillStyle = '#99aabb';
-    ctx.fillText('M', CONCAVE.x + 40, CONCAVE.y + 10);
+    const sOff = vadd(SRC, vsc(DIR_RS, 27));
+    ctx.fillText('S', sOff.x, sOff.y + 4.5);
 
-    ctx.font = 'bold 12px Arial,sans-serif';
+    ctx.font = 'bold 10px Arial,sans-serif';
     ctx.fillStyle = '#778899';
-    // Source label offset away from screen
-    const lblOff = vadd(SRC, vsc(DIR_RS, 18));
-    ctx.fillText('Source', lblOff.x, lblOff.y + 5);
-
-    ctx.font = 'bold 14px Arial,sans-serif';
-    ctx.fillStyle = '#99aabb';
-    const sOff = vadd(SRC, vsc(DIR_RS, 30));
-    ctx.fillText('S', sOff.x, sOff.y + 5);
-
-    // Screen label
-    ctx.font = 'bold 11px Arial,sans-serif';
-    ctx.fillStyle = '#778899';
-    const scrLbl = vadd(SRC, vsc(SCREEN_DIR, -SCREEN_HALF - 5));
+    const scrLbl = vadd(SRC, vsc(SCREEN_DIR, -SCREEN_HALF - 4.5));
     ctx.save();
     ctx.translate(scrLbl.x, scrLbl.y);
     ctx.rotate(Math.atan2(SCREEN_DIR.y, SCREEN_DIR.x));
     ctx.textAlign = 'right';
-    ctx.fillText('Screen', 0, -6);
+    ctx.fillText('Screen', 0, -5.4);
     ctx.restore();
 }
 
 function drawScaleBar() {
     const barM = 1;
     const barPx = barM / M_PER_PX;
-    const x0 = 180, y0 = H - 18;
+    const x0 = 162, y0 = H - 16;
     ctx.strokeStyle = '#778899';
-    ctx.lineWidth = 2;
+    ctx.lineWidth = 1.8;
     ctx.beginPath();
-    ctx.moveTo(x0, y0 - 4); ctx.lineTo(x0, y0 + 4);
+    ctx.moveTo(x0, y0 - 3.6); ctx.lineTo(x0, y0 + 3.6);
     ctx.moveTo(x0, y0); ctx.lineTo(x0 + barPx, y0);
-    ctx.moveTo(x0 + barPx, y0 - 4); ctx.lineTo(x0 + barPx, y0 + 4);
+    ctx.moveTo(x0 + barPx, y0 - 3.6); ctx.lineTo(x0 + barPx, y0 + 3.6);
     ctx.stroke();
-    ctx.font = '11px Arial,sans-serif';
+    ctx.font = '10px Arial,sans-serif';
     ctx.fillStyle = '#778899';
     ctx.textAlign = 'center';
-    ctx.fillText(barM + ' m', x0 + barPx / 2, y0 - 7);
+    ctx.fillText(barM + ' m', x0 + barPx / 2, y0 - 6.3);
     ctx.textAlign = 'right';
     ctx.fillStyle = '#6a8899';
-    ctx.fillText('Slow-motion: 1/50,000,000', W - 10, y0);
+    ctx.fillText('Slow-motion: 1/50,000,000', W - 9, y0);
 }
 
 function drawPhotons(now) {
     for (const p of photons) {
         const pos = pPos(p, now);
         if (!pos.ok) continue;
-        ctx.beginPath(); ctx.arc(pos.x,pos.y,1.8,0,Math.PI*2);
+        ctx.beginPath(); ctx.arc(pos.x,pos.y,1.6,0,Math.PI*2);
         ctx.fillStyle='#fffde0'; ctx.fill();
-        const g = ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,4);
+        const g = ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,3.6);
         g.addColorStop(0,'rgba(255,253,220,0.45)');
         g.addColorStop(1,'rgba(255,253,220,0)');
-        ctx.fillStyle = g; ctx.fillRect(pos.x-5,pos.y-5,10,10);
+        ctx.fillStyle = g; ctx.fillRect(pos.x-4.5,pos.y-4.5,9,9);
     }
 }
 
@@ -458,18 +442,15 @@ function update(dt) {
         photons.push({t0: simTime, segs, a1: getMirrorAngle(simTime), a2: getMirrorAngle(simTime)});
     }
 
-    // In rotate mode, update reflections for photons that haven't hit the mirror yet
     if (mode === 'rotate') {
         const curAngle = getMirrorAngle(0);
         for (const p of photons) {
             const age = simTime - p.t0;
             if (age < LEG1_DUR && p.a1 !== curAngle) {
-                // Still approaching mirror: recompute all reflections
                 p.segs = [p.segs[0], ...computePostMirror(p.t0, curAngle, curAngle)];
                 p.a1 = curAngle;
                 p.a2 = curAngle;
             } else if (age >= LEG1_DUR && age < LEG1_DUR * 3 && p.a2 !== curAngle) {
-                // Between first and second reflection: recompute return reflection only
                 const r1Dir = vnorm(vsub(p.segs[1].e, p.segs[1].s));
                 const returnDir = vsc(r1Dir, -1);
                 let nR = mirrorNormal(curAngle);
@@ -553,7 +534,6 @@ function setMode(m) {
 document.getElementById('tabRotate').addEventListener('click', () => setMode('rotate'));
 document.getElementById('tabSpin').addEventListener('click', () => setMode('spin'));
 
-// Rotate controls
 const rotSlider = document.getElementById('rotSlider');
 const rotValEl = document.getElementById('rotVal');
 function updateRotDisplay() {
@@ -573,7 +553,6 @@ document.getElementById('fineDown').addEventListener('click', () => {
     updateRotDisplay();
 });
 
-// Spin controls
 function updateSpeedDisplay() {
     document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '\u2212';
     for (let i=0;i<3;i++) document.getElementById('d'+i).textContent = digits[i];
@@ -595,7 +574,6 @@ document.getElementById('resetBtn').addEventListener('click', () => {
     resetSim(); updateSpeedDisplay();
 });
 
-// Aim button — snaps mirror to aim at concave mirror (θ=0), keeps current mode
 document.getElementById('aimBtn').addEventListener('click', () => {
     if (mode === 'rotate') {
         discreteAngleDeg = 0;
@@ -603,7 +581,6 @@ document.getElementById('aimBtn').addEventListener('click', () => {
         rotSlider.value = 0;
         updateRotDisplay();
     } else {
-        // Snap simTime so current mirror angle ≡ 0 (mod π)
         const revPerSec = speedSign * (digits[0]*100000 + digits[1]*10000 + digits[2]*1000);
         const omega = (revPerSec / SLOW_FACTOR) * 2 * Math.PI;
         if (Math.abs(omega) > 1e-12) {
@@ -617,6 +594,10 @@ document.getElementById('aimBtn').addEventListener('click', () => {
 setMode('rotate');
 updateSpeedDisplay();
 requestAnimationFrame(loop);
+
+window.addEventListener('load', () => {
+    window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
 </script>
 </body>
 </html>
