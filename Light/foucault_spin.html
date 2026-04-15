@@ -291,50 +291,42 @@ function drawScreen() {
 }
 
 function drawRuler() {
-    // Draw tick marks along the screen so we can see deflection distances
+    // Draw tick marks along the screen to measure deflection distances.
+    // 1 px ≈ 1.63 cm at this scale, so use 10 cm minor ticks (~6 px),
+    // 50 cm medium ticks (~31 px), and 1 m major ticks (~61 px).
     const screenAngle = Math.atan2(SCREEN_DIR.y, SCREEN_DIR.x);
-    const cmPerPx = M_PER_PX * 100; // cm per pixel
-    const mmPerPx = M_PER_PX * 1000; // mm per pixel
+    const pxPer10cm = 0.1 / M_PER_PX;   // ~6.12 px per 10 cm
 
-    // Choose tick spacing: use 1 mm ticks with longer ticks every 5 mm
-    const mmPerTick = 1;
-    const pxPerMm = 1 / mmPerPx;
-    const pxPerTick = mmPerTick * pxPerMm;
-
-    // Draw ticks from center (source hole) outward in both directions
-    const maxTicks = Math.floor(SCREEN_HALF / pxPerTick);
+    const tickDir = DIR_RS; // perpendicular to screen, outward
 
     ctx.save();
 
-    // Tick marks perpendicular to screen surface
-    // Screen is drawn along SCREEN_DIR; ticks go along DIR_RS (perpendicular to screen)
-    const tickDir = DIR_RS; // points away from mirror, outward from screen
-    const tickInward = vsc(tickDir, -1); // points toward mirror side
-
-    for (let i = -maxTicks; i <= maxTicks; i++) {
-        if (i === 0) continue; // skip the hole center
-        const offsetPx = i * pxPerTick;
+    const maxSteps = Math.floor(SCREEN_HALF / pxPer10cm);
+    for (let i = -maxSteps; i <= maxSteps; i++) {
+        if (i === 0) continue;
+        const offsetPx = i * pxPer10cm;
+        // skip ticks inside the hole
+        if (Math.abs(offsetPx) < HOLE_HALF + 1) continue;
         const pos = vadd(SRC, vsc(SCREEN_DIR, offsetPx));
+        const absCm = Math.abs(i) * 10; // in cm
 
-        const absMm = Math.abs(i) * mmPerTick;
         let tickLen;
-        if (absMm % 10 === 0) tickLen = 6 * S;
-        else if (absMm % 5 === 0) tickLen = 4.5 * S;
-        else tickLen = 2.5 * S;
+        if (absCm % 100 === 0) tickLen = 7 * S;       // every 1 m
+        else if (absCm % 50 === 0) tickLen = 5 * S;    // every 50 cm
+        else tickLen = 3 * S;                            // every 10 cm
 
-        // Draw tick on the outer side of the screen (away from mirrors)
         const t1 = pos;
         const t2 = vadd(pos, vsc(tickDir, tickLen));
 
         ctx.beginPath();
         ctx.moveTo(t1.x, t1.y);
         ctx.lineTo(t2.x, t2.y);
-        ctx.strokeStyle = (absMm % 5 === 0) ? 'rgba(150,170,190,0.7)' : 'rgba(120,140,160,0.4)';
-        ctx.lineWidth = (absMm % 10 === 0) ? 1.2 : 0.7;
+        ctx.strokeStyle = (absCm % 50 === 0) ? 'rgba(150,170,190,0.75)' : 'rgba(120,140,160,0.45)';
+        ctx.lineWidth = (absCm % 100 === 0) ? 1.2 : 0.7;
         ctx.stroke();
 
-        // Label every 10 mm (1 cm)
-        if (absMm % 10 === 0) {
+        // Label every 50 cm
+        if (absCm % 50 === 0) {
             const labelPos = vadd(pos, vsc(tickDir, tickLen + 6*S));
             ctx.save();
             ctx.translate(labelPos.x, labelPos.y);
@@ -343,12 +335,13 @@ function drawRuler() {
             ctx.fillStyle = 'rgba(150,170,190,0.7)';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'middle';
-            ctx.fillText(absMm / 10, 0, 0);
+            const labelM = absCm / 100;
+            ctx.fillText(Number.isInteger(labelM) ? labelM : labelM.toFixed(1), 0, 0);
             ctx.restore();
         }
     }
 
-    // Label "cm" at the end
+    // "m" unit label near the end of the screen
     const labelEnd = vadd(SRC, vsc(SCREEN_DIR, -SCREEN_HALF - 2*S));
     const labelEndPos = vadd(labelEnd, vsc(tickDir, 10*S));
     ctx.save();
@@ -358,7 +351,7 @@ function drawRuler() {
     ctx.fillStyle = 'rgba(150,170,190,0.55)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText('cm', 0, 0);
+    ctx.fillText('m', 0, 0);
     ctx.restore();
 
     ctx.restore();
