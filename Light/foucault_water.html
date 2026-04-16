@@ -127,8 +127,17 @@ let tubeX = TUBE_LENGTH_PX / 2 + 10;
 let tubeY = H - TUBE_WIDTH_PX / 2 - 20;
 let tubeAngle = 0;
 
-let dragging = null; // null, 'move', or 'rotate'
+let dragging = null; // null, 'move', 'rotate', or 'pan'
 let dragOffX = 0, dragOffY = 0, dragStartAngle = 0, dragMouseAngle = 0;
+
+// ── Zoom / pan state ────────────────────────────────
+let zoom = 1, panX = 0, panY = 0;
+let panStartX = 0, panStartY = 0, panStartPX = 0, panStartPY = 0;
+
+// Convert screen coords to world coords
+function s2w(sx, sy) {
+    return { x: (sx - panX) / zoom, y: (sy - panY) / zoom };
+}
 
 // ── State ────────────────────────────────────────────
 let speedSign = 1, digits = [0, 0, 0];
@@ -391,28 +400,41 @@ function drawScreen() {
 
 function drawRuler() {
     const screenAngle = Math.atan2(SCREEN_DIR.y, SCREEN_DIR.x);
-    const pxPer10cm = 0.1 / M_PER_PX;
     const tickDir = DIR_RS;
     ctx.save();
-    const maxSteps = Math.floor(SCREEN_HALF / pxPer10cm);
+
+    // Choose tick spacing based on zoom level
+    // Always show 10cm ticks; show 1cm ticks when zoomed >= 3x
+    const pxPer1cm = 0.01 / M_PER_PX;
+    const pxPer10cm = 0.1 / M_PER_PX;
+    const showCmTicks = zoom >= 3;
+    const step = showCmTicks ? pxPer1cm : pxPer10cm;
+    const maxSteps = Math.floor(SCREEN_HALF / step);
+
     for (let i = -maxSteps; i <= maxSteps; i++) {
         if (i === 0) continue;
-        const offsetPx = i * pxPer10cm;
+        const offsetPx = i * step;
         if (Math.abs(offsetPx) < HOLE_HALF + 1) continue;
         const pos = vadd(SRC, vsc(SCREEN_DIR, offsetPx));
-        const absCm = Math.abs(i) * 10;
+        const absCm = showCmTicks ? Math.abs(i) : Math.abs(i) * 10;
+
         let tickLen;
         if (absCm % 100 === 0) tickLen = 7 * S;
         else if (absCm % 50 === 0) tickLen = 5 * S;
-        else tickLen = 3 * S;
+        else if (absCm % 10 === 0) tickLen = 3 * S;
+        else tickLen = 1.5 * S;
+
         const t1 = pos;
         const t2 = vadd(pos, vsc(tickDir, tickLen));
         ctx.beginPath();
         ctx.moveTo(t1.x, t1.y);
         ctx.lineTo(t2.x, t2.y);
-        ctx.strokeStyle = (absCm % 50 === 0) ? 'rgba(150,170,190,0.75)' : 'rgba(120,140,160,0.45)';
+        if (absCm % 50 === 0) ctx.strokeStyle = 'rgba(150,170,190,0.75)';
+        else if (absCm % 10 === 0) ctx.strokeStyle = 'rgba(120,140,160,0.45)';
+        else ctx.strokeStyle = 'rgba(120,140,160,0.25)';
         ctx.lineWidth = (absCm % 100 === 0) ? 1.2 : 0.7;
         ctx.stroke();
+
         if (absCm % 50 === 0) {
             const labelPos = vadd(pos, vsc(tickDir, tickLen + 6*S));
             ctx.save();
@@ -608,7 +630,11 @@ function update(dt) {
 }
 
 function draw() {
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0, 0, W, H);
+    ctx.translate(panX, panY);
+    ctx.scale(zoom, zoom);
     const angle = getMirrorAngle(simTime);
     drawBeamGuides();
     drawWaterTube();
@@ -620,6 +646,7 @@ function draw() {
     drawPhotons(simTime);
     drawLabels();
     drawScaleBar();
+    ctx.restore();
 }
 
 function loop(now) {
@@ -655,37 +682,60 @@ function nearTubeEdge(px, py) {
 
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
-    if (pointInTube(mx, my)) {
-        if (nearTubeEdge(mx, my)) {
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const w = s2w(sx, sy);
+
+    // Right-click or middle-click: pan
+    if (e.button === 1 || e.button === 2) {
+        dragging = 'pan';
+        panStartX = sx; panStartY = sy;
+        panStartPX = panX; panStartPY = panY;
+        e.preventDefault();
+        return;
+    }
+
+    if (pointInTube(w.x, w.y)) {
+        if (nearTubeEdge(w.x, w.y)) {
             dragging = 'rotate';
             dragStartAngle = tubeAngle;
-            dragMouseAngle = Math.atan2(my - tubeY, mx - tubeX);
+            dragMouseAngle = Math.atan2(w.y - tubeY, w.x - tubeX);
         } else {
             dragging = 'move';
-            dragOffX = tubeX - mx;
-            dragOffY = tubeY - my;
+            dragOffX = tubeX - w.x;
+            dragOffY = tubeY - w.y;
         }
         e.preventDefault();
+    } else {
+        // Left-click on empty space: pan
+        dragging = 'pan';
+        panStartX = sx; panStartY = sy;
+        panStartPX = panX; panStartPY = panY;
     }
 });
 
 canvas.addEventListener('mousemove', (e) => {
     const rect = canvas.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const w = s2w(sx, sy);
+
     if (dragging === 'move') {
-        tubeX = mx + dragOffX;
-        tubeY = my + dragOffY;
+        tubeX = w.x + dragOffX;
+        tubeY = w.y + dragOffY;
     } else if (dragging === 'rotate') {
-        const curAngle = Math.atan2(my - tubeY, mx - tubeX);
+        const curAngle = Math.atan2(w.y - tubeY, w.x - tubeX);
         tubeAngle = dragStartAngle + (curAngle - dragMouseAngle);
+    } else if (dragging === 'pan') {
+        panX = panStartPX + (sx - panStartX);
+        panY = panStartPY + (sy - panStartY);
     }
 
     // Set cursor
-    if (dragging) {
-        canvas.style.cursor = dragging === 'move' ? 'grabbing' : 'grabbing';
-    } else if (pointInTube(mx, my)) {
-        canvas.style.cursor = nearTubeEdge(mx, my) ? 'crosshair' : 'grab';
+    if (dragging === 'pan') {
+        canvas.style.cursor = 'grabbing';
+    } else if (dragging) {
+        canvas.style.cursor = 'grabbing';
+    } else if (pointInTube(w.x, w.y)) {
+        canvas.style.cursor = nearTubeEdge(w.x, w.y) ? 'crosshair' : 'grab';
     } else {
         canvas.style.cursor = 'default';
     }
@@ -693,6 +743,20 @@ canvas.addEventListener('mousemove', (e) => {
 
 canvas.addEventListener('mouseup', () => { dragging = null; });
 canvas.addEventListener('mouseleave', () => { dragging = null; canvas.style.cursor = 'default'; });
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Zoom with scroll wheel, centered on mouse position
+canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const rect = canvas.getBoundingClientRect();
+    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
+    const oldZoom = zoom;
+    const factor = e.deltaY < 0 ? 1.15 : 1/1.15;
+    zoom = Math.max(0.5, Math.min(20, zoom * factor));
+    // Keep the point under the mouse fixed
+    panX = sx - (sx - panX) * (zoom / oldZoom);
+    panY = sy - (sy - panY) * (zoom / oldZoom);
+}, {passive: false});
 
 // ── Controls ─────────────────────────────────────────
 function resetSim() {
