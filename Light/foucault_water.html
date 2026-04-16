@@ -238,10 +238,19 @@ function splitSegForWater(seg) {
 }
 
 // ── Path computation ─────────────────────────────────
-function computePostMirror(spawn, angle0, angleR) {
-    const segs = [];
+function segDur(splitSegs) {
+    let t = 0; for (const s of splitSegs) t += s.dur; return t;
+}
+
+function computePath(spawn) {
     const R = v(MIRROR_X, MIRROR_CY);
 
+    // Leg 1: S → R
+    const leg1Split = splitSegForWater({s: v(SRC.x, SRC.y), e: R, dur: DIAG_DIST / SIM_SPEED});
+    const leg1Dur = segDur(leg1Split);
+
+    // First reflection at R
+    const angle0 = getMirrorAngle(spawn);
     let n0 = mirrorNormal(angle0);
     const inDir = vnorm(vsub(R, SRC));
     if (vdot(inDir, n0) > 0) n0 = vsc(n0, -1);
@@ -250,55 +259,47 @@ function computePostMirror(spawn, angle0, angleR) {
     const dirToM = vnorm(vsub(CONCAVE, R));
     if (vdot(r1, dirToM) < Math.cos(CONCAVE_ACCEPT)) {
         const edge = toEdge(R, r1);
-        segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
-        return segs;
+        const missSplit = splitSegForWater({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
+        return [...leg1Split, ...missSplit];
     }
 
+    // Leg 2: R → M
     const hitM = vadd(R, vsc(r1, DIAG_DIST));
-    segs.push({s: R, e: hitM, dur: DIAG_DIST / SIM_SPEED});
+    const leg2Split = splitSegForWater({s: R, e: hitM, dur: DIAG_DIST / SIM_SPEED});
+    const leg2Dur = segDur(leg2Split);
 
+    // Leg 3: M → R
+    const leg3Split = splitSegForWater({s: hitM, e: R, dur: DIAG_DIST / SIM_SPEED});
+    const leg3Dur = segDur(leg3Split);
+
+    // Second reflection — mirror angle based on actual water-slowed travel time
+    const timeAtReturn = spawn + leg1Dur + leg2Dur + leg3Dur;
+    const angleR = getMirrorAngle(timeAtReturn);
     const returnDir = vsc(r1, -1);
-    segs.push({s: hitM, e: R, dur: DIAG_DIST / SIM_SPEED});
-
     let nR = mirrorNormal(angleR);
     if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
     const r3 = vrefl(returnDir, nR);
 
+    // Leg 4: R → screen or edge
+    let leg4Split;
     const drs = vdot(r3, DIR_RS);
     if (drs > 0.01) {
         const t = DIAG_DIST / drs;
         const hitPt = vadd(R, vsc(r3, t));
         const offset = vdot(vsub(hitPt, SRC), SCREEN_DIR);
-
         if (Math.abs(offset) <= SCREEN_HALF) {
             const throughHole = Math.abs(offset) <= HOLE_HALF;
-            segs.push({s: R, e: hitPt, dur: t / SIM_SPEED,
-                        screen: !throughHole && segs.length >= 2});
+            leg4Split = splitSegForWater({s: R, e: hitPt, dur: t / SIM_SPEED, screen: !throughHole});
         } else {
             const edge = toEdge(R, r3);
-            segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
+            leg4Split = splitSegForWater({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
         }
     } else {
         const edge = toEdge(R, r3);
-        segs.push({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
+        leg4Split = splitSegForWater({s: R, e: edge, dur: vlen(vsub(edge, R)) / SIM_SPEED});
     }
-    return segs;
-}
 
-function computePath(spawn) {
-    const angle0 = getMirrorAngle(spawn);
-    const leg1 = {s: v(SRC.x, SRC.y), e: v(MIRROR_X, MIRROR_CY), dur: DIAG_DIST / SIM_SPEED};
-    const timeAtReturn = spawn + DIAG_DIST / SIM_SPEED * 3;
-    const angleR = getMirrorAngle(timeAtReturn);
-    const rawSegs = [leg1, ...computePostMirror(spawn, angle0, angleR)];
-
-    // Split all segments for water tube
-    const segs = [];
-    for (const seg of rawSegs) {
-        const split = splitSegForWater(seg);
-        for (const s of split) segs.push(s);
-    }
-    return segs;
+    return [...leg1Split, ...leg2Split, ...leg3Split, ...leg4Split];
 }
 
 // ── Photon tracking ──────────────────────────────────
