@@ -333,8 +333,7 @@ function drawLabels() {
 
     ctx.font = `bold ${13*S}px Arial,sans-serif`;
     ctx.fillStyle = '#99aabb';
-    const sOff = vadd(SRC, vsc(DIR_RS, 36*S));
-    ctx.fillText('S', sOff.x, sOff.y + 4.5*S);
+    ctx.fillText('S', lblOff.x, lblOff.y + 4.5*S + 13.5*S);
 
     ctx.font = `bold ${10*S}px Arial,sans-serif`;
     ctx.fillStyle = '#778899';
