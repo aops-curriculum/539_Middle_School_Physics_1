@@ -418,9 +418,9 @@ function drawLabels() {
     const scrLbl = vadd(SRC, vsc(SCREEN_DIR, -SCREEN_HALF - 4.5*S));
     ctx.save();
     ctx.translate(scrLbl.x, scrLbl.y);
-    ctx.rotate(Math.atan2(SCREEN_DIR.y, SCREEN_DIR.x));
-    ctx.textAlign = 'right';
-    ctx.fillText('Screen', 0, -5.4*S);
+    ctx.rotate(Math.atan2(SCREEN_DIR.y, SCREEN_DIR.x) + Math.PI);
+    ctx.textAlign = 'left';
+    ctx.fillText('Screen', 0, 5.4*S);
     ctx.restore();
 }
 
