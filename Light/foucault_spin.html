@@ -532,8 +532,8 @@ speedCtrl.style.top = (MIRROR_CY - FLAT_MIRROR_LEN/2 - 38) + 'px';
 
 // Position aim button
 const aimBtn = document.getElementById('aimBtn');
-aimBtn.style.left = (ctrlLeft + ctrlW + 8) + 'px';
-aimBtn.style.top = (MIRROR_CY - FLAT_MIRROR_LEN/2 - 38) + 'px';
+aimBtn.style.left = (CONCAVE.x + 36*S - 5) + 'px';
+aimBtn.style.top = (CONCAVE.y + 9*S + 8) + 'px';
 
 function updateSpeedDisplay() {
     document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '\u2212';

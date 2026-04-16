@@ -123,9 +123,9 @@ const HOLE_HALF = 5.4 * S;
 const TUBE_LENGTH_PX = 3 / M_PER_PX;
 const TUBE_WIDTH_PX = 1 / M_PER_PX;
 // Place tube initially along the beam path between R and M
-let tubeX = (MIRROR_X + CONCAVE.x) / 2;
-let tubeY = (MIRROR_CY + CONCAVE.y) / 2;
-let tubeAngle = Math.atan2(CONCAVE.y - MIRROR_CY, CONCAVE.x - MIRROR_X);
+let tubeX = TUBE_LENGTH_PX / 2 + 10;
+let tubeY = H - TUBE_WIDTH_PX / 2 - 20;
+let tubeAngle = 0;
 
 let dragging = null; // null, 'move', or 'rotate'
 let dragOffX = 0, dragOffY = 0, dragStartAngle = 0, dragMouseAngle = 0;
@@ -717,8 +717,8 @@ speedCtrl.style.top = (MIRROR_CY - FLAT_MIRROR_LEN/2 - 38) + 'px';
 
 // Position aim button
 const aimBtn = document.getElementById('aimBtn');
-aimBtn.style.left = (ctrlLeft + ctrlW + 8) + 'px';
-aimBtn.style.top = (MIRROR_CY - FLAT_MIRROR_LEN/2 - 38) + 'px';
+aimBtn.style.left = (CONCAVE.x + 36*S - 5) + 'px';
+aimBtn.style.top = (CONCAVE.y + 9*S + 8) + 'px';
 
 function updateSpeedDisplay() {
     document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '\u2212';
