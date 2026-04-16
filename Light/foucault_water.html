@@ -506,6 +506,12 @@ function drawWaterTube() {
         ctx.stroke();
     }
 
+    // "water" label centered in tube
+    ctx.font = `${10 * S}px Arial, sans-serif`;
+    ctx.fillStyle = 'rgba(120, 180, 230, 0.55)';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText('water', 0, 0);
 
     ctx.restore();
 }
