@@ -50,6 +50,17 @@
         background: rgba(42,42,74,0.85); color: #d0d8e0;
     }
     .aim-btn:hover { filter: brightness(1.3); }
+    .zoom-ctrl {
+        position: absolute; right: 7px; bottom: 7px;
+        display: flex; gap: 2px;
+    }
+    .zoom-btn {
+        width: 24px; height: 24px; background: rgba(42,42,74,0.85);
+        border: 1px solid #445; border-radius: 3px; color: #ccc;
+        font-size: 16px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center; padding: 0;
+    }
+    .zoom-btn:hover { background: #4a4a6a; color: #fff; }
 </style>
 </head>
 <body>
@@ -66,6 +77,11 @@
     </div>
     <button class="reset-btn" id="resetBtn">Reset</button>
     <button class="aim-btn" id="aimBtn">Aim</button>
+    <div class="zoom-ctrl">
+        <button class="zoom-btn" id="zoomOut">&minus;</button>
+        <button class="zoom-btn" id="zoomReset" style="font-size:10px;">1:1</button>
+        <button class="zoom-btn" id="zoomIn">+</button>
+    </div>
 </div>
 
 <script>
@@ -807,6 +823,17 @@ aimBtn.addEventListener('click', () => {
     }
     photons = []; screenGlow = 0; screenGlowPos = null; photonAccum = 0;
 });
+
+// Zoom buttons
+function zoomAt(factor, cx, cy) {
+    const oldZoom = zoom;
+    zoom = Math.max(0.5, Math.min(20, zoom * factor));
+    panX = cx - (cx - panX) * (zoom / oldZoom);
+    panY = cy - (cy - panY) * (zoom / oldZoom);
+}
+document.getElementById('zoomIn').addEventListener('click', () => zoomAt(1.4, W/2, H/2));
+document.getElementById('zoomOut').addEventListener('click', () => zoomAt(1/1.4, W/2, H/2));
+document.getElementById('zoomReset').addEventListener('click', () => { zoom = 1; panX = 0; panY = 0; });
 
 updateSpeedDisplay();
 requestAnimationFrame(loop);
