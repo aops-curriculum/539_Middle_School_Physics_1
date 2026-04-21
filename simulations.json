@@ -648,6 +648,13 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Sound/slide_whistle.html",
+      "title": "Slide Whistle",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
