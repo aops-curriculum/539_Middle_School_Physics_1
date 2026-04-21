@@ -641,6 +641,13 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Sound/anechoicwedge.html",
+      "title": "Anechoic Wedge Ray Reflection",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
