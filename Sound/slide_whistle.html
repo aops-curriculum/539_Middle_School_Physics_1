@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=600">
+<title>Slide Whistle</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    width: 600px; height: 600px;
+    overflow: hidden; background: #f5f5f0;
+    font-family: Arial, Helvetica, sans-serif;
+  }
+  canvas { display: block; }
+</style>
+</head>
+<body>
+<canvas id="sim" width="600" height="600"></canvas>
+<script>
+var canvas = document.getElementById('sim');
+var ctx    = canvas.getContext('2d');
+
+var V_SOUND = 343;
+var L_MIN   = 0.01;
+var L_MAX   = 0.24;
+var F_MIN   = V_SOUND / (4 * L_MAX);
+var F_MAX   = V_SOUND / (4 * L_MIN);
+
+var ANGLE = 28 * Math.PI / 180;
+var COS_A = Math.cos(ANGLE);
+var SIN_A = Math.sin(ANGLE);
+var CX = 190, CY = 225;
+
+var TUBE_HALF = 138;
+var TUBE_H    = 30;
+var TUBE_HH   = TUBE_H / 2;
+
+var PX_MIN    = -TUBE_HALF + 12;
+var PX_MAX    = TUBE_HALF  - 14;
+var PLG_W     = 8;
+var ROD_TOTAL = 280;
+
+var GX1 = 355, GX2 = 578;
+var GY1 = 22,  GY2 = 188;
+
+var plgX     = 10;
+var dragging = false;
+var dragOffX = 0;
+
+function pipeLen(plx) {
+  var t = (plx - PX_MIN) / (PX_MAX - PX_MIN);
+  return L_MIN + t * (L_MAX - L_MIN);
+}
+function calcFreq(L) { return V_SOUND / (4 * L); }
+
+function w2l(wx, wy) {
+  var dx = wx - CX, dy = wy - CY;
+  return { x: dx * COS_A + dy * SIN_A,
+           y: -dx * SIN_A + dy * COS_A };
+}
+
+function rrect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y, x + w, y + r, r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x, y + h, x, y + h - r, r);
+  ctx.lineTo(x, y + r);
+  ctx.arcTo(x, y, x + r, y, r);
+  ctx.closePath();
+}
+
+function draw() {
+  ctx.clearRect(0, 0, 600, 600);
+  var L = pipeLen(plgX);
+  var f = calcFreq(L);
+
+  ctx.save();
+  ctx.translate(CX, CY);
+  ctx.rotate(ANGLE);
+  drawWhistle(L);
+  ctx.restore();
+
+  drawGraph(f);
+  drawReadout(f);
+}
+
+function drawWhistle(L) {
+  var tl = -TUBE_HALF;
+  var tr =  TUBE_HALF;
+
+  var rodExitX = tr + 6;
+  var rodEndX  = plgX + PLG_W + ROD_TOTAL;
+
+  // ============ 1. ROD + BENT HANDLE ============
+
+  if (rodEndX > rodExitX) {
+
+    // -- Piece 1: Straight rod out of the tube --
+    ctx.strokeStyle = '#b0b0b0';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(rodExitX, 0);
+    ctx.lineTo(rodEndX, 0);
+    ctx.stroke();
+
+    // -- Piece 2: Straight section angling back and down --
+    var hx = rodEndX;
+    var backLen = 80;
+    var backAngle = 120 * Math.PI / 180;  
+    var backEndX = hx + backLen * Math.cos(backAngle);
+    var backEndY = hx > rodExitX ? backLen * Math.sin(backAngle) : 0;
+    // backEndX will be to the LEFT of hx (going back toward tube)
+    // backEndY will be positive (downward in canvas coords)
+
+    ctx.strokeStyle = '#b0b0b0';
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(hx, 0);
+    ctx.lineTo(backEndX, backEndY);
+    ctx.stroke();
+
+    // -- Piece 3: Open loop (not quite closed) --
+    var bx = backEndX;
+    var by = backEndY;
+
+    ctx.strokeStyle = '#a8a8a8';
+    ctx.lineWidth = 2.5;
+    ctx.lineCap  = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(bx, by);
+    // Curves around in a loop, ending near but not at the start
+    ctx.bezierCurveTo(bx + 14, by - 2, bx + 22, by + 10, bx + 16, by + 24);
+    ctx.bezierCurveTo(bx + 10, by + 38, bx - 8, by + 40, bx - 16, by + 30);
+    ctx.quadraticCurveTo(bx - 22, by + 22, bx - 20, by + 14);
+    ctx.stroke();
+
+    // Small dot at the loop tip
+    ctx.fillStyle = '#a8a8a8';
+    ctx.beginPath();
+    ctx.arc(bx - 20, by + 14, 2.2, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Joint circle at the bend point
+    ctx.fillStyle = '#e0e0e0';
+    ctx.beginPath();
+    ctx.arc(hx, 0, 3.5, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.strokeStyle = '#bbb';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  // ============ 2. BLUE TUBE ============
+
+  var grad = ctx.createLinearGradient(0, -TUBE_HH, 0, TUBE_HH);
+  grad.addColorStop(0,    '#4a7ec0');
+  grad.addColorStop(0.25, '#3366b0');
+  grad.addColorStop(0.55, '#2c5aa0');
+  grad.addColorStop(1,    '#1a3a70');
+
+  rrect(tl, -TUBE_HH, TUBE_HALF * 2, TUBE_H, 3);
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.10)';
+  ctx.fillRect(tl + 6, -TUBE_HH + 1, TUBE_HALF * 2 - 12, 4);
+
+  // ============ 3. WHITE END CAP ============
+
+  var capW = 12;
+  ctx.fillStyle = '#e8e8e8';
+  rrect(tr - 1, -TUBE_HH - 2, capW, TUBE_H + 4, 2);
+  ctx.fill();
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1;
+  ctx.stroke();
+
+  ctx.fillStyle = '#999';
+  ctx.beginPath();
+  ctx.arc(tr + 5, 0, 2.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  // ============ 4. POINTED MOUTHPIECE ============
+
+  var mpW  = 42;
+  var mpEx = 3;
+
+  ctx.fillStyle = '#ebebeb';
+  ctx.beginPath();
+  ctx.moveTo(tl, -TUBE_HH - mpEx);
+  ctx.lineTo(tl - mpW * 0.55, -TUBE_HH * 0.55);
+  ctx.lineTo(tl - mpW, -4);
+  ctx.quadraticCurveTo(tl - mpW - 3, 0, tl - mpW, 4);
+  ctx.lineTo(tl - mpW * 0.55,  TUBE_HH * 0.55);
+  ctx.lineTo(tl,                TUBE_HH + mpEx);
+  ctx.closePath();
+  ctx.fill();
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  ctx.fillStyle = 'rgba(255,255,255,0.18)';
+  ctx.beginPath();
+  ctx.moveTo(tl, -TUBE_HH - mpEx);
+  ctx.lineTo(tl - mpW * 0.55, -TUBE_HH * 0.55);
+  ctx.lineTo(tl - mpW, -4);
+  ctx.lineTo(tl - mpW * 0.55, -TUBE_HH * 0.35);
+  ctx.lineTo(tl, -TUBE_HH - mpEx + 5);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#333';
+  rrect(tl - mpW * 0.65, -TUBE_HH * 0.48 - 3, 12, 6, 1);
+  ctx.fill();
+
+  ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(tl, -TUBE_HH - mpEx);
+  ctx.lineTo(tl,  TUBE_HH + mpEx);
+  ctx.stroke();
+
+  // ============ 5. DIMENSION LINE + LENGTH LABEL ============
+
+  var dimY = TUBE_HH + 20;
+  var arr  = 5;
+  var mX   = tl;
+  var pX   = plgX;
+
+  ctx.strokeStyle = '#999';
+  ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(mX, dimY - 5); ctx.lineTo(mX, dimY + 5); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(pX, dimY - 5); ctx.lineTo(pX, dimY + 5); ctx.stroke();
+  if (pX - mX > 2 * arr + 6) {
+    ctx.beginPath();
+    ctx.moveTo(mX + arr, dimY);
+    ctx.lineTo(pX - arr, dimY);
+    ctx.stroke();
+  }
+  ctx.fillStyle = '#999';
+  ctx.beginPath();
+  ctx.moveTo(mX, dimY); ctx.lineTo(mX + arr, dimY - arr / 2); ctx.lineTo(mX + arr, dimY + arr / 2);
+  ctx.closePath(); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(pX, dimY); ctx.lineTo(pX - arr, dimY - arr / 2); ctx.lineTo(pX - arr, dimY + arr / 2);
+  ctx.closePath(); ctx.fill();
+
+  // Length label — BELOW the arrow, larger font
+  var Lcm = (L * 100).toFixed(1);
+  ctx.fillStyle = '#555';
+  ctx.font = 'bold 15px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('L = ' + Lcm + ' cm', (mX + pX) / 2, dimY + 18);
+}
+
+// ---------- Sine-wave graph ----------
+function drawGraph(freq) {
+  var gL = GX1, gR = GX2, gT = GY1, gB = GY2;
+  var gW = gR - gL;
+  var gH = gB - gT;
+  var midY = gT + gH / 2;
+
+  ctx.fillStyle = '#fff';
+  rrect(gL, gT, gW, gH, 4);
+  ctx.fill();
+
+  ctx.strokeStyle = '#ddd';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(gL + 1, midY);
+  ctx.lineTo(gR - 1, midY);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#aaa';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(gL, gT);
+  ctx.lineTo(gL, gB);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(gL, midY);
+  ctx.lineTo(gR, midY);
+  ctx.stroke();
+
+  ctx.fillStyle = '#888';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Time', (gL + gR) / 2, gB + 15);
+
+  ctx.save();
+  ctx.translate(gL - 14, midY);
+  ctx.rotate(-Math.PI / 2);
+  ctx.fillText('Displacement', 0, 0);
+  ctx.restore();
+
+  var CYCLES_LO = 3;
+  var CYCLES_HI = 12;
+  var logRatio = Math.log(freq / F_MIN) / Math.log(F_MAX / F_MIN);
+  var numCycles = CYCLES_LO + (CYCLES_HI - CYCLES_LO) * logRatio;
+  var totalTime = numCycles / freq;
+
+  var amplitude = gH * 0.38;
+  var plotW     = gW - 2;
+
+  ctx.strokeStyle = '#2060c0';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (var px = 0; px <= plotW; px++) {
+    var t = (px / plotW) * totalTime;
+    var y = midY - amplitude * Math.sin(2 * Math.PI * freq * t);
+    if (px === 0) ctx.moveTo(gL + 1, y);
+    else          ctx.lineTo(gL + 1 + px, y);
+  }
+  ctx.stroke();
+
+  ctx.strokeStyle = '#ccc';
+  ctx.lineWidth = 1;
+  rrect(gL, gT, gW, gH, 4);
+  ctx.stroke();
+}
+
+// ---------- Frequency readout — just the number, large ----------
+function drawReadout(f) {
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 26px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText((f / 1000).toFixed(2) + ' kHz', 300, 480);
+}
+
+// ============================================================
+//  INTERACTION
+// ============================================================
+
+function getPos(e) {
+  var r = canvas.getBoundingClientRect();
+  return {
+    x: (e.clientX - r.left) * 600 / r.width,
+    y: (e.clientY - r.top)  * 600 / r.height
+  };
+}
+
+function hitTest(lx, ly) {
+  var rodEndX = plgX + PLG_W + ROD_TOTAL;
+  var loopTip = rodEndX + 30;
+  if (lx < 0) return false;              // grab from center of tube onward
+  if (lx > loopTip + 6) return false;
+  if (ly < -20 || ly > 80) return false; // taller zone for downward loop
+  return true;
+}
+
+canvas.addEventListener('mousedown', function(e) {
+  var p = getPos(e), lp = w2l(p.x, p.y);
+  if (hitTest(lp.x, lp.y)) {
+    dragging = true;
+    dragOffX = lp.x - plgX;
+    canvas.style.cursor = 'grabbing';
+  }
+});
+canvas.addEventListener('mousemove', function(e) {
+  var p = getPos(e), lp = w2l(p.x, p.y);
+  if (dragging) {
+    plgX = Math.max(PX_MIN, Math.min(PX_MAX, lp.x - dragOffX));
+    draw();
+  } else {
+    canvas.style.cursor = hitTest(lp.x, lp.y) ? 'grab' : 'default';
+  }
+});
+canvas.addEventListener('mouseup',    function() { dragging = false; });
+canvas.addEventListener('mouseleave', function() { dragging = false; });
+
+canvas.addEventListener('touchstart', function(e) {
+  e.preventDefault();
+  var p = getPos(e.touches[0]), lp = w2l(p.x, p.y);
+  if (hitTest(lp.x, lp.y)) { dragging = true; dragOffX = lp.x - plgX; }
+}, { passive: false });
+canvas.addEventListener('touchmove', function(e) {
+  e.preventDefault();
+  if (!dragging) return;
+  var p = getPos(e.touches[0]), lp = w2l(p.x, p.y);
+  plgX = Math.max(PX_MIN, Math.min(PX_MAX, lp.x - dragOffX));
+  draw();
+}, { passive: false });
+canvas.addEventListener('touchend', function() { dragging = false; });
+
+draw();
+</script>
+</body>
+</html>
