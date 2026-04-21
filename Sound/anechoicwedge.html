@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Anechoic Wedge Ray Reflection</title>
+<style>
+  body { margin: 0; padding: 0; font-family: sans-serif; background: #fafafa; }
+  .container { padding: 8px; }
+  .instructions { font-size: 13px; color: #444; margin-bottom: 6px; }
+  canvas { background: white; border: 1px solid #888; display: block; }
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="instructions">
+    Drag the filled red circle (source) and the red ring (aim point) to set the incoming ray.
+  </div>
+  <canvas id="sim" width="600" height="500"></canvas>
+</div>
+<script>
+(function () {
+  // ---------- Canvas setup ----------
+  const canvas = document.getElementById('sim');
+  const ctx = canvas.getContext('2d');
+  const W = 600, H = 500;
+
+  // ---------- Wedge geometry ----------
+  // Original Asymptote ratio: wedge depth / base width = 3.5 / 1.5 ≈ 2.33.
+  // Rotated so wedges point UP, flat bases along the bottom.
+  const NUM_WEDGES = 6;
+  const WEDGE_BASE = W / NUM_WEDGES;              // 100 px wide at base
+  const WEDGE_HEIGHT = WEDGE_BASE * (3.5 / 1.5);  // ≈ 233.33 px tall
+  const BASE_Y = H;                                // bases at y = 500
+  const APEX_Y = H - WEDGE_HEIGHT;                 // apexes at y ≈ 266.67
+
+  // Base points (bottom seams) and apex points (pointy tops).
+  const basePoints = [];
+  for (let i = 0; i <= NUM_WEDGES; i++) {
+    basePoints.push({ x: i * WEDGE_BASE, y: BASE_Y });
+  }
+  const apexes = [];
+  for (let i = 0; i < NUM_WEDGES; i++) {
+    apexes.push({ x: (i + 0.5) * WEDGE_BASE, y: APEX_Y });
+  }
+
+  // Each wedge contributes two edges (left slope + right slope).
+  // Total: 2 * NUM_WEDGES = 12 edges we can bounce off.
+  const edges = [];
+  for (let i = 0; i < NUM_WEDGES; i++) {
+    edges.push({ A: basePoints[i],   B: apexes[i]         });  // left slope
+    edges.push({ A: apexes[i],       B: basePoints[i + 1] });  // right slope
+  }
+
+  // ---------- Source band (where the source handle may live) ----------
+  const BAND_MIN_Y = 20, BAND_MAX_Y = 80;
+  const BAND_MIN_X = 20, BAND_MAX_X = W - 20;
+
+  // ---------- Physics parameters ----------
+  const N_REFLECTIONS = 10;  // fixed number of bounces
+
+  // ---------- State ----------
+  let source = { x: 150, y: 40 };
+  let aim    = { x: 320, y: 260 };
+  let dragging = null;  // 'source', 'aim', or null
+
+  // ---------- Geometry helpers ----------
+
+  // Ray-segment intersection.
+  // Ray:     P(t) = pos + t * dir, t > 0
+  // Segment: Q(s) = A + s * (B - A), s ∈ [0, 1]
+  // Returns { t, s, point } on success, or null.
+  function raySegment(pos, dir, A, B) {
+    const sx = B.x - A.x;
+    const sy = B.y - A.y;
+    const det = sx * dir.y - dir.x * sy;
+    if (Math.abs(det) < 1e-10) return null;  // ray parallel to segment
+    const apx = A.x - pos.x;
+    const apy = A.y - pos.y;
+    const t = (sx * apy - sy * apx) / det;
+    const s = (dir.x * apy - dir.y * apx) / det;
+    if (t < 1e-6) return null;                 // only forward along ray
+    if (s < -1e-9 || s > 1 + 1e-9) return null;  // inside segment
+    return { t: t, s: s, point: { x: pos.x + t * dir.x, y: pos.y + t * dir.y } };
+  }
+
+  // Reflect a direction vector across an edge's tangent line.
+  // Keeps the component along the edge, flips the component perpendicular to it.
+  function reflectDir(dir, A, B) {
+    let ex = B.x - A.x;
+    let ey = B.y - A.y;
+    const len = Math.hypot(ex, ey);
+    ex /= len; ey /= len;
+    const dot = dir.x * ex + dir.y * ey;
+    return { x: 2 * dot * ex - dir.x, y: 2 * dot * ey - dir.y };
+  }
+
+  // Extend a ray from pos in direction dir until it exits the canvas.
+  // Returns the parameter t of the exit point.
+  function extendToBoundary(pos, dir) {
+    const ts = [];
+    if (dir.x >  1e-12) ts.push((W - pos.x) / dir.x);
+    if (dir.x < -1e-12) ts.push((0 - pos.x) / dir.x);
+    if (dir.y >  1e-12) ts.push((H - pos.y) / dir.y);
+    if (dir.y < -1e-12) ts.push((0 - pos.y) / dir.y);
+    let tMin = Infinity;
+    for (const t of ts) if (t > 0 && t < tMin) tMin = t;
+    return tMin === Infinity ? 100 : tMin;
+  }
+
+  // Trace the ray path: returns an array of points (source, bounce1, bounce2, ...).
+  function traceRay() {
+    const pts = [{ x: source.x, y: source.y }];
+    const dx = aim.x - source.x;
+    const dy = aim.y - source.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 1e-6) return pts;  // degenerate: aim coincides with source
+    let dir = { x: dx / len, y: dy / len };
+    let pos = { x: source.x, y: source.y };
+    let lastIdx = -1;  // index of last edge hit, to skip re-hits at t ≈ 0
+
+    for (let k = 0; k <= N_REFLECTIONS; k++) {
+      // Find the nearest edge (excluding the one we just bounced off).
+      let best = null;
+      let bestIdx = -1;
+      for (let i = 0; i < edges.length; i++) {
+        if (i === lastIdx) continue;
+        const hit = raySegment(pos, dir, edges[i].A, edges[i].B);
+        if (hit && (best === null || hit.t < best.t)) {
+          best = hit;
+          bestIdx = i;
+        }
+      }
+      if (best === null) {
+        // No edge hit -> ray escapes; draw one last segment to the canvas edge.
+        const tEnd = extendToBoundary(pos, dir);
+        pts.push({ x: pos.x + tEnd * dir.x, y: pos.y + tEnd * dir.y });
+        break;
+      }
+      pts.push(best.point);
+      if (k === N_REFLECTIONS) break;  // hit the bounce budget; stop here
+      pos = best.point;
+      dir = reflectDir(dir, edges[bestIdx].A, edges[bestIdx].B);
+      lastIdx = bestIdx;
+    }
+    return pts;
+  }
+
+  // ---------- Drawing ----------
+  function drawWedges() {
+    ctx.beginPath();
+    ctx.moveTo(basePoints[0].x, basePoints[0].y);
+    for (let i = 0; i < NUM_WEDGES; i++) {
+      ctx.lineTo(apexes[i].x, apexes[i].y);
+      ctx.lineTo(basePoints[i + 1].x, basePoints[i + 1].y);
+    }
+    ctx.closePath();
+    ctx.fillStyle = '#d8d8d8';
+    ctx.fill();
+    ctx.strokeStyle = '#555';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+
+  function drawBand() {
+    ctx.fillStyle = 'rgba(60, 120, 180, 0.06)';
+    ctx.fillRect(BAND_MIN_X, BAND_MIN_Y,
+                 BAND_MAX_X - BAND_MIN_X, BAND_MAX_Y - BAND_MIN_Y);
+    ctx.strokeStyle = 'rgba(60, 120, 180, 0.4)';
+    ctx.setLineDash([4, 4]);
+    ctx.lineWidth = 1;
+    ctx.strokeRect(BAND_MIN_X, BAND_MIN_Y,
+                   BAND_MAX_X - BAND_MIN_X, BAND_MAX_Y - BAND_MIN_Y);
+    ctx.setLineDash([]);
+  }
+
+  function drawRay() {
+  const pts = traceRay();
+  if (pts.length < 2) return;
+  ctx.lineWidth = 1.8;
+  ctx.lineCap = 'round';
+  let alpha = 1.0;
+  for (let i = 0; i < pts.length - 1; i++) {
+    ctx.strokeStyle = `rgba(21, 101, 192, ${alpha})`;
+    ctx.beginPath();
+    ctx.moveTo(pts[i].x, pts[i].y);
+    ctx.lineTo(pts[i + 1].x, pts[i + 1].y);
+    ctx.stroke();
+    alpha *= 0.5;
+  }
+  drawArrowOnSegment(pts[0], pts[1]);
+}
+
+  function drawArrowOnSegment(from, to) {
+    const dx = to.x - from.x;
+    const dy = to.y - from.y;
+    const len = Math.hypot(dx, dy);
+    if (len < 20) return;  // too short for a legible arrowhead
+    const ux = dx / len, uy = dy / len;
+    const tArrow = 0.55;
+    const ax = from.x + tArrow * dx;
+    const ay = from.y + tArrow * dy;
+    const headLen = 12, headWid = 7;
+    ctx.fillStyle = '#1565c0';
+    ctx.beginPath();
+    ctx.moveTo(ax, ay);
+    ctx.lineTo(ax - headLen * ux + headWid * uy,
+               ay - headLen * uy - headWid * ux);
+    ctx.lineTo(ax - headLen * ux - headWid * uy,
+               ay - headLen * uy + headWid * ux);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawHandles() {
+    // Source: solid red filled circle.
+    ctx.fillStyle = '#d32f2f';
+    ctx.strokeStyle = '#7a0000';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(source.x, source.y, 8, 0, 2 * Math.PI);
+    ctx.fill(); ctx.stroke();
+
+    // Aim: red ring (white fill, red outline).
+    ctx.fillStyle = 'white';
+    ctx.strokeStyle = '#d32f2f';
+    ctx.lineWidth = 2.5;
+    ctx.beginPath();
+    ctx.arc(aim.x, aim.y, 8, 0, 2 * Math.PI);
+    ctx.fill(); ctx.stroke();
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    drawWedges();
+    drawBand();
+    drawRay();
+    drawHandles();
+  }
+
+  // ---------- Interaction ----------
+  function canvasPos(e) {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width  / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };
+  }
+
+  function startDrag(e) {
+    const p = canvasPos(e);
+    if (Math.hypot(p.x - source.x, p.y - source.y) < 14) dragging = 'source';
+    else if (Math.hypot(p.x - aim.x, p.y - aim.y) < 14)  dragging = 'aim';
+    if (dragging) e.preventDefault();
+  }
+
+  function moveDrag(e) {
+    if (!dragging) return;
+    e.preventDefault();
+    const p = canvasPos(e);
+    if (dragging === 'source') {
+      source.x = Math.max(BAND_MIN_X, Math.min(BAND_MAX_X, p.x));
+      source.y = Math.max(BAND_MIN_Y, Math.min(BAND_MAX_Y, p.y));
+    } else {
+      aim.x = Math.max(5, Math.min(W - 5, p.x));
+      aim.y = Math.max(5, Math.min(H - 5, p.y));
+    }
+    draw();
+  }
+
+  function endDrag() { dragging = null; }
+
+  canvas.addEventListener('mousedown', startDrag);
+  window.addEventListener('mousemove', moveDrag);
+  window.addEventListener('mouseup',   endDrag);
+
+  canvas.addEventListener('touchstart', startDrag, { passive: false });
+  window.addEventListener('touchmove',  moveDrag,  { passive: false });
+  window.addEventListener('touchend',   endDrag);
+
+  draw();
+})();
+</script>
+</body>
+</html>
