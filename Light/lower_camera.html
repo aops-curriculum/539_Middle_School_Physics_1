@@ -28,34 +28,29 @@ const ctx = canvas.getContext('2d');
 const W = 600, H = 450;
 
 // Scene geometry
-// Table - now small strip near bottom
 const tableY = 410;
-// Coffee cup (center, on table) - scaled to 70%
 const cupCenterX = 230;
 const cupBottomY = tableY;
 const cupHalfWidthTop = 80 * 0.7;   // 56
 const cupHalfWidthBottom = 70 * 0.7; // 49
-const cupHeight = (tableY - 230) * 0.7; // original 180 -> 126
+const cupHeight = (tableY - 230) * 0.7; // 126
 const cupTopY = cupBottomY - cupHeight; // 284
-// Penny at bottom center of cup
-const penny = { x: cupCenterX, y: cupBottomY - 6, r: 8 };
+// Penny at bottom center of cup - moved down a little
+const penny = { x: cupCenterX, y: cupBottomY - 2, r: 8 };
 
-// Camera - on dotted vertical line
+// Camera
 const camLineX = 430;
-let camY = 160; // draggable
+let camY = 160;
 const camMinY = 50;
 const camMaxY = 340;
 const camW = 60;
 const camH = 40;
 
-// Rays - list of {x1,y1,x2,y2}
 const rays = [];
 
-// On-canvas buttons
 const addBtn = { x: 10, y: 10, w: 100, h: 28, label: 'Add Ray' };
 const clearBtn = { x: 120, y: 10, w: 100, h: 28, label: 'Clear Rays' };
 
-// Dragging state
 let dragging = null;
 
 const HANDLE_R = 8;
@@ -85,7 +80,6 @@ function inRect(p, r) {
 }
 
 function hitTest(p) {
-  // Check ray endpoints first
   for (let i = rays.length - 1; i >= 0; i--) {
     const r = rays[i];
     if (dist(p.x, p.y, r.x1, r.y1) < HANDLE_R + 4) {
@@ -95,7 +89,6 @@ function hitTest(p) {
       return { type: 'ray', index: i, end: 2 };
     }
   }
-  // Check camera body
   if (p.x > camLineX - camW/2 - 4 && p.x < camLineX + camW/2 + 4 &&
       p.y > camY - camH/2 - 4 && p.y < camY + camH/2 + 4) {
     return { type: 'camera' };
@@ -104,7 +97,6 @@ function hitTest(p) {
 }
 
 function addRay() {
-  // Add a horizontal ray at a reasonable location
   const cy = 120 + rays.length * 15;
   const cx = 200;
   rays.push({
@@ -120,7 +112,6 @@ function onDown(e) {
   e.preventDefault();
   const p = getPos(e);
 
-  // Check buttons first
   if (inRect(p, addBtn)) {
     addRay();
     return;
@@ -204,7 +195,6 @@ function drawButton(b) {
   ctx.fillStyle = 'rgba(76, 175, 80, 0.9)';
   ctx.strokeStyle = 'rgba(0,0,0,0.2)';
   ctx.lineWidth = 1;
-  // shadow
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.25)';
   ctx.shadowBlur = 4;
@@ -212,7 +202,6 @@ function drawButton(b) {
   roundRect(b.x, b.y, b.w, b.h, 4);
   ctx.fill();
   ctx.restore();
-  // label
   ctx.fillStyle = '#fff';
   ctx.font = 'bold 12px Arial';
   ctx.textAlign = 'center';
@@ -241,7 +230,7 @@ function drawCoffeeCup() {
   const botL = cupCenterX - cupHalfWidthBottom;
   const botR = cupCenterX + cupHalfWidthBottom;
 
-  // Fill the cup interior with white so the table doesn't show through
+  // Fill the cup interior (body above table) with white
   ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.moveTo(topL, cupTopY);
@@ -249,6 +238,14 @@ function drawCoffeeCup() {
   ctx.lineTo(botR, cupBottomY);
   ctx.lineTo(topR, cupTopY);
   ctx.closePath();
+  ctx.fill();
+
+  // Fill the bottom ellipse of the cup (the part that dips below tableY) with white
+  // to cover the brown table showing through. Drawn above the table but beneath
+  // the penny and the cup outlines.
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7, 0, 0, Math.PI * 2);
   ctx.fill();
 
   // Cup sides
@@ -261,21 +258,21 @@ function drawCoffeeCup() {
   ctx.lineTo(botR, cupBottomY);
   ctx.stroke();
 
-  // Top rim ellipse (opening of the cup)
+  // Top rim ellipse
   ctx.strokeStyle = '#222';
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.ellipse(cupCenterX, cupTopY, cupHalfWidthTop, 10 * 0.7, 0, 0, Math.PI * 2);
   ctx.stroke();
 
-  // Cup bottom (front curve - solid)
+  // Cup bottom front curve
   ctx.strokeStyle = '#222';
   ctx.lineWidth = 2.5;
   ctx.beginPath();
   ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7, 0, 0, Math.PI);
   ctx.stroke();
 
-  // Back of bottom (dotted mirror of front curve)
+  // Back of bottom (dotted)
   ctx.strokeStyle = '#222';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([4, 4]);
@@ -284,14 +281,25 @@ function drawCoffeeCup() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Handle
+  // Handle - connects to the right side of the cup
+  // Attach at two points on the right cup side
+  const handleTopX = topR - 2;
+  const handleTopY = cupTopY + 18;
+  const handleBotX = topR + (botR - topR) * 0.55;
+  const handleBotY = cupTopY + (cupBottomY - cupTopY) * 0.55;
   ctx.strokeStyle = '#222';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.ellipse(topR + 2, cupTopY + 35, 14, 22, 0, -Math.PI / 2, Math.PI / 2);
+  // Curve outward from top attachment, around, back to bottom attachment
+  const ctrl1X = handleTopX + 38;
+  const ctrl1Y = handleTopY + 2;
+  const ctrl2X = handleBotX + 38;
+  const ctrl2Y = handleBotY - 2;
+  ctx.moveTo(handleTopX, handleTopY);
+  ctx.bezierCurveTo(ctrl1X, ctrl1Y, ctrl2X, ctrl2Y, handleBotX, handleBotY);
   ctx.stroke();
 
-  // Penny
+  // Penny (drawn on top of white fill, so brown table is hidden beneath)
   ctx.fillStyle = '#b87333';
   ctx.strokeStyle = '#7a4a1a';
   ctx.lineWidth = 1.5;
@@ -299,29 +307,9 @@ function drawCoffeeCup() {
   ctx.ellipse(penny.x, penny.y, penny.r, penny.r * 0.35, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
-
-  // Label "penny" to the right of the penny, outside the cup
-  ctx.fillStyle = '#333';
-  ctx.font = 'bold 13px Arial';
-  ctx.textAlign = 'left';
-  ctx.textBaseline = 'middle';
-  const labelX = cupCenterX + cupHalfWidthBottom + 14;
-  const labelY = cupBottomY - 2;
-  // small leader line from penny to label
-  ctx.strokeStyle = '#333';
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(penny.x + penny.r, penny.y);
-  ctx.lineTo(labelX - 3, labelY);
-  ctx.stroke();
-  ctx.fillText('penny', labelX, labelY);
-  ctx.textBaseline = 'alphabetic';
-  ctx.textAlign = 'center';
 }
 
 function drawTable() {
-  // Draw only behind cup area vertically, but full width of canvas
-  // Table takes up less vertical space at the bottom now
   ctx.fillStyle = '#c19a6b';
   ctx.fillRect(0, tableY, W, 6);
   ctx.strokeStyle = '#222';
@@ -335,7 +323,6 @@ function drawTable() {
 }
 
 function drawCamera() {
-  // Dotted vertical line
   ctx.strokeStyle = '#888';
   ctx.lineWidth = 1.5;
   ctx.setLineDash([5, 5]);
@@ -387,11 +374,6 @@ function drawCamera() {
   ctx.fill();
 
   ctx.restore();
-
-  ctx.fillStyle = '#333';
-  ctx.font = 'bold 13px Arial';
-  ctx.textAlign = 'center';
-  ctx.fillText('camera', camLineX, camY - 40);
 }
 
 function drawRays() {
@@ -411,7 +393,6 @@ function draw() {
   drawCamera();
   drawRays();
 
-  // Buttons drawn last so they're on top
   drawButton(addBtn);
   drawButton(clearBtn);
 }
