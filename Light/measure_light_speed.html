@@ -30,6 +30,7 @@ button:disabled{background:rgba(100,100,100,0.5);cursor:not-allowed}
 <div class="controls">
   <button id="bPulse" disabled>Send Pulse</button>
   <button id="bLamp" disabled>Lamp On</button>
+  <button id="bPause">Pause</button>
   <button id="bReset">Reset All</button>
 </div>
 <script>
@@ -105,6 +106,9 @@ const EMIT_INTERVAL = 0.25; // seconds between continuous photons
 // Octagonal mirror rotation
 let octAngle = 0;
 let octSpeed = 0.8; // radians per second
+
+// Pause state
+let paused = false;
 
 // lastFrame removed - using setInterval tick loop instead
 
@@ -977,6 +981,12 @@ bLamp.addEventListener('click', () => {
     updateButtons();
 });
 
+const bPause = document.getElementById('bPause');
+bPause.addEventListener('click', () => {
+    paused = !paused;
+    bPause.textContent = paused ? 'Resume' : 'Pause';
+});
+
 bReset.addEventListener('click', () => {
     placed = [];
     photons = [];
@@ -1021,20 +1031,22 @@ function tick() {
     lastTick = now;
     if (dt <= 0) return;
 
-    // Update octagonal mirror rotation
-    octAngle += octSpeed * dt;
+    if (!paused) {
+        // Update octagonal mirror rotation
+        octAngle += octSpeed * dt;
 
-    // Continuous emission
-    if (lampContinuous && hasLamp()) {
-        lampEmitAccum += dt;
-        if (lampEmitAccum >= EMIT_INTERVAL) {
-            lampEmitAccum -= EMIT_INTERVAL;
-            emitPhotonSingle();
+        // Continuous emission
+        if (lampContinuous && hasLamp()) {
+            lampEmitAccum += dt;
+            if (lampEmitAccum >= EMIT_INTERVAL) {
+                lampEmitAccum -= EMIT_INTERVAL;
+                emitPhotonSingle();
+            }
         }
-    }
 
-    // Update photons
-    updatePhotons(dt);
+        // Update photons
+        updatePhotons(dt);
+    }
 
     // Draw
     ctx.setTransform(DPR, 0, 0, DPR, 0, 0);

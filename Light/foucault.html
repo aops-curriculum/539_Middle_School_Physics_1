@@ -182,6 +182,7 @@
         <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
         <span class="unit-label">&times;10<sup>5</sup> rev/s</span>
     </div>
+    <button class="reset-btn" id="pauseBtn" style="right:65px;">Pause</button>
     <button class="reset-btn" id="resetBtn">Reset</button>
     <button class="aim-btn" id="aimTop">Aim</button>
     <button class="aim-btn" id="aimBot">Aim</button>
@@ -235,6 +236,7 @@ let mode = 'rotate';
 let discreteAngleDeg = 0, fineAngleDeg = 0;
 let speedSign = 1, digits = [0, 0, 0];
 let photons = [], simTime = 0, photonAccum = 0, prevTS = null;
+let paused = false;
 let screenGlow = 0;
 const SCREEN_GLOW_DUR = 0.2;
 const EYE_LINGER = 0.15;
@@ -653,7 +655,8 @@ function loop() {
     if (prevTS === null) prevTS = now;
     const dt = Math.min((now - prevTS) / 1000, 0.05);
     prevTS = now;
-    update(dt); draw();
+    if (!paused) update(dt);
+    draw();
     setTimeout(loop, 16);
 }
 
@@ -714,6 +717,11 @@ document.querySelectorAll('.digit-col button').forEach(btn => {
         resetSim(); updateSpeedDisplay();
     });
 });
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    paused = !paused;
+    document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+});
+
 document.getElementById('resetBtn').addEventListener('click', () => {
     speedSign=1; digits=[0,0,0];
     discreteAngleDeg=0; fineAngleDeg=0;

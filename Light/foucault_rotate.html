@@ -55,6 +55,7 @@
             <input type="range" id="rotSlider" min="-10" max="10" step="0.5" value="0">
         </div>
     </div>
+    <button class="reset-btn" id="pauseBtn" style="right:62px;">Pause</button>
     <button class="reset-btn" id="resetBtn">Reset</button>
 </div>
 
@@ -110,6 +111,7 @@ const HOLE_HALF = 5.4 * S;
 // ── State ────────────────────────────────────────────
 let discreteAngleDeg = 0, fineAngleDeg = 0;
 let photons = [], simTime = 0, photonAccum = 0, prevTS = null;
+let paused = false;
 let screenGlow = 0, screenGlowPos = null;
 const SCREEN_GLOW_DUR = 0.25;
 const EYE_LINGER = 0.15;
@@ -468,7 +470,7 @@ function loop(now) {
     if (prevTS === null) prevTS = now;
     const dt = Math.min((now - prevTS) / 1000, 0.05);
     prevTS = now;
-    if (dt > 0) { update(dt); draw(); }
+    if (dt > 0) { if (!paused) update(dt); draw(); }
     requestAnimationFrame(loop);
 }
 
@@ -503,6 +505,11 @@ document.getElementById('fineUp').addEventListener('click', () => {
 document.getElementById('fineDown').addEventListener('click', () => {
     fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
     updateRotDisplay();
+});
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    paused = !paused;
+    document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
 });
 
 document.getElementById('resetBtn').addEventListener('click', () => {
