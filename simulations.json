@@ -662,6 +662,27 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Light/camera_water.html",
+      "title": "Coffee Cup and Camera",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/static_setup.html",
+      "title": "Michelson Experiment - Setup Diagram",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
+    },
+    {
+      "path": "Light/static_setup_rotated.html",
+      "title": "Michelson Experiment - Rotated 1&deg;",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
