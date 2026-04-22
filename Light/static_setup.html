@@ -1,0 +1,259 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Michelson Experiment - Setup Diagram</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        background: #0a0a1a;
+        font-family: Arial, sans-serif;
+        user-select: none;
+        color: #e0e0e0;
+        overflow: hidden;
+    }
+    canvas {
+        background: #0a0a1a;
+        display: block;
+    }
+</style>
+</head>
+<body>
+<canvas id="sim" width="600" height="420"></canvas>
+
+<script>
+const canvas = document.getElementById('sim');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 420;
+const DEG = Math.PI / 180;
+
+// ── Layout (same as rotate_octagon) ──────────────────────
+const OCT_CX = 125, OCT_CY = 340, OCT_R = 22;
+const INRADIUS = OCT_R * Math.cos(Math.PI / 8);
+const BASE_ANGLE = 22.5 * DEG;
+
+const FACE0_MID_X = OCT_CX + INRADIUS * Math.cos(45 * DEG);
+const FACE0_MID_Y = OCT_CY + INRADIUS * Math.sin(45 * DEG);
+const FACE6_MID_X = OCT_CX + INRADIUS * Math.cos(315 * DEG);
+const FACE6_MID_Y = OCT_CY + INRADIUS * Math.sin(315 * DEG);
+
+const SOURCE = { x: FACE0_MID_X, y: 390 };
+const PHOTON_DIR = { x: 0, y: -1 };
+
+const MIRROR_X = 530;
+const MIRROR_H = 10;
+const MIRROR_TILT = 0.5 * Math.atan((FACE0_MID_Y - FACE6_MID_Y) / (MIRROR_X - FACE0_MID_X));
+const MN = { x: -Math.cos(MIRROR_TILT), y: -Math.sin(MIRROR_TILT) };
+
+const MIRROR_CY = FACE0_MID_Y;
+const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
+const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
+
+const DIST_KM = 35.4;
+const OUT_DIST = MIRROR_X - FACE0_MID_X;
+const M_PER_PX = DIST_KM * 1000 / OUT_DIST;
+
+// Observer
+const _rd = { x: 1 - 2*MN.x*MN.x, y: -2*MN.x*MN.y };
+const _n6 = { x: Math.cos(315*DEG), y: Math.sin(315*DEG) };
+const _dn6 = _rd.x*_n6.x + _rd.y*_n6.y;
+const _od = { x: _rd.x - 2*_dn6*_n6.x, y: _rd.y - 2*_dn6*_n6.y };
+const OBS_Y = 55;
+const OBS_X = FACE6_MID_X + _od.x * (OBS_Y - FACE6_MID_Y) / _od.y;
+const OBSERVER = { x: OBS_X, y: OBS_Y };
+
+// ── Vector helpers ───────────────────────────────────────
+function v(x,y){return{x,y}}
+function vadd(a,b){return v(a.x+b.x,a.y+b.y)}
+function vsub(a,b){return v(a.x-b.x,a.y-b.y)}
+function vsc(a,s){return v(a.x*s,a.y*s)}
+function vdot(a,b){return a.x*b.x+a.y*b.y}
+function vlen(a){return Math.hypot(a.x,a.y)}
+function vnorm(a){const l=vlen(a);return l<1e-12?v(0,0):v(a.x/l,a.y/l)}
+function vrefl(d,n){return vsub(d,vsc(n,2*vdot(d,n)))}
+function vcross(a,b){return a.x*b.y-a.y*b.x}
+
+// ── Octagon ──────────────────────────────────────────────
+function octVerts(ang) {
+    const vs = [];
+    for (let k = 0; k < 8; k++) {
+        const a = ang + k * Math.PI / 4;
+        vs.push(v(OCT_CX + OCT_R * Math.cos(a), OCT_CY + OCT_R * Math.sin(a)));
+    }
+    return vs;
+}
+function faceN(vs, i) {
+    const mid = vsc(vadd(vs[i], vs[(i+1)%8]), 0.5);
+    return vnorm(vsub(mid, v(OCT_CX, OCT_CY)));
+}
+
+// ── Ray intersections ────────────────────────────────────
+function raySeg(o, d, p1, p2) {
+    const s = vsub(p2, p1);
+    const den = d.x * s.y - d.y * s.x;
+    if (Math.abs(den) < 1e-10) return null;
+    const t = ((p1.x-o.x)*s.y - (p1.y-o.y)*s.x) / den;
+    const u = ((p1.x-o.x)*d.y - (p1.y-o.y)*d.x) / den;
+    if (t > 0.05 && u >= -0.001 && u <= 1.001)
+        return { t, pt: vadd(o, vsc(d, t)) };
+    return null;
+}
+function rayOct(o, d, vs) {
+    let best = null;
+    for (let i = 0; i < 8; i++) {
+        const h = raySeg(o, d, vs[i], vs[(i+1)%8]);
+        if (h && (!best || h.t < best.t)) best = {...h, face: i};
+    }
+    return best;
+}
+
+// ── Compute the full light path at base angle ────────────
+function computeLightPath() {
+    const vs = octVerts(BASE_ANGLE);
+    const points = [SOURCE];
+
+    // Leg 1: source -> octagon face 0
+    const h0 = rayOct(SOURCE, PHOTON_DIR, vs);
+    if (!h0) return points;
+    points.push(h0.pt);
+
+    const n1 = faceN(vs, h0.face);
+    if (vdot(PHOTON_DIR, n1) >= 0) return points;
+    const r1 = vrefl(PHOTON_DIR, n1);
+
+    // Leg 2: octagon -> mirror
+    const mirrorPt = v(MIRROR_X, h0.pt.y + r1.y * (MIRROR_X - h0.pt.x) / r1.x);
+    points.push(mirrorPt);
+
+    // Leg 3: mirror -> octagon face 6
+    const r2 = vrefl(r1, MN);
+    const hR = rayOct(mirrorPt, r2, vs);
+    if (!hR) return points;
+    points.push(hR.pt);
+
+    // Leg 4: octagon -> observer
+    const n3 = faceN(vs, hR.face);
+    const r3 = vrefl(r2, n3);
+    const toObs = vsub(OBSERVER, hR.pt);
+    const along = vdot(toObs, r3);
+    if (along > 0) {
+        points.push(vadd(hR.pt, vsc(r3, along)));
+    }
+
+    return points;
+}
+
+// ── Drawing ──────────────────────────────────────────────
+function drawOctagon() {
+    const vs = octVerts(BASE_ANGLE);
+    ctx.beginPath();
+    ctx.moveTo(vs[0].x, vs[0].y);
+    for (let i=1;i<8;i++) ctx.lineTo(vs[i].x, vs[i].y);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(100,160,220,0.18)';
+    ctx.fill();
+    ctx.strokeStyle = '#6ab0e8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+
+function drawMirror() {
+    ctx.save();
+    ctx.translate(MIRROR_X, MIRROR_CY);
+    ctx.rotate(MIRROR_TILT);
+    ctx.fillStyle = '#b0b8c8';
+    ctx.fillRect(-3, -MIRROR_H/2, 6, MIRROR_H);
+    ctx.strokeStyle = '#d0d8e0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-3, -MIRROR_H/2, 6, MIRROR_H);
+    ctx.restore();
+}
+
+function drawSource() {
+    const {x,y} = SOURCE;
+    const g = ctx.createRadialGradient(x,y,2,x,y,14);
+    g.addColorStop(0,'rgba(255,230,150,0.9)');
+    g.addColorStop(0.5,'rgba(255,200,80,0.3)');
+    g.addColorStop(1,'rgba(255,200,80,0)');
+    ctx.fillStyle = g; ctx.fillRect(x-16,y-16,32,32);
+    ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2);
+    ctx.fillStyle='#ffe090'; ctx.fill();
+}
+
+function drawEye() {
+    const {x,y} = OBSERVER;
+    ctx.beginPath(); ctx.ellipse(x,y,6,4,0,0,Math.PI*2);
+    ctx.fillStyle = 'rgba(200,210,220,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = '#556';
+    ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2);
+    ctx.fillStyle = '#445';
+    ctx.fill();
+}
+
+function drawLightRay() {
+    const pts = computeLightPath();
+    if (pts.length < 2) return;
+
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.strokeStyle = 'rgba(255,253,200,0.8)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+
+    // Glow effect
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let i = 1; i < pts.length; i++) {
+        ctx.lineTo(pts[i].x, pts[i].y);
+    }
+    ctx.strokeStyle = 'rgba(255,253,200,0.15)';
+    ctx.lineWidth = 5;
+    ctx.stroke();
+}
+
+function drawLabels() {
+    ctx.font = 'bold 12px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText('Mt. Wilson', OCT_CX, OCT_CY + OCT_R + 16);
+    ctx.fillText('Mirror', MIRROR_X, MIRROR_TOP - 8);
+    ctx.fillText('Mt. San Antonio', MIRROR_X, MIRROR_BOT + 16);
+    ctx.fillText('Light source', SOURCE.x, SOURCE.y + 20);
+    ctx.fillText('Observer', OBSERVER.x, OBSERVER.y - 18);
+}
+
+function drawScaleBar() {
+    const barKm = 10;
+    const barPx = barKm * 1000 / M_PER_PX;
+    const x0 = 200, y0 = H - 18;
+    ctx.strokeStyle = '#778899';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 - 4); ctx.lineTo(x0, y0 + 4);
+    ctx.moveTo(x0, y0); ctx.lineTo(x0 + barPx, y0);
+    ctx.moveTo(x0 + barPx, y0 - 4); ctx.lineTo(x0 + barPx, y0 + 4);
+    ctx.stroke();
+    ctx.font = '11px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText(barKm + ' km', x0 + barPx / 2, y0 - 7);
+}
+
+// ── Render ───────────────────────────────────────────────
+ctx.clearRect(0, 0, W, H);
+drawMirror();
+drawOctagon();
+drawSource();
+drawEye();
+drawLightRay();
+drawLabels();
+drawScaleBar();
+</script>
+</body>
+</html>

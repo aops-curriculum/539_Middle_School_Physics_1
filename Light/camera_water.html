@@ -1,0 +1,600 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coffee Cup and Camera</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #f0f0f0;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  max-width: 600px;
+  margin: 0 auto;
+  text-align: center;
+}
+canvas {
+  cursor: grab;
+  display: inline-block;
+}
+canvas.grabbing { cursor: grabbing; }
+</style>
+</head>
+<body>
+<canvas id="c" width="540" height="405"></canvas>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 540, H = 405;
+const S = 0.9; // overall scale factor
+
+// Scene geometry (all scaled by S from original)
+const tableY = 410 * S;
+const cupCenterX = 230 * S;
+const cupBottomY = tableY;
+const cupHalfWidthTop = 80 * 0.7 * S;
+const cupHalfWidthBottom = 70 * 0.7 * S;
+const cupHeight = (410 - 230) * 0.7 * S;
+const cupTopY = cupBottomY - cupHeight;
+const penny = { x: cupCenterX, y: cupBottomY - 2 * S, r: 8 * S };
+
+// Water: fills cup to about 3/4 full (surface at 1/4 down from the rim)
+const waterFillFraction = 0.75;
+const waterTopY = cupTopY + cupHeight * (1 - waterFillFraction);
+const waterHalfWidth = cupHalfWidthTop +
+  (1 - waterFillFraction) * (cupHalfWidthBottom - cupHalfWidthTop);
+
+// Real-world scale: a typical coffee cup is ~95 mm tall.
+// cupHeight (in px) corresponds to 95 mm (9.5 cm).
+const PX_PER_CM = cupHeight / 9.5;
+
+// Camera - 50% bigger than previous (1/3 * 1.5 = 1/2 of original)
+const camLineX = 330 * S;
+let camY = 160 * S;
+const camMinY = 50 * S;
+const camMaxY = 340 * S;
+const camW = 60 * S / 2;
+const camH = 40 * S / 2;
+
+// Camera rotation (radians). Positive = clockwise in canvas coords.
+// CCW 45° in screen terms = -Math.PI/4.
+const camRot = -Math.PI / 4;
+
+const rays = [];
+const dashedLines = [];
+
+const addBtn = { x: 10 * S, y: 10 * S, w: 100 * S, h: 28 * S, label: 'Add Ray' };
+const addDashedBtn = { x: 120 * S, y: 10 * S, w: 100 * S, h: 28 * S, label: 'Add Line' };
+const clearBtn = { x: 230 * S, y: 10 * S, w: 80 * S, h: 28 * S, label: 'Clear' };
+
+let dragging = null;
+
+const HANDLE_R = 4 * S; // half the original size
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  let cx, cy;
+  if (e.touches && e.touches.length) {
+    cx = e.touches[0].clientX;
+    cy = e.touches[0].clientY;
+  } else {
+    cx = e.clientX;
+    cy = e.clientY;
+  }
+  return {
+    x: (cx - rect.left) * (canvas.width / rect.width),
+    y: (cy - rect.top) * (canvas.height / rect.height)
+  };
+}
+
+function dist(x1, y1, x2, y2) {
+  return Math.hypot(x1 - x2, y1 - y2);
+}
+
+function inRect(p, r) {
+  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+}
+
+// Lens center (on the dotted line) — camera body sits behind the lens along the rotation axis
+function getLensCenter() {
+  return { x: camLineX, y: camY };
+}
+
+function hitTest(p) {
+  for (let i = rays.length - 1; i >= 0; i--) {
+    const r = rays[i];
+    if (dist(p.x, p.y, r.x1, r.y1) < HANDLE_R + 8) {
+      return { type: 'ray', index: i, end: 1 };
+    }
+    if (dist(p.x, p.y, r.x2, r.y2) < HANDLE_R + 8) {
+      return { type: 'ray', index: i, end: 2 };
+    }
+  }
+  for (let i = dashedLines.length - 1; i >= 0; i--) {
+    const d = dashedLines[i];
+    if (dist(p.x, p.y, d.x1, d.y1) < HANDLE_R + 8) {
+      return { type: 'dashed', index: i, end: 1 };
+    }
+    if (dist(p.x, p.y, d.x2, d.y2) < HANDLE_R + 8) {
+      return { type: 'dashed', index: i, end: 2 };
+    }
+  }
+  // Hit area around rotated camera + lens: transform point into camera-local frame
+  const lens = getLensCenter();
+  const dx = p.x - lens.x;
+  const dy = p.y - lens.y;
+  const cos = Math.cos(-camRot), sin = Math.sin(-camRot);
+  const lx = dx * cos - dy * sin;
+  const ly = dx * sin + dy * cos;
+  // In local frame: lens at origin, body extends +x from 0 to camW, y in [-camH/2, camH/2]
+  if (lx > -14 && lx < camW + 14 &&
+      ly > -camH/2 - 10 && ly < camH/2 + 10) {
+    return { type: 'camera' };
+  }
+  return null;
+}
+
+function addRay() {
+  const cy = (120 + rays.length * 15) * S;
+  const cx = 200 * S;
+  rays.push({
+    x1: cx - 60 * S,
+    y1: Math.min(cy, cupTopY - 30 * S),
+    x2: cx + 60 * S,
+    y2: Math.min(cy, cupTopY - 30 * S)
+  });
+  draw();
+}
+
+function addDashedLine() {
+  const cx = 200 * S;
+  const cy = (140 + dashedLines.length * 15) * S;
+  dashedLines.push({
+    x1: cx - 60 * S,
+    y1: Math.min(cy, cupTopY - 10 * S),
+    x2: cx + 60 * S,
+    y2: Math.min(cy, cupTopY - 10 * S)
+  });
+  draw();
+}
+
+function onDown(e) {
+  e.preventDefault();
+  const p = getPos(e);
+
+  if (inRect(p, addBtn)) {
+    addRay();
+    return;
+  }
+  if (inRect(p, addDashedBtn)) {
+    addDashedLine();
+    return;
+  }
+  if (inRect(p, clearBtn)) {
+    rays.length = 0;
+    dashedLines.length = 0;
+    draw();
+    return;
+  }
+
+  const hit = hitTest(p);
+  if (hit) {
+    dragging = hit;
+    canvas.classList.add('grabbing');
+    draw();
+  }
+}
+
+function onMove(e) {
+  if (!dragging) return;
+  e.preventDefault();
+  const p = getPos(e);
+  if (dragging.type === 'camera') {
+    camY = Math.max(camMinY, Math.min(camMaxY, p.y));
+  } else if (dragging.type === 'ray') {
+    const r = rays[dragging.index];
+    const x = Math.max(10, Math.min(W - 10, p.x));
+    const y = Math.max(10, Math.min(H - 10, p.y));
+    if (dragging.end === 1) {
+      r.x1 = x; r.y1 = y;
+    } else {
+      r.x2 = x; r.y2 = y;
+    }
+  } else if (dragging.type === 'dashed') {
+    const d = dashedLines[dragging.index];
+    const x = Math.max(10, Math.min(W - 10, p.x));
+    const y = Math.max(10, Math.min(H - 10, p.y));
+    if (dragging.end === 1) {
+      d.x1 = x; d.y1 = y;
+    } else {
+      d.x2 = x; d.y2 = y;
+    }
+  }
+  draw();
+}
+
+function onUp(e) {
+  if (dragging) {
+    dragging = null;
+    canvas.classList.remove('grabbing');
+    draw();
+  }
+}
+
+canvas.addEventListener('mousedown', onDown);
+window.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: false });
+window.addEventListener('touchmove', onMove, { passive: false });
+window.addEventListener('touchend', onUp, { passive: false });
+
+function drawArrow(x1, y1, x2, y2, color) {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2.5 * S;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const headLen = 13 * S;
+  const headAngle = Math.PI / 6;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - headLen * Math.cos(angle - headAngle),
+             y2 - headLen * Math.sin(angle - headAngle));
+  ctx.lineTo(x2 - headLen * Math.cos(angle + headAngle),
+             y2 - headLen * Math.sin(angle + headAngle));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawHandle(x, y) {
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5 * S;
+  ctx.beginPath();
+  ctx.arc(x, y, HANDLE_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawButton(b) {
+  ctx.fillStyle = 'rgba(76, 175, 80, 0.9)';
+  ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+  ctx.lineWidth = 1;
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.25)';
+  ctx.shadowBlur = 4;
+  ctx.shadowOffsetY = 2;
+  roundRect(b.x, b.y, b.w, b.h, 4);
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#fff';
+  ctx.font = 'bold ' + (12 * S) + 'px Arial';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(b.label, b.x + b.w/2, b.y + b.h/2 + 1);
+  ctx.textBaseline = 'alphabetic';
+}
+
+function roundRect(x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.quadraticCurveTo(x + w, y, x + w, y + r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.quadraticCurveTo(x + w, y + h, x + w - r, y + h);
+  ctx.lineTo(x + r, y + h);
+  ctx.quadraticCurveTo(x, y + h, x, y + h - r);
+  ctx.lineTo(x, y + r);
+  ctx.quadraticCurveTo(x, y, x + r, y);
+  ctx.closePath();
+}
+
+function drawCoffeeCup() {
+  const topL = cupCenterX - cupHalfWidthTop;
+  const topR = cupCenterX + cupHalfWidthTop;
+  const botL = cupCenterX - cupHalfWidthBottom;
+  const botR = cupCenterX + cupHalfWidthBottom;
+
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.moveTo(topL, cupTopY);
+  ctx.lineTo(botL, cupBottomY);
+  ctx.lineTo(botR, cupBottomY);
+  ctx.lineTo(topR, cupTopY);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.fillStyle = '#ffffff';
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7 * S, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // --- Water fill (about 3/4 full) ---
+  const waterL = cupCenterX - waterHalfWidth;
+  const waterR = cupCenterX + waterHalfWidth;
+  const waterBlue = '#7fc6e6';
+  const waterBlueDark = '#5aa8cc';
+
+  // Water body: trapezoid from water surface down to the cup bottom
+  ctx.fillStyle = waterBlue;
+  ctx.beginPath();
+  ctx.moveTo(waterL, waterTopY);
+  ctx.lineTo(botL, cupBottomY);
+  ctx.lineTo(botR, cupBottomY);
+  ctx.lineTo(waterR, waterTopY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Cap the bottom with an ellipse so the inside bottom looks rounded and filled
+  ctx.fillStyle = waterBlue;
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7 * S, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Water surface: drawn as a single flat line (unlike the cup rim/bottom ellipses)
+  ctx.strokeStyle = waterBlueDark;
+  ctx.lineWidth = 2 * S;
+  ctx.beginPath();
+  ctx.moveTo(waterL, waterTopY);
+  ctx.lineTo(waterR, waterTopY);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2.5 * S;
+  ctx.beginPath();
+  ctx.moveTo(topL, cupTopY);
+  ctx.lineTo(botL, cupBottomY);
+  ctx.moveTo(topR, cupTopY);
+  ctx.lineTo(botR, cupBottomY);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2 * S;
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupTopY, cupHalfWidthTop, 10 * 0.7 * S, 0, 0, Math.PI * 2);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2.5 * S;
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7 * S, 0, 0, Math.PI);
+  ctx.stroke();
+
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 1.5 * S;
+  ctx.setLineDash([4 * S, 4 * S]);
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7 * S, 0, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const handleTopX = topR - 2 * S;
+  const handleTopY = cupTopY + 18 * S;
+  const handleBotX = topR + (botR - topR) * 0.55;
+  const handleBotY = cupTopY + (cupBottomY - cupTopY) * 0.55;
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 3 * S;
+  ctx.beginPath();
+  const ctrl1X = handleTopX + 38 * S;
+  const ctrl1Y = handleTopY + 2 * S;
+  const ctrl2X = handleBotX + 38 * S;
+  const ctrl2Y = handleBotY - 2 * S;
+  ctx.moveTo(handleTopX, handleTopY);
+  ctx.bezierCurveTo(ctrl1X, ctrl1Y, ctrl2X, ctrl2Y, handleBotX, handleBotY);
+  ctx.stroke();
+
+  ctx.fillStyle = '#b87333';
+  ctx.strokeStyle = '#7a4a1a';
+  ctx.lineWidth = 1.5 * S;
+  ctx.beginPath();
+  ctx.ellipse(penny.x, penny.y, penny.r, penny.r * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawTable() {
+  ctx.fillStyle = '#c19a6b';
+  ctx.fillRect(0, tableY, W, 6 * S);
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2 * S;
+  ctx.beginPath();
+  ctx.moveTo(0, tableY);
+  ctx.lineTo(W, tableY);
+  ctx.stroke();
+  ctx.fillStyle = '#a37f4e';
+  ctx.fillRect(0, tableY + 6 * S, W, H - tableY - 6 * S);
+}
+
+function drawCamera() {
+  // Dotted vertical line (camera travels along this; lens is centered on it)
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 1.5 * S;
+  ctx.setLineDash([5 * S, 5 * S]);
+  ctx.beginPath();
+  ctx.moveTo(camLineX, 10 * S);
+  ctx.lineTo(camLineX, H - 10 * S);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const lensR = camH / 2 * 0.7;
+
+  // Draw camera rotated about the lens center. In local frame:
+  //   lens at origin, body occupies x in [0, camW], y in [-camH/2, camH/2]
+  ctx.save();
+  ctx.translate(camLineX, camY);
+  ctx.rotate(camRot);
+
+  // Camera body
+  ctx.fillStyle = '#2c3e50';
+  ctx.strokeStyle = '#111';
+  ctx.lineWidth = 1 * S;
+  ctx.beginPath();
+  ctx.rect(0, -camH / 2, camW, camH);
+  ctx.fill();
+  ctx.stroke();
+
+  // Viewfinder bump on top (local -y direction)
+  const vfW = camW * 0.35;
+  const vfH = camH * 0.25;
+  ctx.fillStyle = '#34495e';
+  ctx.beginPath();
+  ctx.rect(camW * 0.45, -camH / 2 - vfH, vfW, vfH);
+  ctx.fill();
+  ctx.stroke();
+
+  // Lens (centered at local origin, on the dotted line)
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(0, 0, lensR, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#4a6278';
+  ctx.beginPath();
+  ctx.arc(0, 0, lensR * 0.55, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(-lensR * 0.2, -lensR * 0.2, lensR * 0.18, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Red record dot on body (near the back-right corner in local frame)
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.arc(camW - 4 * S, -camH / 2 + 3 * S, 1.5 * S, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+
+  // Height readout: measured from table to lens center (axis-aligned, unrotated)
+  const heightCm = (tableY - camY) / PX_PER_CM;
+  // Place readout to the right of the rotated camera's bounding area
+  const readoutX = camLineX + camW + 18 * S;
+  const readoutY = camY;
+  ctx.font = 'bold ' + (13 * S) + 'px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const label = 'h = ' + heightCm.toFixed(1) + ' cm';
+  const padX = 6 * S, padY = 4 * S;
+  const tw = ctx.measureText(label).width;
+  const th = 13 * S;
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1 * S;
+  roundRect(readoutX, readoutY - th/2 - padY, tw + padX * 2, th + padY * 2, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#333';
+  ctx.fillText(label, readoutX + padX, readoutY + 1);
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'start';
+
+  // Small tick on the dotted line at the lens height
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5 * S;
+  ctx.beginPath();
+  ctx.moveTo(camLineX - 4 * S, camY);
+  ctx.lineTo(camLineX + 4 * S, camY);
+  ctx.stroke();
+}
+
+function drawDashedLines() {
+  ctx.strokeStyle = '#555';
+  ctx.lineWidth = 1.25 * S;
+  ctx.setLineDash([5 * S, 4 * S]);
+  for (const d of dashedLines) {
+    ctx.beginPath();
+    ctx.moveTo(d.x1, d.y1);
+    ctx.lineTo(d.x2, d.y2);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+  for (const d of dashedLines) {
+    drawHandle(d.x1, d.y1);
+    drawHandle(d.x2, d.y2);
+  }
+}
+
+function drawRays() {
+  for (const r of rays) {
+    drawArrow(r.x1, r.y1, r.x2, r.y2, '#e74c3c');
+    drawHandle(r.x1, r.y1);
+    drawHandle(r.x2, r.y2);
+  }
+}
+
+// Magnifier: appears when dragging a ray endpoint, shows zoomed view near that endpoint
+function drawMagnifier() {
+  if (!dragging || dragging.type !== 'ray') return;
+  const r = rays[dragging.index];
+  const px = dragging.end === 1 ? r.x1 : r.x2;
+  const py = dragging.end === 1 ? r.y1 : r.y2;
+
+  const magR = 55 * S;
+  const zoom = 3;
+
+  // Offset lens so it doesn't cover the endpoint; flip near edges
+  let ox = 70 * S;
+  let oy = -70 * S;
+  if (px + ox + magR > W - 4) ox = -70 * S;
+  if (py + oy - magR < 4) oy = 70 * S;
+  const mx = px + ox;
+  const my = py + oy;
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(mx, my, magR, 0, Math.PI * 2);
+  ctx.clip();
+
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fillRect(mx - magR, my - magR, magR * 2, magR * 2);
+
+  ctx.translate(mx, my);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-px, -py);
+
+  drawTable();
+  drawCoffeeCup();
+  drawCamera();
+  drawDashedLines();
+  drawRays();
+
+  ctx.restore();
+
+  // Lens ring
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 2.5 * S;
+  ctx.beginPath();
+  ctx.arc(mx, my, magR, 0, Math.PI * 2);
+  ctx.stroke();
+}
+
+function draw() {
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fillRect(0, 0, W, H);
+
+  drawTable();
+  drawCoffeeCup();
+  drawCamera();
+  drawDashedLines();
+  drawRays();
+
+  drawMagnifier();
+
+  drawButton(addBtn);
+  drawButton(addDashedBtn);
+  drawButton(clearBtn);
+}
+
+draw();
+
+function reportHeight() {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+}
+window.addEventListener('load', reportHeight);
+</script>
+</body>
+</html>
