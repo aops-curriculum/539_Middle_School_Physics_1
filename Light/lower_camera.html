@@ -39,13 +39,17 @@ const cupHeight = (410 - 230) * 0.7 * S;
 const cupTopY = cupBottomY - cupHeight;
 const penny = { x: cupCenterX, y: cupBottomY - 2 * S, r: 8 * S };
 
-// Camera - moved to halfway between old position (430) and cup (230) => 330
+// Real-world scale: a typical coffee cup is ~95 mm tall.
+// cupHeight (in px) corresponds to 95 mm (9.5 cm).
+const PX_PER_CM = cupHeight / 9.5;
+
+// Camera - 1/3 of previous size
 const camLineX = 330 * S;
 let camY = 160 * S;
 const camMinY = 50 * S;
 const camMaxY = 340 * S;
-const camW = 60 * S;
-const camH = 40 * S;
+const camW = 60 * S / 3;
+const camH = 40 * S / 3;
 
 const rays = [];
 
@@ -80,6 +84,11 @@ function inRect(p, r) {
   return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 }
 
+// Lens center (on the dotted line) — camera body sits to the left of the lens
+function getLensCenter() {
+  return { x: camLineX, y: camY };
+}
+
 function hitTest(p) {
   for (let i = rays.length - 1; i >= 0; i--) {
     const r = rays[i];
@@ -90,8 +99,10 @@ function hitTest(p) {
       return { type: 'ray', index: i, end: 2 };
     }
   }
-  if (p.x > camLineX - camW/2 - 4 && p.x < camLineX + camW/2 + 4 &&
-      p.y > camY - camH/2 - 4 && p.y < camY + camH/2 + 4) {
+  // Hit area around camera + lens, generously sized for easier grabbing
+  const lens = getLensCenter();
+  if (p.x > lens.x - camW - 14 && p.x < lens.x + 14 &&
+      p.y > lens.y - camH/2 - 10 && p.y < lens.y + camH/2 + 10) {
     return { type: 'camera' };
   }
   return null;
@@ -316,6 +327,7 @@ function drawTable() {
 }
 
 function drawCamera() {
+  // Dotted vertical line (camera travels along this; lens is centered on it)
   ctx.strokeStyle = '#888';
   ctx.lineWidth = 1.5 * S;
   ctx.setLineDash([5 * S, 5 * S]);
@@ -325,48 +337,82 @@ function drawCamera() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  const targetX = cupCenterX;
-  const targetY = cupTopY + 5 * S;
-  const ang = Math.atan2(targetY - camY, targetX - camLineX);
+  // Lens center sits ON the dotted line; body extends to the LEFT of the lens
+  // so the lens faces the cup (which is to the left).
+  const lensR = camH / 2 * 0.7;
+  const bodyRightX = camLineX - lensR;       // body's right edge meets lens
+  const bodyLeftX  = bodyRightX - camW;
+  const bodyTopY   = camY - camH / 2;
+  const bodyBotY   = camY + camH / 2;
 
-  ctx.save();
-  ctx.translate(camLineX, camY);
-  ctx.rotate(ang);
-
+  // Camera body
   ctx.fillStyle = '#2c3e50';
   ctx.strokeStyle = '#111';
-  ctx.lineWidth = 2 * S;
+  ctx.lineWidth = 1 * S;
   ctx.beginPath();
-  ctx.rect(-camW/2, -camH/2, camW, camH);
+  ctx.rect(bodyLeftX, bodyTopY, camW, camH);
   ctx.fill();
   ctx.stroke();
 
+  // Viewfinder bump on top
+  const vfW = camW * 0.35;
+  const vfH = camH * 0.25;
   ctx.fillStyle = '#34495e';
   ctx.beginPath();
-  ctx.rect(-8 * S, -camH/2 - 8 * S, 20 * S, 8 * S);
+  ctx.rect(bodyLeftX + camW * 0.2, bodyTopY - vfH, vfW, vfH);
   ctx.fill();
   ctx.stroke();
 
+  // Lens (centered on the dotted line)
   ctx.fillStyle = '#1a1a1a';
   ctx.beginPath();
-  ctx.arc(camW/2 + 6 * S, 0, 11 * S, 0, Math.PI * 2);
+  ctx.arc(camLineX, camY, lensR, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
   ctx.fillStyle = '#4a6278';
   ctx.beginPath();
-  ctx.arc(camW/2 + 6 * S, 0, 6 * S, 0, Math.PI * 2);
+  ctx.arc(camLineX, camY, lensR * 0.55, 0, Math.PI * 2);
   ctx.fill();
   ctx.fillStyle = '#fff';
   ctx.beginPath();
-  ctx.arc(camW/2 + 4 * S, -2 * S, 2 * S, 0, Math.PI * 2);
+  ctx.arc(camLineX - lensR * 0.2, camY - lensR * 0.2, lensR * 0.18, 0, Math.PI * 2);
   ctx.fill();
 
+  // Red record dot on body
   ctx.fillStyle = '#e74c3c';
   ctx.beginPath();
-  ctx.arc(-camW/2 + 10 * S, -camH/2 - 4 * S, 3.5 * S, 0, Math.PI * 2);
+  ctx.arc(bodyLeftX + 4 * S, bodyTopY + 3 * S, 1.5 * S, 0, Math.PI * 2);
   ctx.fill();
 
-  ctx.restore();
+  // Height readout: measured from table to lens center
+  const heightCm = (tableY - camY) / PX_PER_CM;
+  const readoutX = camLineX + 14 * S;
+  const readoutY = camY;
+  ctx.font = 'bold ' + (13 * S) + 'px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const label = 'h = ' + heightCm.toFixed(1) + ' cm';
+  const padX = 6 * S, padY = 4 * S;
+  const tw = ctx.measureText(label).width;
+  const th = 13 * S;
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1 * S;
+  roundRect(readoutX, readoutY - th/2 - padY, tw + padX * 2, th + padY * 2, 3);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#333';
+  ctx.fillText(label, readoutX + padX, readoutY + 1);
+  ctx.textBaseline = 'alphabetic';
+  ctx.textAlign = 'start';
+
+  // Small tick on the dotted line at the lens height
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5 * S;
+  ctx.beginPath();
+  ctx.moveTo(camLineX - 4 * S, camY);
+  ctx.lineTo(camLineX + 4 * S, camY);
+  ctx.stroke();
 }
 
 function drawRays() {
