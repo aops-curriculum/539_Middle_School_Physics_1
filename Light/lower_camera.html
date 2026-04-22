@@ -43,13 +43,13 @@ const penny = { x: cupCenterX, y: cupBottomY - 2 * S, r: 8 * S };
 // cupHeight (in px) corresponds to 95 mm (9.5 cm).
 const PX_PER_CM = cupHeight / 9.5;
 
-// Camera - 1/3 of previous size
+// Camera - 50% bigger than previous (1/3 * 1.5 = 1/2 of original)
 const camLineX = 330 * S;
 let camY = 160 * S;
 const camMinY = 50 * S;
 const camMaxY = 340 * S;
-const camW = 60 * S / 3;
-const camH = 40 * S / 3;
+const camW = 60 * S / 2;
+const camH = 40 * S / 2;
 
 const rays = [];
 
@@ -84,7 +84,7 @@ function inRect(p, r) {
   return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 }
 
-// Lens center (on the dotted line) — camera body sits to the left of the lens
+// Lens center (on the dotted line) — camera body sits to the RIGHT of the lens
 function getLensCenter() {
   return { x: camLineX, y: camY };
 }
@@ -101,7 +101,7 @@ function hitTest(p) {
   }
   // Hit area around camera + lens, generously sized for easier grabbing
   const lens = getLensCenter();
-  if (p.x > lens.x - camW - 14 && p.x < lens.x + 14 &&
+  if (p.x > lens.x - 14 && p.x < lens.x + camW + 14 &&
       p.y > lens.y - camH/2 - 10 && p.y < lens.y + camH/2 + 10) {
     return { type: 'camera' };
   }
@@ -337,11 +337,11 @@ function drawCamera() {
   ctx.stroke();
   ctx.setLineDash([]);
 
-  // Lens center sits ON the dotted line; body extends to the LEFT of the lens
+  // Lens center sits ON the dotted line; body extends to the RIGHT of the lens
   // so the lens faces the cup (which is to the left).
   const lensR = camH / 2 * 0.7;
-  const bodyRightX = camLineX - lensR;       // body's right edge meets lens
-  const bodyLeftX  = bodyRightX - camW;
+  const bodyLeftX  = camLineX + lensR;       // body's left edge meets lens
+  const bodyRightX = bodyLeftX + camW;
   const bodyTopY   = camY - camH / 2;
   const bodyBotY   = camY + camH / 2;
 
@@ -359,7 +359,7 @@ function drawCamera() {
   const vfH = camH * 0.25;
   ctx.fillStyle = '#34495e';
   ctx.beginPath();
-  ctx.rect(bodyLeftX + camW * 0.2, bodyTopY - vfH, vfW, vfH);
+  ctx.rect(bodyLeftX + camW * 0.45, bodyTopY - vfH, vfW, vfH);
   ctx.fill();
   ctx.stroke();
 
@@ -378,15 +378,15 @@ function drawCamera() {
   ctx.arc(camLineX - lensR * 0.2, camY - lensR * 0.2, lensR * 0.18, 0, Math.PI * 2);
   ctx.fill();
 
-  // Red record dot on body
+  // Red record dot on body (near right edge now)
   ctx.fillStyle = '#e74c3c';
   ctx.beginPath();
-  ctx.arc(bodyLeftX + 4 * S, bodyTopY + 3 * S, 1.5 * S, 0, Math.PI * 2);
+  ctx.arc(bodyRightX - 4 * S, bodyTopY + 3 * S, 1.5 * S, 0, Math.PI * 2);
   ctx.fill();
 
   // Height readout: measured from table to lens center
   const heightCm = (tableY - camY) / PX_PER_CM;
-  const readoutX = camLineX + 14 * S;
+  const readoutX = bodyRightX + 10 * S;
   const readoutY = camY;
   ctx.font = 'bold ' + (13 * S) + 'px Arial';
   ctx.textAlign = 'left';
