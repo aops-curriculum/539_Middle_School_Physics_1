@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Coffee Cup and Camera</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #f0f0f0;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 10px;
+}
+.instructions {
+  font-size: 14px;
+  color: #666;
+  text-align: center;
+  margin-bottom: 10px;
+}
+canvas {
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: grab;
+  display: block;
+}
+canvas.grabbing { cursor: grabbing; }
+.controls {
+  text-align: center;
+  margin-top: 10px;
+}
+button {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+}
+</style>
+</head>
+<body>
+<div class="instructions">Drag the camera up and down. Click anywhere to add a light ray, then drag its endpoints.</div>
+<canvas id="c" width="600" height="500"></canvas>
+<div class="controls"><button id="clearBtn">Clear Rays</button></div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 500;
+
+// Scene geometry
+// Table
+const tableY = 380;
+// Coffee cup (center, on table)
+const cupCenterX = 230;
+const cupTopY = 260;
+const cupBottomY = tableY;
+const cupHalfWidthTop = 80;
+const cupHalfWidthBottom = 70;
+// Penny at bottom center of cup
+const penny = { x: cupCenterX, y: cupBottomY - 6, r: 8 };
+
+// Camera - on dotted vertical line
+const camLineX = 430;
+let camY = 180; // draggable
+const camMinY = 60;
+const camMaxY = 320;
+const camW = 60;
+const camH = 40;
+
+// Rays - list of {x1,y1,x2,y2}
+const rays = [];
+
+// Dragging state
+let dragging = null; 
+// dragging can be: { type: 'camera' } or { type: 'ray', index, end: 1|2 }
+
+const HANDLE_R = 8;
+
+function getPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  let cx, cy;
+  if (e.touches && e.touches.length) {
+    cx = e.touches[0].clientX;
+    cy = e.touches[0].clientY;
+  } else {
+    cx = e.clientX;
+    cy = e.clientY;
+  }
+  return {
+    x: (cx - rect.left) * (canvas.width / rect.width),
+    y: (cy - rect.top) * (canvas.height / rect.height)
+  };
+}
+
+function dist(x1, y1, x2, y2) {
+  return Math.hypot(x1 - x2, y1 - y2);
+}
+
+function hitTest(p) {
+  // Check ray endpoints first
+  for (let i = rays.length - 1; i >= 0; i--) {
+    const r = rays[i];
+    if (dist(p.x, p.y, r.x1, r.y1) < HANDLE_R + 4) {
+      return { type: 'ray', index: i, end: 1 };
+    }
+    if (dist(p.x, p.y, r.x2, r.y2) < HANDLE_R + 4) {
+      return { type: 'ray', index: i, end: 2 };
+    }
+  }
+  // Check camera body
+  if (p.x > camLineX - camW/2 - 4 && p.x < camLineX + camW/2 + 4 &&
+      p.y > camY - camH/2 - 4 && p.y < camY + camH/2 + 4) {
+    return { type: 'camera' };
+  }
+  return null;
+}
+
+function onDown(e) {
+  e.preventDefault();
+  const p = getPos(e);
+  const hit = hitTest(p);
+  if (hit) {
+    dragging = hit;
+    dragging.startClick = { x: p.x, y: p.y };
+    canvas.classList.add('grabbing');
+  } else {
+    // Add a new ray at the click position - horizontal, above cup
+    const cy = Math.max(80, Math.min(p.y, cupTopY - 20));
+    const cx = p.x;
+    rays.push({
+      x1: cx - 60,
+      y1: cy,
+      x2: cx + 60,
+      y2: cy
+    });
+    draw();
+  }
+}
+
+function onMove(e) {
+  if (!dragging) return;
+  e.preventDefault();
+  const p = getPos(e);
+  if (dragging.type === 'camera') {
+    camY = Math.max(camMinY, Math.min(camMaxY, p.y));
+  } else if (dragging.type === 'ray') {
+    const r = rays[dragging.index];
+    const x = Math.max(10, Math.min(W - 10, p.x));
+    const y = Math.max(10, Math.min(H - 10, p.y));
+    if (dragging.end === 1) {
+      r.x1 = x; r.y1 = y;
+    } else {
+      r.x2 = x; r.y2 = y;
+    }
+  }
+  draw();
+}
+
+function onUp(e) {
+  dragging = null;
+  canvas.classList.remove('grabbing');
+}
+
+canvas.addEventListener('mousedown', onDown);
+window.addEventListener('mousemove', onMove);
+window.addEventListener('mouseup', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: false });
+window.addEventListener('touchmove', onMove, { passive: false });
+window.addEventListener('touchend', onUp, { passive: false });
+
+document.getElementById('clearBtn').addEventListener('click', () => {
+  rays.length = 0;
+  draw();
+});
+
+function drawArrow(x1, y1, x2, y2, color) {
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(x2, y2);
+  ctx.stroke();
+  // Arrow head at end 2
+  const angle = Math.atan2(y2 - y1, x2 - x1);
+  const headLen = 13;
+  const headAngle = Math.PI / 6;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - headLen * Math.cos(angle - headAngle),
+             y2 - headLen * Math.sin(angle - headAngle));
+  ctx.lineTo(x2 - headLen * Math.cos(angle + headAngle),
+             y2 - headLen * Math.sin(angle + headAngle));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function drawHandle(x, y) {
+  ctx.fillStyle = '#fff';
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x, y, HANDLE_R, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+}
+
+function drawCoffeeCup() {
+  // Cup body - slight taper
+  const topL = cupCenterX - cupHalfWidthTop;
+  const topR = cupCenterX + cupHalfWidthTop;
+  const botL = cupCenterX - cupHalfWidthBottom;
+  const botR = cupCenterX + cupHalfWidthBottom;
+
+  // Cup interior (shadow / coffee)
+  ctx.fillStyle = '#e8e8e8';
+  ctx.beginPath();
+  ctx.moveTo(topL, cupTopY);
+  ctx.lineTo(botL, cupBottomY);
+  ctx.lineTo(botR, cupBottomY);
+  ctx.lineTo(topR, cupTopY);
+  ctx.closePath();
+  ctx.fill();
+
+  // Top ellipse (opening)
+  ctx.fillStyle = '#5a3a22';
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupTopY, cupHalfWidthTop, 12, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  // Cup sides
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.moveTo(topL, cupTopY);
+  ctx.lineTo(botL, cupBottomY);
+  ctx.moveTo(topR, cupTopY);
+  ctx.lineTo(botR, cupBottomY);
+  ctx.stroke();
+
+  // Cup bottom (ellipse front half)
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8, 0, 0, Math.PI);
+  ctx.stroke();
+
+  // Handle
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.ellipse(topR + 2, cupTopY + 40, 18, 26, 0, -Math.PI / 2, Math.PI / 2);
+  ctx.stroke();
+
+  // Penny
+  ctx.fillStyle = '#b87333';
+  ctx.strokeStyle = '#7a4a1a';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.ellipse(penny.x, penny.y, penny.r, penny.r * 0.35, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  // label
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('penny', penny.x, penny.y + 16);
+}
+
+function drawTable() {
+  // Table top
+  ctx.fillStyle = '#c19a6b';
+  ctx.fillRect(0, tableY, W, 10);
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, tableY);
+  ctx.lineTo(W, tableY);
+  ctx.stroke();
+  // Table front
+  ctx.fillStyle = '#a37f4e';
+  ctx.fillRect(0, tableY + 10, W, H - tableY - 10);
+}
+
+function drawCamera() {
+  // Dotted vertical line (full height through middle of camera and behind)
+  ctx.strokeStyle = '#888';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([5, 5]);
+  ctx.beginPath();
+  ctx.moveTo(camLineX, 10);
+  ctx.lineTo(camLineX, H - 10);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Camera body - angled so it looks down-and-to-the-left toward cup
+  // We'll draw a rotated camera. The camera points from (camLineX, camY)
+  // toward the cup at angle:
+  const targetX = cupCenterX;
+  const targetY = cupTopY + 5;
+  const ang = Math.atan2(targetY - camY, targetX - camLineX);
+
+  ctx.save();
+  ctx.translate(camLineX, camY);
+  ctx.rotate(ang);
+
+  // Body
+  ctx.fillStyle = '#2c3e50';
+  ctx.strokeStyle = '#111';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.rect(-camW/2, -camH/2, camW, camH);
+  ctx.fill();
+  ctx.stroke();
+
+  // Top viewfinder bump
+  ctx.fillStyle = '#34495e';
+  ctx.beginPath();
+  ctx.rect(-8, -camH/2 - 8, 20, 8);
+  ctx.fill();
+  ctx.stroke();
+
+  // Lens (on front = +x direction)
+  ctx.fillStyle = '#1a1a1a';
+  ctx.beginPath();
+  ctx.arc(camW/2 + 6, 0, 11, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = '#4a6278';
+  ctx.beginPath();
+  ctx.arc(camW/2 + 6, 0, 6, 0, Math.PI * 2);
+  ctx.fill();
+  // glint
+  ctx.fillStyle = '#fff';
+  ctx.beginPath();
+  ctx.arc(camW/2 + 4, -2, 2, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Shutter button
+  ctx.fillStyle = '#e74c3c';
+  ctx.beginPath();
+  ctx.arc(-camW/2 + 10, -camH/2 - 4, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.restore();
+
+  // Label
+  ctx.fillStyle = '#333';
+  ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('camera', camLineX, camY - 40);
+}
+
+function drawRays() {
+  for (const r of rays) {
+    drawArrow(r.x1, r.y1, r.x2, r.y2, '#e74c3c');
+    drawHandle(r.x1, r.y1);
+    drawHandle(r.x2, r.y2);
+  }
+}
+
+function draw() {
+  // Background
+  ctx.fillStyle = '#f0f0f0';
+  ctx.fillRect(0, 0, W, H);
+
+  // Wall/backdrop subtle
+  ctx.fillStyle = '#e8e8e8';
+  ctx.fillRect(0, 0, W, tableY);
+
+  drawTable();
+  drawCoffeeCup();
+  drawCamera();
+  drawRays();
+}
+
+draw();
+
+function reportHeight() {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+}
+window.addEventListener('load', reportHeight);
+</script>
+</body>
+</html>
