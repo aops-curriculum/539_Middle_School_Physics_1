@@ -30,12 +30,13 @@ const W = 600, H = 450;
 // Scene geometry
 // Table - now small strip near bottom
 const tableY = 410;
-// Coffee cup (center, on table)
+// Coffee cup (center, on table) - scaled to 70%
 const cupCenterX = 230;
-const cupTopY = 230;
 const cupBottomY = tableY;
-const cupHalfWidthTop = 80;
-const cupHalfWidthBottom = 70;
+const cupHalfWidthTop = 80 * 0.7;   // 56
+const cupHalfWidthBottom = 70 * 0.7; // 49
+const cupHeight = (tableY - 230) * 0.7; // original 180 -> 126
+const cupTopY = cupBottomY - cupHeight; // 284
 // Penny at bottom center of cup
 const penny = { x: cupCenterX, y: cupBottomY - 6, r: 8 };
 
@@ -240,9 +241,8 @@ function drawCoffeeCup() {
   const botL = cupCenterX - cupHalfWidthBottom;
   const botR = cupCenterX + cupHalfWidthBottom;
 
-  // Fill cup body with background color so table behind doesn't show through,
-  // then draw coffee separately
-  ctx.fillStyle = '#f0f0f0';
+  // Fill the cup interior with white so the table doesn't show through
+  ctx.fillStyle = '#ffffff';
   ctx.beginPath();
   ctx.moveTo(topL, cupTopY);
   ctx.lineTo(botL, cupBottomY);
@@ -250,15 +250,6 @@ function drawCoffeeCup() {
   ctx.lineTo(topR, cupTopY);
   ctx.closePath();
   ctx.fill();
-
-  // Coffee surface (ellipse inside the cup top)
-  ctx.fillStyle = '#5a3a22';
-  ctx.strokeStyle = '#222';
-  ctx.lineWidth = 2;
-  ctx.beginPath();
-  ctx.ellipse(cupCenterX, cupTopY, cupHalfWidthTop, 12, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.stroke();
 
   // Cup sides
   ctx.strokeStyle = '#222';
@@ -270,16 +261,34 @@ function drawCoffeeCup() {
   ctx.lineTo(botR, cupBottomY);
   ctx.stroke();
 
-  // Cup bottom (front curve)
+  // Top rim ellipse (opening of the cup)
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2;
   ctx.beginPath();
-  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8, 0, 0, Math.PI);
+  ctx.ellipse(cupCenterX, cupTopY, cupHalfWidthTop, 10 * 0.7, 0, 0, Math.PI * 2);
   ctx.stroke();
+
+  // Cup bottom (front curve - solid)
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 2.5;
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7, 0, 0, Math.PI);
+  ctx.stroke();
+
+  // Back of bottom (dotted mirror of front curve)
+  ctx.strokeStyle = '#222';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.ellipse(cupCenterX, cupBottomY, cupHalfWidthBottom, 8 * 0.7, 0, Math.PI, Math.PI * 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
 
   // Handle
   ctx.strokeStyle = '#222';
   ctx.lineWidth = 3;
   ctx.beginPath();
-  ctx.ellipse(topR + 2, cupTopY + 50, 20, 32, 0, -Math.PI / 2, Math.PI / 2);
+  ctx.ellipse(topR + 2, cupTopY + 35, 14, 22, 0, -Math.PI / 2, Math.PI / 2);
   ctx.stroke();
 
   // Penny
@@ -290,10 +299,24 @@ function drawCoffeeCup() {
   ctx.ellipse(penny.x, penny.y, penny.r, penny.r * 0.35, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.stroke();
+
+  // Label "penny" to the right of the penny, outside the cup
   ctx.fillStyle = '#333';
-  ctx.font = 'bold 11px Arial';
+  ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  const labelX = cupCenterX + cupHalfWidthBottom + 14;
+  const labelY = cupBottomY - 2;
+  // small leader line from penny to label
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(penny.x + penny.r, penny.y);
+  ctx.lineTo(labelX - 3, labelY);
+  ctx.stroke();
+  ctx.fillText('penny', labelX, labelY);
+  ctx.textBaseline = 'alphabetic';
   ctx.textAlign = 'center';
-  ctx.fillText('penny', penny.x, penny.y + 16);
 }
 
 function drawTable() {
