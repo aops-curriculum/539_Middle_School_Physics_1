@@ -102,6 +102,7 @@
             <input type="range" id="rotSlider" min="0" max="45" step="1" value="0">
         </div>
     </div>
+    <button class="reset-btn" id="pauseBtn" style="right:65px;">Pause</button>
     <button class="reset-btn" id="resetBtn">Reset</button>
 </div>
 
@@ -158,6 +159,7 @@ const OBS_RADIUS = 6;
 // ── State ──────────────────────────────────────────────
 let discreteAngleDeg = 0, fineAngleDeg = 0;
 let photons = [], eyeGlow = 0, simTime = 0, photonAccum = 0, prevTS = null;
+let paused = false;
 
 function octAngle() { return (discreteAngleDeg + fineAngleDeg) * DEG; }
 
@@ -433,7 +435,7 @@ function loop(ts) {
     if (prevTS === null) prevTS = ts;
     const dt = Math.min((ts - prevTS) / 1000, 0.05);
     prevTS = ts;
-    update(dt); draw();
+    if (!paused) update(dt); draw();
     requestAnimationFrame(loop);
 }
 
@@ -456,6 +458,11 @@ document.getElementById('fineDown').addEventListener('click', () => {
     fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
     updateRotDisplay();
 });
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    paused = !paused;
+    document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+});
+
 document.getElementById('resetBtn').addEventListener('click', () => {
     discreteAngleDeg=0; fineAngleDeg=0;
     rotSlider.value=0; updateRotDisplay();
