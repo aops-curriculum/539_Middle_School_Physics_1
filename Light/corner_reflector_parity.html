@@ -55,8 +55,8 @@
     <div class="sim-wrap">
         <canvas id="canvas" width="600" height="640"></canvas>
         <div class="controls">
-            <button id="rotateCWBtn">&#8635; Rotate 5&deg;</button>
-            <button id="rotateCCWBtn">&#8634; Rotate -5&deg;</button>
+            <button id="rotateCWBtn">&#8635; Rotate 10&deg;</button>
+            <button id="rotateCCWBtn">&#8634; Rotate -10&deg;</button>
             <button id="flipBtn">&#8596; Flip</button>
             <button id="resetBtn">Reset</button>
             <button id="submitBtn">Submit</button>
@@ -307,13 +307,13 @@
         }
 
         document.getElementById('rotateCWBtn').onclick = function () {
-            mov.angle = (mov.angle + Math.PI / 36) % (Math.PI * 2);
+            mov.angle = (mov.angle + Math.PI / 18) % (Math.PI * 2);
             clearFeedback();
             draw();
         };
 
         document.getElementById('rotateCCWBtn').onclick = function () {
-            mov.angle = ((mov.angle - Math.PI / 36) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
+            mov.angle = ((mov.angle - Math.PI / 18) % (Math.PI * 2) + Math.PI * 2) % (Math.PI * 2);
             clearFeedback();
             draw();
         };
