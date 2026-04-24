@@ -142,26 +142,41 @@ function drawRay(ray) {
 function drawCyclops(cx) {
   const hy = CY_Y, hr = CY_HR, ay = CY_ARM_Y, hs = CY_HALF;
 
-  ctx.fillStyle = '#4a5270';
+  // Body
+  ctx.fillStyle = '#1a2a5a';
   ctx.beginPath(); ctx.roundRect(cx - 17 * S, hy + hr - 4 * S, 34 * S, 40 * S, 6 * S); ctx.fill();
 
-  ctx.strokeStyle = '#c8956a'; ctx.lineWidth = 7 * S; ctx.lineCap = 'round';
+  // Arms
+  ctx.strokeStyle = '#3a70c8'; ctx.lineWidth = 7 * S; ctx.lineCap = 'round';
   ctx.beginPath(); ctx.moveTo(cx - hr + 4 * S, ay); ctx.lineTo(cx - hs, ay); ctx.stroke();
   ctx.beginPath(); ctx.moveTo(cx + hr - 4 * S, ay); ctx.lineTo(cx + hs, ay); ctx.stroke();
 
-  ctx.fillStyle = '#c8956a';
+  // Hands with fingers
+  ctx.fillStyle = '#3a70c8';
   [cx - hs, cx + hs].forEach(hx => {
-    ctx.beginPath(); ctx.arc(hx, ay, 8 * S, 0, Math.PI * 2); ctx.fill();
+    const palmW = 20 * S, palmH = 11 * S;
+    const palmY = ay - palmH / 2;
+    // Four fingers extending upward
+    const nf = 4, fw = 4 * S, fh = 9 * S, fgap = 1 * S;
+    const totalFW = nf * fw + (nf - 1) * fgap;
+    const fStartX = hx - totalFW / 2;
+    for (let f = 0; f < nf; f++) {
+      const fx = fStartX + f * (fw + fgap);
+      ctx.beginPath(); ctx.roundRect(fx, palmY - fh, fw, fh + 3 * S, 2 * S); ctx.fill();
+    }
+    // Palm
+    ctx.beginPath(); ctx.roundRect(hx - palmW / 2, palmY, palmW, palmH, 4 * S); ctx.fill();
   });
 
+  // Head
   const hg = ctx.createRadialGradient(cx - 8 * S, hy - 10 * S, 4 * S, cx, hy, hr);
-  hg.addColorStop(0, '#e8c090'); hg.addColorStop(1, '#b07848');
+  hg.addColorStop(0, '#88c4f8'); hg.addColorStop(1, '#2858b0');
   ctx.fillStyle = hg;
   ctx.beginPath(); ctx.arc(cx, hy, hr, 0, Math.PI * 2); ctx.fill();
-  ctx.strokeStyle = '#a06838'; ctx.lineWidth = 1.5;
+  ctx.strokeStyle = '#1848a0'; ctx.lineWidth = 1.5;
   ctx.beginPath(); ctx.arc(cx, hy, hr, 0, Math.PI * 2); ctx.stroke();
 
-  ctx.strokeStyle = '#906030'; ctx.lineWidth = 2 * S;
+  ctx.strokeStyle = '#1040a0'; ctx.lineWidth = 2 * S;
   ctx.beginPath(); ctx.arc(cx, CY_EYE_Y + 5 * S, 18 * S, Math.PI * 1.1, Math.PI * 1.9); ctx.stroke();
 
   ctx.fillStyle = '#1a1a2e';
