@@ -813,7 +813,17 @@ document.getElementById('signBtn').addEventListener('click', () => {
 document.querySelectorAll('.digit-col button').forEach(btn => {
     btn.addEventListener('click', () => {
         const i = parseInt(btn.dataset.digit);
-        digits[i] = btn.dataset.dir === 'up' ? (digits[i]+1)%10 : (digits[i]+9)%10;
+        const place = [100, 10, 1][i];
+        const dir = btn.dataset.dir === 'up' ? 1 : -1;
+        if (i === 0 && dir === 1 && digits[0] === 9) return;
+        let val = speedSign * (digits[0]*100 + digits[1]*10 + digits[2]);
+        val += dir * place;
+        speedSign = val < 0 ? -1 : 1;
+        let absVal = Math.abs(val);
+        if (absVal > 999) absVal = 999;
+        digits[0] = Math.floor(absVal / 100);
+        digits[1] = Math.floor((absVal % 100) / 10);
+        digits[2] = absVal % 10;
         resetSim(); updateSpeedDisplay();
     });
 });
