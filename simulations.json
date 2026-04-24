@@ -697,6 +697,13 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Sound/c_bugle_standing_waves.html",
+      "title": "Standing Waves in a C Bugle",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
