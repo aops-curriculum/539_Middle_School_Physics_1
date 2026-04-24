@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Standing Waves in a C Bugle</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 600px; height: 500px; overflow: hidden;
+  font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #dde5ef;
+  color: #1a3050;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 10px 16px 10px;
+  gap: 8px;
+}
+#title-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  flex-shrink: 0;
+}
+#title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #1a3050;
+  letter-spacing: 0.2px;
+}
+#subtitle {
+  font-size: 11px;
+  color: #5a7a94;
+  font-style: italic;
+}
+#canvas-bugle {
+  display: block;
+  border-radius: 8px;
+  border: 1px solid rgba(40,90,150,0.18);
+  background: #f2f6fb;
+  flex-shrink: 0;
+}
+.info-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 4px 8px;
+  background: #e5edf6;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.info-block {
+  text-align: center;
+  flex: 1;
+}
+.info-label {
+  display: block;
+  font-size: 10px;
+  color: #5a7a94;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 1px;
+}
+.info-val {
+  display: block;
+  font-size: 15px;
+  font-weight: 700;
+  color: #1e5f96;
+  transition: color 0.25s;
+  font-variant-numeric: tabular-nums;
+}
+.info-divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(40,90,150,0.18);
+  margin: 4px 0;
+}
+.ctrl-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+}
+.ctrl-label {
+  font-size: 11px;
+  color: #5a7a94;
+  white-space: nowrap;
+  min-width: 58px;
+}
+input[type=range] {
+  flex: 1;
+  accent-color: #c07800;
+  cursor: pointer;
+  height: 4px;
+}
+.ctrl-value {
+  font-size: 12px;
+  font-weight: 700;
+  color: #c07800;
+  min-width: 50px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+</style>
+</head>
+<body>
+
+<canvas id="canvas-bugle" width="568" height="300"></canvas>
+
+<div class="info-row">
+  <div class="info-block">
+    <span class="info-label">Harmonic</span>
+    <span class="info-val" id="harm-val">n = 1</span>
+  </div>
+  <div class="info-divider"></div>
+  <div class="info-block">
+    <span class="info-label">Frequency</span>
+    <span class="info-val" id="freq-val">65.4 Hz</span>
+  </div>
+  <div class="info-divider"></div>
+  <div class="info-block">
+    <span class="info-label">Note</span>
+    <span class="info-val" id="note-val">C2 (pedal)</span>
+  </div>
+</div>
+
+<div class="ctrl-row">
+  <input type="range" id="harm-slider" min="1" max="8" step="1" value="1">
+</div>
+
+<script>
+// ─── Physics ──────────────────────────────────────────────────────────────
+// A C bugle: fundamental (pedal) ≈ C2 = 65.41 Hz.
+// Because the bore is CONICAL (not cylindrical), even though it is
+// closed at the mouthpiece and open at the bell, it supports the
+// *full* harmonic series  f_n = n · f_1   (n = 1, 2, 3, …),
+// not just odd harmonics the way a cylindrical half-closed pipe does.
+const F1 = 65.41;  // C2, Hz (pedal tone)
+
+// Note labels for the harmonic series of a C bugle.
+// n=7 is the "flat seventh" — noticeably lower than Bb4 in equal temperament.
+const NOTES = [
+  { name: 'C2',  desc: '(pedal)'     },
+  { name: 'C3',  desc: ''            },
+  { name: 'G3',  desc: ''            },
+  { name: 'C4',  desc: ''            },
+  { name: 'E4',  desc: ''            },
+  { name: 'G4',  desc: ''            },
+  { name: 'B♭4', desc: '(flat 7th)'  },
+  { name: 'C5',  desc: ''            },
+];
+
+// ─── Canvas ───────────────────────────────────────────────────────────────
+const cv = document.getElementById('canvas-bugle');
+const cx = cv.getContext('2d');
+
+let harmonic = 1;
+let simTime = 0;
+
+// ─── Colors ──────────────────────────────────────────────────────────────
+const C_BLUE   = '#1e5f96';
+const C_BLUE_L = 'rgba(30,95,150,0.18)';
+const C_GOLD   = '#c07800';
+const C_GOLD_L = 'rgba(192,120,0,0.22)';
+const C_BRASS  = '#d49a3a';
+const C_BRASSD = '#8a5e1a';
+const C_BG     = '#f2f6fb';
+
+// Bore geometry (in canvas coordinates).
+// Left end = mouthpiece (narrow / "closed"),
+// Right end = bell (wide / "open").
+const PAD_L = 46;
+const PAD_R = 32;
+
+function boreGeometry(W, H) {
+  const CY = Math.round(H / 2);
+  const x0 = PAD_L;
+  const x1 = W - PAD_R;
+  const length = x1 - x0;
+  return { CY, x0, x1, length };
+}
+
+// Radius of the bore at normalized position t ∈ [0, 1] along the pipe.
+// Mostly a gentle cone, with a small mouthpiece bulb on the left and
+// a flared bell on the right.  The drawn wave amplitude is then scaled
+// to fit inside this radius, which visually conveys the conical taper.
+function boreRadius(t) {
+  const coneMin = 7;
+  const coneMax = 36;
+  const cone = coneMin + (coneMax - coneMin) * t;
+
+  // Mouthpiece cup: starts at full rim radius on the far-left face
+  // (giving a flat vertical surface), then tapers smoothly down to
+  // meet the bore.  Using a cosine taper so the outer edge rounds
+  // over into the cone rather than meeting it at a kink.
+  let mouthBump = 0;
+  if (t < 0.06) {
+    const s = t / 0.06;           // 0 at rim, 1 where cup meets bore
+    const cupExtra = 7;
+    mouthBump = cupExtra * 0.5 * (1 + Math.cos(Math.PI * s));
+  }
+
+  // Bell flare: exponential-ish expansion in the last ~15%.
+  let bellFlare = 0;
+  if (t > 0.82) {
+    const s = (t - 0.82) / 0.18;
+    bellFlare = 38 * Math.pow(s, 2.2);
+  }
+
+  return cone + mouthBump + bellFlare;
+}
+
+// ─── Draw ────────────────────────────────────────────────────────────────
+function drawBore(geom) {
+  const { CY, x0, length } = geom;
+  const NSEG = 220;
+
+  // Build upper and lower bore profiles.
+  const upper = [];
+  const lower = [];
+  for (let i = 0; i <= NSEG; i++) {
+    const t = i / NSEG;
+    const x = x0 + t * length;
+    const r = boreRadius(t);
+    upper.push([x, CY - r]);
+    lower.push([x, CY + r]);
+  }
+
+  // Fill: a soft brassy gradient along the axis.
+  const grad = cx.createLinearGradient(x0, 0, x0 + length, 0);
+  grad.addColorStop(0.00, '#f4d890');
+  grad.addColorStop(0.35, '#e6b45a');
+  grad.addColorStop(0.75, '#d49a3a');
+  grad.addColorStop(1.00, '#b67a1e');
+
+  cx.save();
+  cx.beginPath();
+  cx.moveTo(upper[0][0], upper[0][1]);
+  for (let i = 1; i < upper.length; i++) cx.lineTo(upper[i][0], upper[i][1]);
+  for (let i = lower.length - 1; i >= 0; i--) cx.lineTo(lower[i][0], lower[i][1]);
+  cx.closePath();
+  cx.fillStyle = grad;
+  cx.globalAlpha = 0.35;
+  cx.fill();
+  cx.globalAlpha = 1;
+  cx.strokeStyle = C_BRASSD;
+  cx.lineWidth = 1.4;
+  cx.stroke();
+  cx.restore();
+
+  // Highlight stripe along the top edge (metal sheen).
+  cx.save();
+  cx.globalAlpha = 0.55;
+  cx.strokeStyle = '#fff5d6';
+  cx.lineWidth = 1;
+  cx.beginPath();
+  for (let i = 0; i < upper.length; i++) {
+    const [x, y] = upper[i];
+    if (i === 0) cx.moveTo(x, y + 2);
+    else         cx.lineTo(x, y + 2);
+  }
+  cx.stroke();
+  cx.restore();
+
+  return { upper, lower };
+}
+
+// Plot the standing wave  u(x, t) = A(x) · cos(nπ x/L) · cos(ωt)
+// inside the bore under FREE-FREE boundary conditions — displacement
+// antinodes (maximum excursion) at BOTH ends.  This corresponds to
+// open-open acoustics: both the mouthpiece rim and the bell are free.
+// The cosine spatial form gives antinodes at t=0 and t=1 with n
+// interior nodes at t = (2k−1)/(2n), k = 1..n.
+// The spatial envelope is scaled to (just under) the local bore radius
+// so the wave appears confined by the walls.
+function drawStandingWave(geom) {
+  const { CY, x0, length } = geom;
+  const n = harmonic;
+  const NPTS = 420;
+
+  // Time-dependent oscillation factor.
+  // We tie animation speed to the harmonic (higher n → faster wiggle)
+  // but cap it so high modes don't strobe.
+  const animHz = 0.6 + 0.15 * n;
+  const phase  = Math.cos(2 * Math.PI * animHz * simTime);
+
+  // Build wave points and envelope points.
+  const pts  = new Array(NPTS + 1);
+  const envP = new Array(NPTS + 1);
+  const envN = new Array(NPTS + 1);
+
+  for (let i = 0; i <= NPTS; i++) {
+    const t  = i / NPTS;
+    const x  = x0 + t * length;
+    const r  = boreRadius(t);
+    // Max displayed amplitude is a bit under the bore radius so the
+    // curve doesn't touch the walls.
+    const ampMax = Math.max(4, r - 5);
+    // Slight conical brightening toward the bell — pedagogical cue.
+    const coneBoost = 0.75 + 0.35 * t;
+    // FREE-FREE: cosine shape — antinodes at both t=0 and t=1.
+    const spatial = Math.cos(n * Math.PI * t);
+    const env = ampMax * coneBoost * spatial;
+    const y = env * phase;
+    pts [i] = [x, CY - y];
+    envP[i] = [x, CY - Math.abs(env)];
+    envN[i] = [x, CY + Math.abs(env)];
+  }
+
+  // Envelope (the "shape" of the standing wave — max excursion).
+  cx.save();
+  cx.beginPath();
+  cx.moveTo(envP[0][0], envP[0][1]);
+  for (let i = 1; i < envP.length; i++) cx.lineTo(envP[i][0], envP[i][1]);
+  for (let i = envN.length - 1; i >= 0; i--) cx.lineTo(envN[i][0], envN[i][1]);
+  cx.closePath();
+  cx.fillStyle = C_GOLD_L;
+  cx.fill();
+  cx.setLineDash([3, 5]);
+  cx.strokeStyle = 'rgba(192,120,0,0.55)';
+  cx.lineWidth = 1;
+  cx.beginPath();
+  cx.moveTo(envP[0][0], envP[0][1]);
+  for (let i = 1; i < envP.length; i++) cx.lineTo(envP[i][0], envP[i][1]);
+  cx.stroke();
+  cx.beginPath();
+  cx.moveTo(envN[0][0], envN[0][1]);
+  for (let i = 1; i < envN.length; i++) cx.lineTo(envN[i][0], envN[i][1]);
+  cx.stroke();
+  cx.restore();
+
+  // Instantaneous wave line.
+  cx.save();
+  cx.beginPath();
+  cx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) cx.lineTo(pts[i][0], pts[i][1]);
+  cx.strokeStyle = C_GOLD;
+  cx.lineWidth = 2.4;
+  cx.lineJoin = 'round';
+  cx.stroke();
+  cx.restore();
+
+  // Nodes and antinodes for FREE-FREE:
+  //   n interior nodes at t = (2k−1)/(2n), k = 1..n
+  //   n+1 antinodes at t = k/n, k = 0..n  (endpoints are antinodes)
+  cx.save();
+  // Interior nodes (small dark-blue dots).
+  for (let k = 1; k <= n; k++) {
+    const t = (2 * k - 1) / (2 * n);
+    const x = x0 + t * length;
+    cx.beginPath();
+    cx.arc(x, CY, 3.2, 0, Math.PI * 2);
+    cx.fillStyle = C_BLUE;
+    cx.fill();
+    cx.strokeStyle = C_BG;
+    cx.lineWidth = 1.2;
+    cx.stroke();
+  }
+  // Antinode markers (gold tick pairs just outside the envelope),
+  // including the two endpoint antinodes.
+  cx.strokeStyle = C_GOLD;
+  cx.lineWidth = 1.4;
+  for (let k = 0; k <= n; k++) {
+    const t = k / n;
+    const x = x0 + t * length;
+    const r = boreRadius(t);
+    const yTop = CY - (r + 6);
+    const yBot = CY + (r + 6);
+    cx.beginPath();
+    cx.moveTo(x, yTop - 3); cx.lineTo(x, yTop + 3);
+    cx.moveTo(x, yBot - 3); cx.lineTo(x, yBot + 3);
+    cx.stroke();
+  }
+  cx.restore();
+}
+
+// Dashed equilibrium axis through the bore.
+function drawAxis(geom) {
+  const { CY, x0, x1 } = geom;
+  cx.save();
+  cx.setLineDash([4, 6]);
+  cx.strokeStyle = C_BLUE_L;
+  cx.lineWidth = 1;
+  cx.beginPath();
+  cx.moveTo(x0, CY);
+  cx.lineTo(x1, CY);
+  cx.stroke();
+  cx.restore();
+}
+
+// End labels: mouthpiece and bell.
+function drawEndLabels(geom, H) {
+  const { x0, x1 } = geom;
+  cx.save();
+  cx.font = 'bold 10px system-ui';
+  cx.textAlign = 'center';
+  cx.fillStyle = C_BLUE;
+  cx.fillText('mouthpiece', x0, H - 22);
+  cx.fillText('bell',       x1 - 4, H - 22);
+  cx.restore();
+}
+
+// ─── Frame ────────────────────────────────────────────────────────────────
+function draw() {
+  const W = cv.width, H = cv.height;
+  cx.clearRect(0, 0, W, H);
+  cx.fillStyle = C_BG;
+  cx.fillRect(0, 0, W, H);
+
+  const geom = boreGeometry(W, H);
+
+  drawAxis(geom);
+  drawBore(geom);
+  drawStandingWave(geom);
+  drawEndLabels(geom, H);
+
+}
+
+// ─── UI wiring ────────────────────────────────────────────────────────────
+const harmSlider = document.getElementById('harm-slider');
+const harmValEl  = document.getElementById('harm-val');
+const freqValEl  = document.getElementById('freq-val');
+const noteValEl  = document.getElementById('note-val');
+
+function updateReadouts() {
+  const n = harmonic;
+  const f = n * F1;
+  const note = NOTES[n - 1];
+  harmValEl.textContent = 'n = ' + n;
+  freqValEl.textContent = f.toFixed(1) + ' Hz';
+  noteValEl.textContent = note.desc ? note.name + ' ' + note.desc : note.name;
+}
+
+harmSlider.addEventListener('input', e => {
+  harmonic = parseInt(e.target.value, 10);
+  updateReadouts();
+});
+
+updateReadouts();
+
+function loop(ts) {
+  simTime = ts / 1000;
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
