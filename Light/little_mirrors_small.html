@@ -54,7 +54,7 @@ function resize() {
   canvas.width  = W;
   canvas.height = H;
   if (!coneInitialized) {
-    cone = { x: Math.round(W * 0.78), y: Math.round(H * 0.50) };
+    cone = { x: Math.round(W * 0.48), y: Math.round(H * 0.50) };
     coneInitialized = true;
   }
   SCREEN_X = Math.round(W * 0.18);
@@ -237,9 +237,9 @@ function drawMirror(m, showHandles) {
       );
       ctx.fillStyle   = isSnapped ? '#e94560' : '#4a90d9';
       ctx.strokeStyle = '#fff';
-      ctx.lineWidth   = 0.75;
+      ctx.lineWidth   = 1.5;
       ctx.beginPath();
-      ctx.arc(hx, hy, 2, 0, Math.PI * 2);
+      ctx.arc(hx, hy, HANDLE_R - 2, 0, Math.PI * 2);
       ctx.fill();
       ctx.stroke();
     }
@@ -596,9 +596,15 @@ function onDown(e) {
     const e1 = mirrorEnd1(m);
     const e2 = mirrorEnd2(m);
 
-    if (dist2(pos.x, pos.y, m.cx, m.cy) < BODY_R ||
-        dist2(pos.x, pos.y, e1.x, e1.y) < HANDLE_R + 4 ||
-        dist2(pos.x, pos.y, e2.x, e2.y) < HANDLE_R + 4) {
+    if (dist2(pos.x, pos.y, e1.x, e1.y) < HANDLE_R + 4) {
+      drag = { mode: 'rot1', mirrorIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, e2.x, e2.y) < HANDLE_R + 4) {
+      drag = { mode: 'rot2', mirrorIndex: i };
+      return;
+    }
+    if (dist2(pos.x, pos.y, m.cx, m.cy) < BODY_R) {
       removeSnapsFor(m.id);
       mirrors.splice(i, 1);
       drag = { mode: 'move', mirror: { ...m },
@@ -637,6 +643,16 @@ function onMove(e) {
   if (drag.mode === 'move') {
     drag.mirror.cx = pos.x - drag.offsetX;
     drag.mirror.cy = pos.y - drag.offsetY;
+  } else if (drag.mode === 'rot1') {
+    const m = mirrors[drag.mirrorIndex];
+    if (!m) return;
+    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx) + Math.PI;
+    applySnapConstraints(m.id);
+  } else if (drag.mode === 'rot2') {
+    const m = mirrors[drag.mirrorIndex];
+    if (!m) return;
+    m.angle = Math.atan2(pos.y - m.cy, pos.x - m.cx);
+    applySnapConstraints(m.id);
   }
 }
 
