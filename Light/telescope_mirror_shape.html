@@ -113,7 +113,7 @@ let viewPanX = 0; // pan offset in canvas pixels
 let viewPanY = 0;
 
 // State
-let telescopeAngle = -rayAngle;
+let telescopeAngle = 0;
 let mirrorType = 'parabolic';
 let rays = [];
 let dragging = false;
@@ -396,7 +396,7 @@ function draw() {
       }
 
       ctx.strokeStyle = 'rgba(231, 76, 60, 0.85)';
-      ctx.lineWidth = 1.5 * viewZoom;
+      ctx.lineWidth = 0.75 * viewZoom;
       ctx.beginPath();
       ctx.moveTo(startS.x, startS.y);
       ctx.lineTo(endS.x, endS.y);
@@ -441,7 +441,7 @@ function draw() {
     const endS = toScreen(refEndU, refEndV);
 
     ctx.strokeStyle = 'rgba(231, 76, 60, 0.7)';
-    ctx.lineWidth = 1.5 * viewZoom;
+    ctx.lineWidth = 0.75 * viewZoom;
     ctx.beginPath();
     ctx.moveTo(hitS.x, hitS.y);
     ctx.lineTo(endS.x, endS.y);
@@ -679,11 +679,6 @@ document.getElementById('hideIncident').addEventListener('change', (e) => {
   draw();
 });
 
-// Start with rays
-for (let i = 0; i < 8; i++) {
-  rays.push({ offset: defaultOffsets[i] });
-  nextRayOffset++;
-}
 draw();
 
 window.addEventListener('load', () => {
