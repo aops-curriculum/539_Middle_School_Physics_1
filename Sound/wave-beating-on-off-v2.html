@@ -1,0 +1,307 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Wave Beating Simulation</title>
+    <style>
+        * { box-sizing: border-box; }
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 0 5px 5px 5px;
+            background-color: #f5f5f5;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            overflow: hidden;
+            width: 600px;
+            height: 500px;
+        }
+        
+        #canvas-container {
+            background: white;
+            border: 1px solid #ddd;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            line-height: 0;
+        }
+        
+        .controls {
+            display: flex;
+            flex-direction: row;
+            align-items: center;
+            justify-content: center;
+            background: white;
+            padding: 5px 12px;
+            margin-bottom: 5px;
+            border-radius: 6px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            width: 578px;
+        }
+        
+        .controls-row {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        
+        .control-item {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .control-item input[type="checkbox"] {
+            width: 14px;
+            height: 14px;
+            cursor: pointer;
+            margin: 0;
+        }
+        
+        .control-item label {
+            cursor: pointer;
+            font-size: 12px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+            white-space: nowrap;
+        }
+        
+        .color-indicator {
+            width: 16px;
+            height: 3px;
+            display: inline-block;
+        }
+        
+        .info {
+            font-size: 12px;
+            color: #555;
+            margin: 0;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="controls">
+        <div class="controls-row">
+            <div class="control-item">
+                <input type="checkbox" id="wave1Toggle" checked>
+                <label for="wave1Toggle">
+                    <span class="color-indicator" style="background-color: #0066cc;"></span>
+                    Wave 1 (10 Hz)
+                </label>
+            </div>
+            
+            <div class="control-item">
+                <input type="checkbox" id="wave2Toggle" checked>
+                <label for="wave2Toggle">
+                    <span class="color-indicator" style="background-color: #cc0000;"></span>
+                    Wave 2 (11.25 Hz)
+                </label>
+            </div>
+            
+            <div class="control-item">
+                <input type="checkbox" id="sumToggle">
+                <label for="sumToggle">
+                    <span class="color-indicator" style="background-color: #006600;"></span>
+                    Result
+                </label>
+            </div>
+        </div>
+    </div>
+
+    <div id="canvas-container">
+        <canvas id="waveCanvas" width="578" height="424"></canvas>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('waveCanvas');
+        const ctx = canvas.getContext('2d');
+        
+        // Graph parameters
+        const xMin = 0;
+        const xMax = 1; // 1 second
+        const yMin = -2.5;
+        const yMax = 2.5;
+        const padTop = 8, padBottom = 36, padLeft = 38, padRight = 8;
+        const graphWidth = canvas.width - padLeft - padRight;
+        const graphHeight = canvas.height - padTop - padBottom;
+        
+        // Wave parameters
+        const f1 = 10; // Hz
+        const f2 = 11.25; // Hz
+        
+        // Colors
+        const wave1Color = '#0066cc';
+        const wave2Color = '#cc0000';
+        const sumColor = '#006600';
+        
+        // Toggle states
+        let showWave1 = true;
+        let showWave2 = true;
+        let showSum = false;
+        
+        // Convert graph coordinates to canvas coordinates
+        function graphToCanvas(x, y) {
+            const canvasX = padLeft + (x - xMin) / (xMax - xMin) * graphWidth;
+            const canvasY = padTop + (yMax - y) / (yMax - yMin) * graphHeight;
+            return { x: canvasX, y: canvasY };
+        }
+        
+        // Draw axes and grid
+        function drawAxesAndGrid() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw grid
+            ctx.strokeStyle = '#e0e0e0';
+            ctx.lineWidth = 1;
+            
+            // Vertical grid lines (major)
+            for (let x = 0; x <= 1; x += 0.1) {
+                const { x: canvasX } = graphToCanvas(x, 0);
+                ctx.beginPath();
+                ctx.moveTo(canvasX, padTop);
+                ctx.lineTo(canvasX, canvas.height - padBottom);
+                ctx.stroke();
+            }
+            
+            // Horizontal grid lines (major)
+            for (let y = -2; y <= 2; y += 1) {
+                const { y: canvasY } = graphToCanvas(0, y);
+                ctx.beginPath();
+                ctx.moveTo(padLeft, canvasY);
+                ctx.lineTo(canvas.width - padRight, canvasY);
+                ctx.stroke();
+            }
+            
+            // Draw axes
+            ctx.strokeStyle = '#000';
+            ctx.lineWidth = 2;
+            
+            // X-axis
+            const { y: xAxisY } = graphToCanvas(0, 0);
+            ctx.beginPath();
+            ctx.moveTo(padLeft, xAxisY);
+            ctx.lineTo(canvas.width - padRight, xAxisY);
+            ctx.stroke();
+            
+            // Y-axis
+            const { x: yAxisX } = graphToCanvas(0, 0);
+            ctx.beginPath();
+            ctx.moveTo(yAxisX, padTop);
+            ctx.lineTo(yAxisX, canvas.height - padBottom);
+            ctx.stroke();
+            
+            // Draw tick marks and labels
+            ctx.fillStyle = '#000';
+            ctx.font = '11px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            
+            // X-axis labels (at bottom of graph)
+            for (let x = 0; x <= 1.001; x += 0.1) {
+                const { x: canvasX } = graphToCanvas(x, 0);
+                ctx.fillText(x.toFixed(1), canvasX, canvas.height - padBottom + 5);
+            }
+            
+            // Y-axis labels
+            ctx.textAlign = 'right';
+            ctx.textBaseline = 'middle';
+            for (let y = -2; y <= 2; y += 1) {
+                const { x: canvasX, y: canvasY } = graphToCanvas(0, y);
+                ctx.fillText(y.toFixed(0), canvasX - 5, canvasY);
+            }
+            
+            // Axis labels
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#000';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.fillText('Time (s)', canvas.width / 2, canvas.height - 14);
+            
+            ctx.save();
+            ctx.translate(12, canvas.height / 2);
+            ctx.rotate(-Math.PI / 2);
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'bottom';
+            ctx.fillText('Displacement', 0, 0);
+            ctx.restore();
+        }
+        
+        // Draw a wave function
+        function drawWave(waveFunc, color, lineWidth) {
+            ctx.strokeStyle = color;
+            ctx.lineWidth = lineWidth;
+            ctx.beginPath();
+            
+            let firstPoint = true;
+            const numPoints = 1000;
+            
+            for (let i = 0; i <= numPoints; i++) {
+                const t = xMin + (i / numPoints) * (xMax - xMin);
+                const y = waveFunc(t);
+                const { x: canvasX, y: canvasY } = graphToCanvas(t, y);
+                
+                if (firstPoint) {
+                    ctx.moveTo(canvasX, canvasY);
+                    firstPoint = false;
+                } else {
+                    ctx.lineTo(canvasX, canvasY);
+                }
+            }
+            
+            ctx.stroke();
+        }
+        
+        // Wave functions
+        function wave1(t) {
+            return Math.sin(2 * Math.PI * f1 * t);
+        }
+        
+        function wave2(t) {
+            return Math.sin(2 * Math.PI * f2 * t);
+        }
+        
+        function waveSum(t) {
+            return wave1(t) + wave2(t);
+        }
+        
+        // Main drawing function
+        function draw() {
+            drawAxesAndGrid();
+            
+            // Draw waves based on toggle states
+            if (showWave1) {
+                drawWave(wave1, wave1Color, 1.5);
+            }
+            
+            if (showWave2) {
+                drawWave(wave2, wave2Color, 1.5);
+            }
+            
+            if (showSum) {
+                drawWave(waveSum, sumColor, 2.5);
+            }
+        }
+        
+        // Event listeners for toggles
+        document.getElementById('wave1Toggle').addEventListener('change', (e) => {
+            showWave1 = e.target.checked;
+            draw();
+        });
+        
+        document.getElementById('wave2Toggle').addEventListener('change', (e) => {
+            showWave2 = e.target.checked;
+            draw();
+        });
+        
+        document.getElementById('sumToggle').addEventListener('change', (e) => {
+            showSum = e.target.checked;
+            draw();
+        });
+        
+        // Initial draw
+        draw();
+    </script>
+</body>
+</html>
