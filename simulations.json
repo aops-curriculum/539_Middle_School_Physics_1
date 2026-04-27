@@ -704,6 +704,20 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Sound/wave-beating-adjustable-v2.html",
+      "title": "Wave Beating — Adjustable",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
+    },
+    {
+      "path": "Sound/wave-beating-on-off-v2.html",
+      "title": "Wave Beating Simulation",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
