@@ -725,6 +725,13 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Sound/two_speaker_2d_interference.html",
+      "title": "Two-Speaker Interference",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
