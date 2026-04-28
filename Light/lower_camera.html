@@ -208,12 +208,20 @@ function drawArrow(x1, y1, x2, y2, color) {
 }
 
 function drawHandle(x, y) {
-  ctx.fillStyle = '#fff';
+  const ringR = HANDLE_R * 1.6;
+  const armLen = ringR + 5 * S;
   ctx.strokeStyle = '#333';
-  ctx.lineWidth = 1.5 * S;
+  ctx.lineWidth = 1.2 * S;
+  // Crosshair arms
   ctx.beginPath();
-  ctx.arc(x, y, HANDLE_R, 0, Math.PI * 2);
-  ctx.fill();
+  ctx.moveTo(x - armLen, y);
+  ctx.lineTo(x + armLen, y);
+  ctx.moveTo(x, y - armLen);
+  ctx.lineTo(x, y + armLen);
+  ctx.stroke();
+  // Outer ring (no fill, transparent center)
+  ctx.beginPath();
+  ctx.arc(x, y, ringR, 0, Math.PI * 2);
   ctx.stroke();
 }
 
