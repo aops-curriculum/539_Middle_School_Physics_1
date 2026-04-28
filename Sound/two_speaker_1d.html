@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Two-Speaker 1D Interference</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      width: 600px; height: 290px; overflow: hidden;
+      background: #f5f5f5;
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      user-select: none;
+    }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+  <canvas id="c" width="600" height="290"></canvas>
+  <script>
+  (() => {
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d');
+    const W = 600, H = 290;
+    const PAD = 22;
+
+    // ── Layout ──────────────────────────────────────────────
+    const WP_X = PAD, WP_Y = 5, WP_W = W - PAD * 2, WP_H = 248;
+    const WP_CY = WP_Y + WP_H / 2;   // y-center of wave panel = 129
+    const MIC_X = WP_X + WP_W;   // waves extend to panel right edge
+
+    // ── Physics ──────────────────────────────────────────────
+    const LAMBDA = 75;               // pixels per wavelength
+    const K      = 2 * Math.PI / LAMBDA;
+    const OMEGA  = 2.0;              // angular frequency (rad/s)
+    const AMP    = 45;               // wave amplitude in pixels
+
+    // ── State ────────────────────────────────────────────────
+    const sps = [
+      { x: 88,  color: '#2266ee', label: 'Wave 1', name: 'Speaker 1', labelBelow: false },
+      { x: 88,  color: '#cc2288', label: 'Wave 2', name: 'Speaker 2', labelBelow: true  },
+    ];
+    let dragIdx = -1, animT = 0;
+    let lastMx = -100, lastMy = -100;
+
+    // ── Physics helpers ──────────────────────────────────────
+    const waveAt = (spX, x, t) =>
+      x > spX ? AMP * Math.sin(K * (x - spX) - OMEGA * t) : 0;
+
+    // 0 = destructive, 1 = constructive
+    const interferenceFrac = () => {
+      const delta = Math.abs(sps[0].x - sps[1].x);
+      return Math.abs(Math.cos(K * delta / 2));
+    };
+
+    // ── Drawing helpers ──────────────────────────────────────
+    function arrowHead(x, y, angle, size, color) {
+      ctx.save();
+      ctx.translate(x, y);
+      ctx.rotate(angle);
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.lineTo(-size, -size * 0.45);
+      ctx.lineTo(-size,  size * 0.45);
+      ctx.closePath();
+      ctx.fillStyle = color;
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawSpeaker(sp, hl) {
+      const { x, color, name, labelBelow } = sp;
+      const cy = WP_CY, R = 19;
+
+      if (hl) { ctx.save(); ctx.shadowColor = color; ctx.shadowBlur = 18; }
+
+      ctx.beginPath(); ctx.arc(x, cy, R, 0, Math.PI * 2);
+      ctx.fillStyle = '#444'; ctx.fill();
+      ctx.strokeStyle = '#000';
+      ctx.lineWidth = hl ? 2.5 : 1.5; ctx.stroke();
+
+      [14, 10, 6].forEach(r => {
+        ctx.beginPath(); ctx.arc(x, cy, r, 0, Math.PI * 2);
+        ctx.strokeStyle = 'rgba(0,0,0,0.4)';
+        ctx.lineWidth = 0.8; ctx.stroke();
+      });
+
+      ctx.beginPath(); ctx.arc(x, cy, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color; ctx.fill();
+
+      if (hl) ctx.restore();
+
+      ctx.fillStyle = color;
+      ctx.font = 'bold 11px Segoe UI';
+      ctx.textAlign = 'center';
+      const labelY = labelBelow ? cy + R + 14 : cy - R - 7;
+      ctx.fillText(name, x, labelY);
+    }
+
+    function drawMicArrow(y) {
+      const ax = W - PAD - 2;  // arrow tip at right edge
+      const tailLen = 38;
+      // Shaft
+      ctx.beginPath();
+      ctx.strokeStyle = '#333'; ctx.lineWidth = 2;
+      ctx.moveTo(ax - tailLen, y); ctx.lineTo(ax - 6, y); ctx.stroke();
+      // Head
+      ctx.beginPath();
+      ctx.fillStyle = '#333';
+      ctx.moveTo(ax, y);
+      ctx.lineTo(ax - 10, y - 6);
+      ctx.lineTo(ax - 10, y + 6);
+      ctx.closePath(); ctx.fill();
+      // Label
+      ctx.fillStyle = '#333';
+      ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+      ctx.fillText('MIC', ax - tailLen / 2, y - 7);
+    }
+
+    // ── Main draw loop ────────────────────────────────────────
+    function draw(t) {
+      ctx.clearRect(0, 0, W, H);
+      ctx.fillStyle = '#f5f5f5'; ctx.fillRect(0, 0, W, H);
+
+      // ── Wave Panel ──────────────────────────────────────────
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
+      ctx.beginPath(); ctx.rect(WP_X, WP_Y, WP_W, WP_H); ctx.fill(); ctx.stroke();
+
+      ctx.save();
+      ctx.beginPath(); ctx.rect(WP_X + 1, WP_Y + 1, WP_W - 2, WP_H - 2); ctx.clip();
+
+      // Axis
+      ctx.beginPath(); ctx.strokeStyle = 'rgba(0,0,0,0.15)'; ctx.lineWidth = 1;
+      ctx.moveTo(WP_X + 2, WP_CY); ctx.lineTo(MIC_X + 14, WP_CY); ctx.stroke();
+
+      // Individual speaker waves
+      let first;
+      for (const sp of sps) {
+        ctx.beginPath(); ctx.strokeStyle = sp.color;
+        ctx.globalAlpha = 0.5; ctx.lineWidth = 1.5;
+        first = true;
+        for (let x = sp.x + 1; x <= MIC_X; x += 1.5) {
+          const y = WP_CY - waveAt(sp.x, x, t);
+          first ? ctx.moveTo(x, y) : ctx.lineTo(x, y); first = false;
+        }
+        ctx.stroke(); ctx.globalAlpha = 1;
+      }
+
+      // Resultant (superposition) wave
+      const leftSpX = Math.min(sps[0].x, sps[1].x);
+      ctx.beginPath(); ctx.strokeStyle = '#00aa55'; ctx.lineWidth = 2.5;
+      first = true;
+      for (let x = leftSpX + 1; x <= MIC_X; x += 1.5) {
+        const s = sps.reduce((sum, sp) => sum + waveAt(sp.x, x, t), 0);
+        const y = WP_CY - s;
+        first ? ctx.moveTo(x, y) : ctx.lineTo(x, y); first = false;
+      }
+      ctx.stroke();
+
+      ctx.restore(); // end wave clip
+
+      // Instruction (top-center, inside panel, on top of waves)
+      ctx.fillStyle = '#aabbcc'; ctx.font = '11px Segoe UI'; ctx.textAlign = 'center';
+      ctx.fillText('Drag speakers ↔', W / 2, WP_Y + 14);
+
+      // Speakers drawn outside clip so they appear above panel border
+      for (let i = 0; i < sps.length; i++) {
+        const hl = dragIdx === i || Math.hypot(lastMx - sps[i].x, lastMy - WP_CY) < 22;
+        drawSpeaker(sps[i], hl);
+      }
+      drawMicArrow(WP_CY);
+
+      // L bracket
+      const ls = Math.min(sps[0].x, sps[1].x);
+      const brY = WP_Y + WP_H - 13;
+      ctx.save();
+      ctx.setLineDash([5, 4]); ctx.strokeStyle = '#886600'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.moveTo(ls, brY); ctx.lineTo(MIC_X, brY); ctx.stroke();
+      ctx.setLineDash([]); ctx.restore();
+      arrowHead(ls, brY, Math.PI, 7, '#886600');
+      arrowHead(MIC_X, brY, 0, 7, '#886600');
+      ctx.fillStyle = '#886600'; ctx.font = 'italic 13px Georgia,serif';
+      ctx.textAlign = 'center';
+      ctx.fillText('L', (ls + MIC_X) / 2, brY - 5);
+
+      // ── Bottom bar (single line: key | instruction | loudness) ─
+      const frac  = interferenceFrac();
+      const rowY  = WP_Y + WP_H + 22;   // baseline for text / center for bar
+
+      // Color key (left)
+      let legCur = WP_X + 6;
+      for (const sp of sps) {
+        ctx.beginPath(); ctx.strokeStyle = sp.color;
+        ctx.globalAlpha = 0.7; ctx.lineWidth = 2;
+        ctx.moveTo(legCur, rowY); ctx.lineTo(legCur + 22, rowY); ctx.stroke();
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = '#334455'; ctx.font = '11px Segoe UI'; ctx.textAlign = 'left';
+        ctx.fillText(sp.label, legCur + 27, rowY + 4);
+        legCur += 82;
+      }
+      ctx.beginPath(); ctx.strokeStyle = '#00aa55'; ctx.lineWidth = 2.5;
+      ctx.moveTo(legCur, rowY); ctx.lineTo(legCur + 22, rowY); ctx.stroke();
+      ctx.fillStyle = '#334455'; ctx.font = '11px Segoe UI'; ctx.textAlign = 'left';
+      ctx.fillText('Resultant', legCur + 27, rowY + 4);
+
+
+      // Loudness bar (right)
+      const barW = 90, barH = 7;
+      const barX = WP_X + WP_W - barW - 2, barY = rowY - 3;
+      ctx.fillStyle = 'rgba(0,0,0,0.08)'; ctx.fillRect(barX, barY, barW, barH);
+      ctx.fillStyle = '#00aa55'; ctx.fillRect(barX, barY, barW * frac, barH);
+      ctx.strokeStyle = 'rgba(0,0,0,0.12)'; ctx.lineWidth = 1;
+      ctx.strokeRect(barX, barY, barW, barH);
+      ctx.fillStyle = '#778899'; ctx.font = '10px Segoe UI'; ctx.textAlign = 'right';
+      ctx.fillText('Loudness', barX - 3, barY + 6);
+    }
+
+    // ── Animation loop ───────────────────────────────────────
+    let lastTs = null;
+    function frame(ts) {
+      if (!lastTs) lastTs = ts;
+      const dt = Math.min((ts - lastTs) / 1000, 0.05);
+      lastTs = ts; animT += dt;
+      draw(animT);
+      requestAnimationFrame(frame);
+    }
+    requestAnimationFrame(frame);
+
+    // ── Interaction ──────────────────────────────────────────
+    const cpos = e => {
+      const r = canvas.getBoundingClientRect();
+      return [e.clientX - r.left, e.clientY - r.top];
+    };
+
+    canvas.addEventListener('mousedown', e => {
+      const [mx, my] = cpos(e);
+      for (let i = 0; i < sps.length; i++) {
+        if (Math.hypot(mx - sps[i].x, my - WP_CY) < 22) { dragIdx = i; break; }
+      }
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      const [mx, my] = cpos(e);
+      lastMx = mx; lastMy = my;
+      if (dragIdx >= 0) {
+        sps[dragIdx].x = Math.max(WP_X + 24, Math.min(MIC_X - 48, mx));
+        canvas.style.cursor = 'grabbing';
+      } else {
+        const hovering = sps.some(sp => Math.hypot(mx - sp.x, my - WP_CY) < 22);
+        canvas.style.cursor = hovering ? 'grab' : 'default';
+      }
+    });
+
+    canvas.addEventListener('mouseup',    () => { dragIdx = -1; });
+    canvas.addEventListener('mouseleave', () => {
+      dragIdx = -1; lastMx = -100; lastMy = -100;
+    });
+
+  })();
+  </script>
+</body>
+</html>
