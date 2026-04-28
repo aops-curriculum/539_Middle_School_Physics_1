@@ -1,0 +1,497 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Two-Speaker Interference</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 600px;
+  height: 500px;
+  overflow: hidden;
+}
+body {
+  background: #eef0f4;
+  color: #334;
+  font-family: 'Segoe UI', sans-serif;
+  display: flex;
+  flex-direction: column;
+}
+canvas { display: block; flex-shrink: 0; }
+
+#ui {
+  height: 46px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  background: #f4f5fa;
+  border-top: 1px solid #ccd;
+  gap: 0;
+}
+.grp {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+}
+.freq-grp { flex: 1; min-width: 0; }
+.sep { width: 1px; height: 22px; background: #ccd; flex-shrink: 0; }
+
+.lbl { font-size: .68rem; color: #778; white-space: nowrap; }
+#fr  { flex: 1; min-width: 60px; cursor: pointer; accent-color: #4466bb; }
+#frv { font-size: .68rem; color: #446; white-space: nowrap; min-width: 44px; text-align: right; }
+
+.chk {
+  display: flex; align-items: center; gap: 4px;
+  font-size: .68rem; color: #445; cursor: pointer; white-space: nowrap;
+  margin-right: 4px;
+}
+.chk:last-child { margin-right: 0; }
+.chk input { cursor: pointer; accent-color: #4466bb; width: 13px; height: 13px; }
+.dot1 { color: #2255cc; }
+.dot2 { color: #cc3311; }
+
+.btns { gap: 3px; }
+.mbt {
+  padding: 4px 7px;
+  background: #eaecf6;
+  border: 1px solid #bbc;
+  color: #557;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: .65rem;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background .1s, color .1s;
+}
+.mbt:hover { background: #dde2f4; }
+.mbt.on { background: #1a3d80; border-color: #1a3d80; color: #fff; }
+
+#play {
+  padding: 5px 11px;
+  background: #1a3d80;
+  border: 1px solid #1a3d80;
+  color: #fff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: .68rem;
+  font-family: inherit;
+  white-space: nowrap;
+  transition: background .1s;
+}
+#play:hover { background: #214ea0; }
+</style>
+</head>
+<body>
+
+<canvas id="c" width="600" height="454"></canvas>
+
+<div id="ui">
+  <!-- Frequency -->
+  <div class="grp freq-grp">
+    <span class="lbl">Freq</span>
+    <input type="range" id="fr" min="1" max="8" step=".5" value="2">
+    <span id="frv">2.0 Hz</span>
+  </div>
+  <div class="sep"></div>
+  <!-- Speaker toggles -->
+  <div class="grp">
+    <label class="chk"><input type="checkbox" id="s1" checked><span class="dot1">●</span> Spk 1</label>
+    <label class="chk"><input type="checkbox" id="s2"><span class="dot2">●</span> Spk 2</label>
+  </div>
+  <div class="sep"></div>
+  <!-- Display mode -->
+  <div class="grp btns">
+    <button class="mbt on" data-m="1">Fronts</button>
+    <button class="mbt" data-m="2">Dots</button>
+    <button class="mbt" data-m="3">Curves</button>
+  </div>
+  <div class="sep"></div>
+  <!-- Play/pause -->
+  <div class="grp">
+    <button id="play">⏸ Pause</button>
+  </div>
+</div>
+
+<script>
+const cv  = document.getElementById('c');
+const ctx = cv.getContext('2d');
+const W = 600, H = 454, TAU = Math.PI * 2;
+
+// Wave propagation speed (px/s). λ = SPEED / freq.
+const SPEED = 120;
+
+// ── Simulation state ─────────────────────────────────────────────
+const sp     = [{ x: 200, y: 227 }, { x: 400, y: 227 }]; // world coords
+let freq     = 2;
+let active   = [true, false];
+let mode     = 1;
+let playing  = true;
+let time     = 0;
+let lastTs   = null;
+
+// ── Viewport state ───────────────────────────────────────────────
+let zoom = 1.0;
+let panX = 0, panY = 0;
+
+// ── Interaction state ────────────────────────────────────────────
+let dragging = -1;
+let panning  = false;
+let panAnchorX = 0, panAnchorY = 0, panAnchorPX = 0, panAnchorPY = 0;
+let pinchDist0 = null;
+
+// ── Derived ──────────────────────────────────────────────────────
+let curveCache = null;
+const wl = () => SPEED / freq;
+
+// ── Coordinate helpers ───────────────────────────────────────────
+function worldToCanvas(wx, wy) {
+  return { x: wx * zoom + panX, y: wy * zoom + panY };
+}
+function canvasToWorld(cx, cy) {
+  return { x: (cx - panX) / zoom, y: (cy - panY) / zoom };
+}
+function cvPos(e) {
+  const r = cv.getBoundingClientRect();
+  return { x: e.clientX - r.left, y: e.clientY - r.top };
+}
+function cvPosT(t) {
+  const r = cv.getBoundingClientRect();
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+
+function zoomAt(cx, cy, factor) {
+  const nz = Math.max(0.25, Math.min(8, zoom * factor));
+  const f  = nz / zoom;
+  panX = cx * (1 - f) + panX * f;
+  panY = cy * (1 - f) + panY * f;
+  zoom = nz;
+  invalidateCurves();
+}
+
+function resetView() {
+  zoom = 1; panX = 0; panY = 0;
+  invalidateCurves();
+}
+
+// ── Animation loop ───────────────────────────────────────────────
+function loop(ts) {
+  if (playing && lastTs !== null) {
+    time += Math.min((ts - lastTs) / 1000, 0.05);
+  }
+  lastTs = ts;
+  render();
+  requestAnimationFrame(loop);
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  if (mode === 1) {
+    drawFronts(1.0);
+  } else if (mode === 2) {
+    drawFronts(0.45);
+    drawDots();
+  } else {
+    drawCurves();
+    drawFronts(0.18);
+  }
+  drawSpeakers();
+}
+
+// ── Wavefront radii (world units) ────────────────────────────────
+function getRadii(si) {
+  if (!active[si]) return [];
+  const lambda = wl();
+  const corners = [
+    canvasToWorld(0, 0), canvasToWorld(W, 0),
+    canvasToWorld(0, H), canvasToWorld(W, H)
+  ];
+  const maxR = Math.max(...corners.map(c => Math.hypot(c.x - sp[si].x, c.y - sp[si].y)));
+  const phase = (freq * time) % 1;
+  const lead  = phase * lambda;
+  const rs = [];
+  for (let r = lead; r <= maxR; r += lambda) {
+    if (r > 1) rs.push(r);
+  }
+  return rs;
+}
+
+// ── Mode 1: concentric circles ───────────────────────────────────
+function drawFronts(alpha) {
+  const colors = [`rgba(30,100,220,${alpha})`, `rgba(210,50,30,${alpha})`];
+  for (let si = 0; si < 2; si++) {
+    if (!active[si]) continue;
+    const sc = worldToCanvas(sp[si].x, sp[si].y);
+    ctx.strokeStyle = colors[si];
+    ctx.lineWidth   = 1.5;
+    for (const r of getRadii(si)) {
+      ctx.beginPath();
+      ctx.arc(sc.x, sc.y, r * zoom, 0, TAU);
+      ctx.stroke();
+    }
+  }
+}
+
+// ── Mode 2: dots at wavefront crossings ──────────────────────────
+function drawDots() {
+  if (!active[0] || !active[1]) return;
+  const [s1, s2] = sp;
+  const rs1 = getRadii(0), rs2 = getRadii(1);
+
+  const dx = s2.x - s1.x, dy = s2.y - s1.y;
+  const d  = Math.hypot(dx, dy);
+  if (d < 1) return;
+
+  const ux = dx / d, uy = dy / d;
+  const px = -uy,   py = ux;
+
+  ctx.fillStyle = '#008840';
+
+  for (const r1 of rs1) {
+    for (const r2 of rs2) {
+      if (r1 + r2 <= d || Math.abs(r1 - r2) >= d) continue;
+      const a  = (r1 * r1 - r2 * r2 + d * d) / (2 * d);
+      const h2 = r1 * r1 - a * a;
+      if (h2 < 0) continue;
+      const h  = Math.sqrt(h2);
+      const bx = s1.x + a * ux, by = s1.y + a * uy;
+
+      for (const sg of [1, -1]) {
+        const sc = worldToCanvas(bx + sg * h * px, by + sg * h * py);
+        if (sc.x > 2 && sc.x < W - 2 && sc.y > 2 && sc.y < H - 2) {
+          ctx.beginPath();
+          ctx.arc(sc.x, sc.y, 3.5, 0, TAU);
+          ctx.fill();
+        }
+      }
+    }
+  }
+}
+
+// ── Mode 3: constructive loci via pixel scan ─────────────────────
+function drawCurves() {
+  if (!curveCache) curveCache = computeCurves();
+  ctx.putImageData(curveCache, 0, 0);
+}
+
+function computeCurves() {
+  const [s1, s2] = sp;
+  const lambda   = wl();
+  const id       = ctx.createImageData(W, H);
+  const data     = id.data;
+
+  if (!active[0] || !active[1]) return id;
+
+  const thr = 4 / lambda;
+
+  for (let cy = 0; cy < H; cy++) {
+    for (let cx = 0; cx < W; cx++) {
+      const wx = (cx - panX) / zoom;
+      const wy = (cy - panY) / zoom;
+
+      const r1 = Math.hypot(wx - s1.x, wy - s1.y);
+      const r2 = Math.hypot(wx - s2.x, wy - s2.y);
+      const pd = (r1 - r2) / lambda;
+      const fr = pd - Math.round(pd);
+      const t  = Math.abs(fr) / thr;
+
+      if (t < 1) {
+        const b = Math.cos(t * Math.PI / 2);
+        const i = (cy * W + cx) * 4;
+        data[i]     = Math.round(10  * b);
+        data[i + 1] = Math.round(180 * b);
+        data[i + 2] = Math.round(60  * b);
+        data[i + 3] = Math.round(210 * b);
+      }
+    }
+  }
+  return id;
+}
+
+function invalidateCurves() { curveCache = null; }
+
+// ── Speaker icons (always drawn in canvas-px space) ──────────────
+function drawSpeakers() {
+  const fillColors = ['#2255cc', '#cc3311'];
+  const glowColors = ['rgba(34,85,200,.15)', 'rgba(200,50,20,.15)'];
+
+  sp.forEach((s, i) => {
+    const sc  = worldToCanvas(s.x, s.y);
+    const dim = !active[i];
+
+    const g = ctx.createRadialGradient(sc.x, sc.y, 0, sc.x, sc.y, 20);
+    g.addColorStop(0, glowColors[i].replace('.15', dim ? '.06' : '.18'));
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.arc(sc.x, sc.y, 20, 0, TAU);
+    ctx.fill();
+
+    ctx.globalAlpha = dim ? 0.3 : 1;
+    ctx.fillStyle   = fillColors[i];
+    ctx.beginPath();
+    ctx.arc(sc.x, sc.y, 8, 0, TAU);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(255,255,255,.9)';
+    ctx.lineWidth   = 1.5;
+    ctx.stroke();
+
+    ctx.fillStyle    = '#fff';
+    ctx.font         = 'bold 9px sans-serif';
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(i + 1, sc.x, sc.y);
+    ctx.globalAlpha  = 1;
+  });
+}
+
+// ── Mouse: zoom (wheel), pan (drag empty), drag speakers ─────────
+cv.addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = cvPos(e);
+  zoomAt(p.x, p.y, e.deltaY < 0 ? 1.1 : 1 / 1.1);
+}, { passive: false });
+
+cv.addEventListener('dblclick', resetView);
+
+cv.addEventListener('mousedown', e => {
+  const pc = cvPos(e);
+  for (let i = 1; i >= 0; i--) {
+    const sc = worldToCanvas(sp[i].x, sp[i].y);
+    if (Math.hypot(pc.x - sc.x, pc.y - sc.y) < 18) {
+      dragging = i;
+      cv.style.cursor = 'grabbing';
+      return;
+    }
+  }
+  panning      = true;
+  panAnchorX   = pc.x; panAnchorY = pc.y;
+  panAnchorPX  = panX;  panAnchorPY = panY;
+  cv.style.cursor = 'move';
+});
+
+cv.addEventListener('mousemove', e => {
+  const pc = cvPos(e);
+  if (dragging >= 0) {
+    const w = canvasToWorld(pc.x, pc.y);
+    sp[dragging].x = w.x;
+    sp[dragging].y = w.y;
+    invalidateCurves();
+    return;
+  }
+  if (panning) {
+    panX = panAnchorPX + pc.x - panAnchorX;
+    panY = panAnchorPY + pc.y - panAnchorY;
+    invalidateCurves();
+    return;
+  }
+  const near = sp.some(s => {
+    const sc = worldToCanvas(s.x, s.y);
+    return Math.hypot(pc.x - sc.x, pc.y - sc.y) < 18;
+  });
+  cv.style.cursor = near ? 'grab' : 'default';
+});
+
+cv.addEventListener('mouseup', () => {
+  dragging = -1;
+  panning  = false;
+  cv.style.cursor = 'default';
+});
+cv.addEventListener('mouseleave', () => { dragging = -1; panning = false; });
+
+// ── Touch: pinch-to-zoom + speaker drag ──────────────────────────
+cv.addEventListener('touchstart', e => {
+  e.preventDefault();
+  if (e.touches.length === 2) {
+    dragging   = -1;
+    panning    = false;
+    pinchDist0 = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    return;
+  }
+  if (e.touches.length === 1) {
+    const p = cvPosT(e.touches[0]);
+    for (let i = 1; i >= 0; i--) {
+      const sc = worldToCanvas(sp[i].x, sp[i].y);
+      if (Math.hypot(p.x - sc.x, p.y - sc.y) < 22) { dragging = i; return; }
+    }
+    panning     = true;
+    panAnchorX  = p.x; panAnchorY = p.y;
+    panAnchorPX = panX; panAnchorPY = panY;
+  }
+}, { passive: false });
+
+cv.addEventListener('touchmove', e => {
+  e.preventDefault();
+  if (e.touches.length === 2 && pinchDist0 !== null) {
+    const dist = Math.hypot(
+      e.touches[0].clientX - e.touches[1].clientX,
+      e.touches[0].clientY - e.touches[1].clientY
+    );
+    const rect = cv.getBoundingClientRect();
+    const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left;
+    const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top;
+    zoomAt(midX, midY, dist / pinchDist0);
+    pinchDist0 = dist;
+    return;
+  }
+  if (e.touches.length === 1) {
+    const p = cvPosT(e.touches[0]);
+    if (dragging >= 0) {
+      const w = canvasToWorld(p.x, p.y);
+      sp[dragging].x = w.x;
+      sp[dragging].y = w.y;
+      invalidateCurves();
+    } else if (panning) {
+      panX = panAnchorPX + p.x - panAnchorX;
+      panY = panAnchorPY + p.y - panAnchorY;
+      invalidateCurves();
+    }
+  }
+}, { passive: false });
+
+cv.addEventListener('touchend', () => { dragging = -1; panning = false; pinchDist0 = null; });
+
+// ── Controls ─────────────────────────────────────────────────────
+document.getElementById('fr').addEventListener('input', function () {
+  freq = parseFloat(this.value);
+  document.getElementById('frv').textContent = freq.toFixed(1) + ' Hz';
+  invalidateCurves();
+});
+
+document.getElementById('s1').addEventListener('change', function () {
+  active[0] = this.checked;
+  invalidateCurves();
+});
+document.getElementById('s2').addEventListener('change', function () {
+  active[1] = this.checked;
+  invalidateCurves();
+});
+
+document.querySelectorAll('.mbt').forEach(b => {
+  b.addEventListener('click', () => {
+    document.querySelectorAll('.mbt').forEach(x => x.classList.remove('on'));
+    b.classList.add('on');
+    mode = parseInt(b.dataset.m);
+  });
+});
+
+const playBtn = document.getElementById('play');
+playBtn.addEventListener('click', () => {
+  playing = !playing;
+  if (playing) lastTs = null;
+  playBtn.textContent = playing ? '⏸ Pause' : '▶ Play';
+});
+
+// ── Start ────────────────────────────────────────────────────────
+requestAnimationFrame(loop);
+</script>
+</body>
+</html>
