@@ -1,0 +1,693 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Refraction: Book, Water Container, Camera</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  font-family: Arial, sans-serif;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  color: #e0e0e0;
+  user-select: none;
+}
+h2 {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin-bottom: 10px;
+  color: #c0d8f0;
+  letter-spacing: 0.3px;
+}
+canvas {
+  display: block;
+  border-radius: 6px;
+  border: 1px solid #2a3a5a;
+}
+.controls {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  justify-content: center;
+  margin-top: 14px;
+  padding: 14px 24px;
+  background: #141428;
+  border-radius: 8px;
+  border: 1px solid #2a3a5a;
+}
+.ctrl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  min-width: 170px;
+}
+.ctrl-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: #7090b0;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+}
+.ctrl-val {
+  font-size: 0.85rem;
+  color: #58a0e8;
+  font-weight: 700;
+  min-width: 44px;
+  text-align: center;
+}
+input[type=range] {
+  width: 170px;
+  accent-color: #4a88d0;
+  cursor: pointer;
+}
+.info {
+  margin-top: 10px;
+  padding: 8px 18px;
+  background: #141428;
+  border-radius: 6px;
+  border: 1px solid #2a3a5a;
+  font-size: 0.82rem;
+  color: #7090b0;
+  text-align: center;
+  min-height: 32px;
+  max-width: 700px;
+}
+.info .hi { color: #ffd060; font-weight: 700; }
+.info .warn { color: #f07070; font-weight: 700; }
+</style>
+</head>
+<body>
+<h2>Light Refraction — Book, Water Container &amp; Camera</h2>
+<canvas id="canvas" width="860" height="500"></canvas>
+<div class="controls">
+  <div class="ctrl">
+    <div class="ctrl-label">Book Distance</div>
+    <input type="range" id="slBook" min="20" max="180" value="70">
+    <div class="ctrl-val" id="valBook"></div>
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-label">Water Level</div>
+    <input type="range" id="slWater" min="0" max="100" value="55">
+    <div class="ctrl-val" id="valWater"></div>
+  </div>
+  <div class="ctrl">
+    <div class="ctrl-label">Camera Position</div>
+    <input type="range" id="slCam" min="0" max="100" value="62">
+    <div class="ctrl-val" id="valCam"></div>
+  </div>
+</div>
+<div class="info" id="info"></div>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const W = canvas.width;   // 860
+const H = canvas.height;  // 500
+
+// ── Layout constants ──────────────────────────────────────────────────────────
+const FLOOR_Y  = 466;   // ground level
+
+// Book (stands on floor — very tall so its top is well above the container)
+const BK_W     = 30;
+const BK_H     = 420;
+const BK_TOP   = FLOOR_Y - BK_H;   // 46
+const BK_BOT   = FLOOR_Y;           // 466
+
+// Container (elevated on a stand, open top, transparent bottom)
+// The container top must be WELL BELOW the book top so the light ray
+// travels clearly downward from the book to P1 and on to the camera.
+const CX_L     = 460;   // inner left wall x
+const CX_R     = 680;   // inner right wall x
+const CX_W     = CX_R - CX_L;          // 220
+const CY_TOP   = 270;   // inner top  (light just barely clears here)
+const CY_BOT   = 420;   // inner bottom
+const CY_H     = CY_BOT - CY_TOP;      // 150
+const WALL_T   = 7;     // wall thickness
+
+// Camera (sits just below the container, between its bottom and the floor)
+const CAM_Y    = FLOOR_Y - 10;         // 456
+
+// Refraction index
+const N_WATER  = 1.33;
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Solve for x_ws on the water surface (y = yWS) using bisection so that
+ *  Snell's law holds at the air→water interface.
+ *  Air ray:   from P1 = (CX_L, CY_TOP) heading to (x_ws, yWS)
+ *  Water ray: from (x_ws, yWS) heading to camera (xC, yC)
+ *  n_air·sin θ_air = N_WATER·sin θ_water
+ */
+function solveSnell(yWS, xC, yC) {
+  const xL = CX_L, yT = CY_TOP;
+
+  function residual(x) {
+    const dxa = x  - xL,   dya = yWS - yT;
+    const dxw = xC - x,    dyw = yC  - yWS;
+    const sinA = dxa / Math.hypot(dxa, dya);
+    const sinW = dxw / Math.hypot(dxw, dyw);
+    return sinA - N_WATER * sinW;
+  }
+
+  // residual at xL ≈ 0 − positive  →  negative
+  // residual at xC ≈ positive − 0  →  positive
+  let lo = xL + 1e-4, hi = Math.min(xC - 1e-4, CX_R - 1e-4);
+  if (hi <= lo) return lo;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    residual(mid) < 0 ? lo = mid : hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+/** Extend the air ray backwards from P1 toward the book.
+ *  The air ray travels in direction (dx, dy) (positive → towards water surface).
+ *  Returns the y-coordinate on the book's right face (x = bookRight).
+ */
+function bookY(bookRight, dx, dy) {
+  // parametric from P1: x = CX_L + t·dx, y = CY_TOP + t·dy
+  // at x = bookRight: t = (bookRight − CX_L) / dx   (negative, going left)
+  const t = (bookRight - CX_L) / dx;
+  return CY_TOP + t * dy;
+}
+
+/** Compute the full ray path given slider values. */
+function computeRay(bookRight, waterPct, xC, yC) {
+  const P1 = { x: CX_L, y: CY_TOP };     // top-left inner corner (the "just-clears" point)
+  const yWS = waterPct < 1e-3
+    ? CY_BOT                               // no water → use container bottom as dummy
+    : CY_TOP + (1 - waterPct) * CY_H;     // water surface y  (fraction from bottom up)
+
+  let points, x_ws, refracts;
+
+  if (waterPct < 1e-3) {
+    // ── No water: straight line P1 → camera ─────────────────────────────────
+    const dx = xC - CX_L, dy = yC - CY_TOP;
+    const by = bookY(bookRight, dx, dy);
+    points   = [{ x: bookRight, y: by }, P1, { x: xC, y: yC }];
+    x_ws     = null;
+    refracts = false;
+
+  } else if (Math.abs(yWS - CY_TOP) < 2) {
+    // ── Water completely full: refraction AT P1 ──────────────────────────────
+    const dxw = xC - CX_L, dyw = yC - CY_TOP;
+    const distW = Math.hypot(dxw, dyw);
+    const sinW  = dxw / distW;
+    const sinA  = N_WATER * sinW;
+
+    if (sinA > 1) {
+      // shouldn't happen air→water, fallback straight
+      const dx = xC - CX_L, dy = yC - CY_TOP;
+      const by = bookY(bookRight, dx, dy);
+      points = [{ x: bookRight, y: by }, P1, { x: xC, y: yC }];
+      x_ws = null; refracts = false;
+    } else {
+      const cosA = Math.sqrt(1 - sinA * sinA);
+      // air direction from book → P1: (sinA, cosA) scaled; backwards: (-sinA, -cosA)
+      const t  = (bookRight - CX_L) / sinA;   // negative
+      const by = CY_TOP - t * cosA;            // t<0, cosA>0 → by > CY_TOP? Actually t=(bookRight-CX_L)/sinA
+      // Let me redo: from P1 going in air direction (sinA, cosA) forwards to water surface.
+      // Going backwards to book: multiply direction by t where t=(bookRight-CX_L)/sinA
+      // sinA is the x-component of unit direction, cosA is y-component
+      // Actually: direction unit = (sinA, cosA). From P1 go negative t:
+      // x = CX_L - |t|·sinA = bookRight  → |t| = (CX_L-bookRight)/sinA
+      const absT = (CX_L - bookRight) / sinA;  // positive
+      const byy  = CY_TOP - absT * cosA;        // going up (negative y in screen coords)
+      x_ws     = CX_L;
+      refracts = true;
+      points   = [{ x: bookRight, y: byy }, P1, { x: xC, y: yC }];
+    }
+
+  } else {
+    // ── Normal case: air gap above water surface ─────────────────────────────
+    if (xC <= CX_L + 2) {
+      // degenerate: camera at left wall → straight fallback
+      const dx = xC - CX_L, dy = yC - CY_TOP;
+      const by = bookY(bookRight, dx, dy);
+      points = [{ x: bookRight, y: by }, P1, { x: xC, y: yC }];
+      x_ws = null; refracts = false;
+    } else {
+      x_ws = solveSnell(yWS, xC, yC);
+      x_ws = Math.max(CX_L + 1, Math.min(CX_R - 1, x_ws));
+
+      // air-ray direction: P1 → (x_ws, yWS)
+      const dxa = x_ws - CX_L;
+      const dya = yWS  - CY_TOP;
+      const by  = bookY(bookRight, dxa, dya);
+
+      points   = [
+        { x: bookRight, y: by },
+        P1,
+        { x: x_ws, y: yWS },
+        { x: xC,   y: yC  }
+      ];
+      refracts = true;
+    }
+  }
+
+  const by0 = points[0].y;
+  const inBook = by0 >= BK_TOP && by0 <= BK_BOT;
+  return { points, x_ws, refracts, byOnBook: by0, inBook,
+           P1, yWS: waterPct < 1e-3 ? null : yWS, waterPct };
+}
+
+// ── Drawing helpers ───────────────────────────────────────────────────────────
+
+function drawArrowhead(x, y, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(7, 0);
+  ctx.lineTo(-4, 4);
+  ctx.lineTo(-4, -4);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 215, 40, 0.85)';
+  ctx.fill();
+  ctx.restore();
+}
+
+function midArrow(p1, p2) {
+  const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+  drawArrowhead(mx, my, Math.atan2(p2.y - p1.y, p2.x - p1.x));
+}
+
+function drawBook(bookRight) {
+  const bL = bookRight - BK_W;
+
+  // Soft shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(bL + 4, BK_TOP + 4, BK_W, BK_H);
+
+  // Spine gradient
+  const sg = ctx.createLinearGradient(bL, 0, bL + 7, 0);
+  sg.addColorStop(0, '#4a1000');
+  sg.addColorStop(1, '#7a2400');
+  ctx.fillStyle = sg;
+  ctx.fillRect(bL, BK_TOP, 7, BK_H);
+
+  // Body gradient
+  const bg = ctx.createLinearGradient(bL + 7, 0, bookRight, 0);
+  bg.addColorStop(0, '#a03010');
+  bg.addColorStop(0.6, '#c04020');
+  bg.addColorStop(1, '#8a2c0c');
+  ctx.fillStyle = bg;
+  ctx.fillRect(bL + 7, BK_TOP, BK_W - 7, BK_H);
+
+  // Page edge (right side, cream colour)
+  const pg = ctx.createLinearGradient(bookRight - 4, 0, bookRight, 0);
+  pg.addColorStop(0, '#d8d0b0');
+  pg.addColorStop(1, '#f0e8c8');
+  ctx.fillStyle = pg;
+  ctx.fillRect(bookRight - 4, BK_TOP + 2, 4, BK_H - 4);
+
+  // Horizontal lines on pages (decoration)
+  ctx.strokeStyle = 'rgba(150,130,90,0.3)';
+  ctx.lineWidth = 1;
+  for (let y = BK_TOP + 20; y < BK_BOT - 10; y += 14) {
+    ctx.beginPath();
+    ctx.moveTo(bL + 9, y);
+    ctx.lineTo(bookRight - 5, y);
+    ctx.stroke();
+  }
+
+  // Spine label band
+  ctx.fillStyle = 'rgba(255,200,100,0.18)';
+  ctx.fillRect(bL + 2, BK_TOP + BK_H * 0.35, 5, BK_H * 0.30);
+
+  // Outline
+  ctx.strokeStyle = '#3a0e00';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bL, BK_TOP, BK_W, BK_H);
+
+  // Label below
+  ctx.fillStyle = '#8090a0';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Book', bL + BK_W / 2, BK_BOT + 16);
+}
+
+function drawContainer(waterPct, yWS) {
+  const xL = CX_L, xR = CX_R;
+  const yT = CY_TOP, yB = CY_BOT;
+  const wt = WALL_T;
+
+  // Water fill (drawn before walls so walls overlap it)
+  if (waterPct > 1e-3) {
+    const wg = ctx.createLinearGradient(0, yWS, 0, yB);
+    wg.addColorStop(0, 'rgba(40, 110, 210, 0.50)');
+    wg.addColorStop(1, 'rgba(20,  70, 170, 0.68)');
+    ctx.fillStyle = wg;
+    ctx.fillRect(xL, yWS, xR - xL, yB - yWS);
+
+    // Water surface line
+    ctx.strokeStyle = 'rgba(110, 190, 255, 0.90)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(xL, yWS);
+    ctx.lineTo(xR, yWS);
+    ctx.stroke();
+
+    // Tiny shimmer dashes on surface
+    ctx.strokeStyle = 'rgba(180, 230, 255, 0.35)';
+    ctx.lineWidth = 1;
+    for (let sx = xL + 18; sx < xR - 15; sx += 44) {
+      ctx.beginPath();
+      ctx.moveTo(sx, yWS + 4);
+      ctx.lineTo(sx + 22, yWS + 4);
+      ctx.stroke();
+    }
+
+    // "water" text
+    if (yB - yWS > 28) {
+      ctx.fillStyle = 'rgba(110,180,255,0.45)';
+      ctx.font = 'italic 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('water', xL + (xR - xL) / 2, yWS + (yB - yWS) / 2 + 5);
+    }
+  }
+
+  // Glass walls
+  const glsFill   = 'rgba(150, 200, 240, 0.18)';
+  const glsStroke = 'rgba(180, 220, 255, 0.72)';
+
+  // Left wall
+  ctx.fillStyle = glsFill;
+  ctx.fillRect(xL - wt, yT, wt, yB - yT + 2);
+  ctx.strokeStyle = glsStroke;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(xL - wt, yT, wt, yB - yT + 2);
+
+  // Right wall
+  ctx.fillStyle = glsFill;
+  ctx.fillRect(xR, yT, wt, yB - yT + 2);
+  ctx.strokeStyle = glsStroke;
+  ctx.strokeRect(xR, yT, wt, yB - yT + 2);
+
+  // Bottom wall (transparent — just a faint line)
+  ctx.strokeStyle = 'rgba(180,220,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(xL - wt, yB);
+  ctx.lineTo(xR + wt, yB);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Stand legs
+  const legW = 8, legH = FLOOR_Y - yB;
+  const legPositions = [xL - wt + 6, xR + wt - 6 - legW];
+  ctx.fillStyle = '#2a3850';
+  legPositions.forEach(lx => ctx.fillRect(lx, yB, legW, legH));
+  ctx.strokeStyle = '#3a5070';
+  ctx.lineWidth = 1;
+  legPositions.forEach(lx => ctx.strokeRect(lx, yB, legW, legH));
+
+  // Top opening (open — no top wall, just a subtle line at the inner top edge)
+  ctx.strokeStyle = 'rgba(180,220,255,0.20)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(xL, yT);
+  ctx.lineTo(xR, yT);
+  ctx.stroke();
+
+  // Label
+  ctx.fillStyle = '#6080a0';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Container', xL + (xR - xL) / 2, yT - 10);
+
+  // Water level label on right side
+  if (waterPct > 0.02 && waterPct < 0.98) {
+    ctx.fillStyle = 'rgba(100,170,255,0.55)';
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText('← water surface', xR + wt + 5, yWS + 4);
+  }
+}
+
+function drawCamera(xC, yC, highlight) {
+  ctx.save();
+  ctx.translate(xC, yC);
+
+  // Body
+  const bg = ctx.createLinearGradient(0, -14, 0, 10);
+  bg.addColorStop(0, '#4a5a6a');
+  bg.addColorStop(1, '#28343f');
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.roundRect(-24, -14, 48, 26, 4);
+  ctx.fill();
+  ctx.strokeStyle = highlight ? 'rgba(255,210,40,0.7)' : '#3a4a5a';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+
+  // Viewfinder bump
+  ctx.fillStyle = '#2a3848';
+  ctx.beginPath();
+  ctx.roundRect(-9, -20, 18, 8, 2);
+  ctx.fill();
+
+  // Lens ring
+  ctx.beginPath();
+  ctx.arc(0, -1, 11, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a2430';
+  ctx.fill();
+  ctx.strokeStyle = '#5a7090';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Lens glass
+  const lg = ctx.createRadialGradient(-3, -4, 1, 0, -1, 9);
+  lg.addColorStop(0, 'rgba(120,170,240,0.90)');
+  lg.addColorStop(0.5, 'rgba(50, 90,180,0.80)');
+  lg.addColorStop(1,   'rgba(10, 30, 80,0.90)');
+  ctx.beginPath();
+  ctx.arc(0, -1, 9, 0, Math.PI * 2);
+  ctx.fillStyle = lg;
+  ctx.fill();
+
+  // Lens glint
+  ctx.beginPath();
+  ctx.arc(-3, -4, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(220,235,255,0.50)';
+  ctx.fill();
+
+  ctx.restore();
+
+  // Label
+  ctx.fillStyle = '#6080a0';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Camera', xC, yC + 24);
+}
+
+function drawRay(rayData) {
+  const { points, inBook, refracts, P1, yWS, waterPct } = rayData;
+  if (!points || points.length < 2) return;
+
+  const bookPt = points[0];
+
+  // Dashed extension if book-point is off the book
+  if (!inBook) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,100,100,0.55)';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([5, 5]);
+    ctx.shadowColor = 'rgba(255,80,80,0.4)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    // Draw from where book top would be to P1
+    ctx.moveTo(bookPt.x, bookPt.y);
+    ctx.lineTo(P1.x, P1.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Main ray (solid golden)
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,210,0,0.65)';
+  ctx.shadowBlur  = 11;
+  ctx.strokeStyle = 'rgba(255, 215, 30, 0.93)';
+  ctx.lineWidth   = 2.8;
+
+  ctx.beginPath();
+  // Start from book point (or edge of book if out of range)
+  const startPt = inBook
+    ? bookPt
+    : { x: bookPt.x, y: Math.max(BK_TOP, Math.min(BK_BOT, bookPt.y)) };
+  ctx.moveTo(startPt.x, startPt.y);
+  for (let i = 1; i < points.length; i++) {
+    ctx.lineTo(points[i].x, points[i].y);
+  }
+  ctx.stroke();
+  ctx.restore();
+
+  // Arrowheads at midpoints of each segment
+  for (let i = 0; i < points.length - 1; i++) {
+    const pa = (i === 0 && !inBook)
+      ? { x: bookPt.x, y: Math.max(BK_TOP, Math.min(BK_BOT, bookPt.y)) }
+      : points[i];
+    midArrow(pa, points[i + 1]);
+  }
+
+  // Normal line at water surface refraction point
+  if (refracts && yWS != null && Math.abs(yWS - CY_TOP) > 3 && rayData.x_ws != null) {
+    const xw = rayData.x_ws;
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(120, 200, 255, 0.40)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xw, yWS - 38);
+    ctx.lineTo(xw, yWS + 38);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+
+  // Dots at key points
+  const dotPts = [];
+  if (refracts) {
+    dotPts.push(P1);
+    if (yWS != null && Math.abs(yWS - CY_TOP) > 3 && rayData.x_ws != null) {
+      dotPts.push({ x: rayData.x_ws, y: yWS });
+    }
+  }
+  dotPts.forEach(pt => {
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,215,30,0.8)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,215,30,0.95)';
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+// ── Main draw ─────────────────────────────────────────────────────────────────
+
+function draw() {
+  // Read sliders
+  const bookDist  = parseInt(document.getElementById('slBook').value);
+  const waterPct  = parseInt(document.getElementById('slWater').value) / 100;
+  const camPctRaw = parseInt(document.getElementById('slCam').value) / 100;
+
+  // Derived values
+  // bookRight: right edge of book, distance from left wall outer edge
+  const bookRight = CX_L - WALL_T - 14 - bookDist;   // gap of 14 + slider distance
+  const xC        = CX_L + camPctRaw * CX_W;          // camera x, within inner container
+  const yC        = CAM_Y;
+
+  // Water surface y (null if no water)
+  const yWS = waterPct < 1e-3
+    ? null
+    : CY_TOP + (1 - waterPct) * CY_H;
+
+  // Update slider value labels
+  document.getElementById('valBook').textContent  = bookDist + ' px';
+  document.getElementById('valWater').textContent = Math.round(waterPct * 100) + '%';
+  document.getElementById('valCam').textContent   = Math.round(camPctRaw * 100) + '%';
+
+  // Compute ray
+  const ray = computeRay(bookRight, waterPct, xC, yC);
+
+  // ── Clear & draw background ─────────────────────────────────────────────
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#0f1520');
+  bgGrad.addColorStop(1, '#151e2e');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Floor
+  const floorGrad = ctx.createLinearGradient(0, FLOOR_Y, 0, H);
+  floorGrad.addColorStop(0, '#1e2c3a');
+  floorGrad.addColorStop(1, '#111820');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
+  ctx.strokeStyle = '#2a3c50';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, FLOOR_Y);
+  ctx.lineTo(W, FLOOR_Y);
+  ctx.stroke();
+
+  // Rail/track for camera (dashed line below container)
+  ctx.strokeStyle = 'rgba(80,110,150,0.40)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.moveTo(CX_L, CAM_Y + 1);
+  ctx.lineTo(CX_R, CAM_Y + 1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // ── Draw scene ──────────────────────────────────────────────────────────
+  drawBook(bookRight);
+  drawContainer(waterPct, yWS || CY_BOT);
+  drawRay(ray);
+  drawCamera(xC, yC, ray.inBook);
+
+  // ── Info bar ────────────────────────────────────────────────────────────
+  updateInfo(ray, waterPct, yWS, xC, yC);
+}
+
+function updateInfo(ray, waterPct, yWS, xC, yC) {
+  const el = document.getElementById('info');
+
+  if (!ray.inBook) {
+    el.innerHTML = '<span class="warn">Ray misses the book — try moving the book closer or the camera to the right.</span>';
+    return;
+  }
+
+  if (waterPct < 1e-3) {
+    el.innerHTML = 'No water — light travels in a straight line, no refraction.';
+    return;
+  }
+
+  // Compute angles for display
+  let thetaI_deg, thetaR_deg;
+
+  if (Math.abs(yWS - CY_TOP) < 2) {
+    // refraction at P1
+    const dxw = xC - CX_L, dyw = yC - CY_TOP;
+    const sinW = dxw / Math.hypot(dxw, dyw);
+    const sinA = N_WATER * sinW;
+    thetaI_deg = Math.asin(Math.min(1, sinA)) * 180 / Math.PI;
+    thetaR_deg = Math.asin(Math.min(1, sinW)) * 180 / Math.PI;
+  } else if (ray.x_ws != null) {
+    const dxa = ray.x_ws - CX_L, dya = yWS - CY_TOP;
+    thetaI_deg = Math.asin(dxa / Math.hypot(dxa, dya)) * 180 / Math.PI;
+    const dxw = xC - ray.x_ws, dyw = yC - yWS;
+    thetaR_deg = Math.asin(dxw / Math.hypot(dxw, dyw)) * 180 / Math.PI;
+  }
+
+  if (thetaI_deg == null) { el.innerHTML = '&nbsp;'; return; }
+
+  const ratio = (Math.sin(thetaI_deg * Math.PI / 180) /
+                 Math.sin(thetaR_deg * Math.PI / 180)).toFixed(2);
+
+  el.innerHTML =
+    `Angle of incidence: <span class="hi">${thetaI_deg.toFixed(1)}°</span> &nbsp;|&nbsp; ` +
+    `Angle of refraction: <span class="hi">${thetaR_deg.toFixed(1)}°</span> &nbsp;|&nbsp; ` +
+    `n = sin θᵢ / sin θᵣ = <span class="hi">${ratio}</span>`;
+}
+
+// ── Event wiring ──────────────────────────────────────────────────────────────
+['slBook', 'slWater', 'slCam'].forEach(id =>
+  document.getElementById(id).addEventListener('input', draw)
+);
+
+draw();
+</script>
+</body>
+</html>
