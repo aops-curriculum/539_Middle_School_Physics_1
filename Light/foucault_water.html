@@ -61,6 +61,24 @@
         align-items: center; justify-content: center; padding: 0;
     }
     .zoom-btn:hover { background: #4a4a6a; color: #fff; }
+    .water-toggle {
+        position: absolute;
+        background: rgba(42,42,74,0.85);
+        border: 1px solid #445;
+        border-radius: 3px;
+        padding: 3px 7px;
+        color: #d0d8e0;
+        font-size: 10px;
+        font-weight: bold;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        gap: 5px;
+        white-space: nowrap;
+        transform: translate(-50%, -50%);
+    }
+    .water-toggle:hover { background: rgba(58,58,90,0.85); }
+    .water-toggle input { cursor: pointer; margin: 0; accent-color: #4fc3f7; }
 </style>
 </head>
 <body>
@@ -83,6 +101,8 @@
         <button class="zoom-btn" id="zoomReset" style="font-size:10px;">1:1</button>
         <button class="zoom-btn" id="zoomIn">+</button>
     </div>
+    <label class="water-toggle" id="waterUpperLabel"><input type="checkbox" id="waterUpper">Add water</label>
+    <label class="water-toggle" id="waterLowerLabel"><input type="checkbox" id="waterLower">Add water</label>
 </div>
 
 <script>
@@ -138,14 +158,20 @@ const HOLE_HALF = 5.4 * S;
 
 // ── Water tube state ────────────────────────────────
 const TUBE_LENGTH_PX = 3 / M_PER_PX;
-const TUBE_WIDTH_PX = 1 / M_PER_PX;
-// Place tube initially along the beam path between R and M
-let tubeX = TUBE_LENGTH_PX / 2 + 10;
-let tubeY = H - TUBE_WIDTH_PX / 2 - 20;
-let tubeAngle = 0;
+const TUBE_WIDTH_PX = 0.4 / M_PER_PX;
 
-let dragging = null; // null, 'move', 'rotate', or 'pan'
-let dragOffX = 0, dragOffY = 0, dragStartAngle = 0, dragMouseAngle = 0;
+const R_PT = v(MIRROR_X, MIRROR_CY);
+function makeArmTube(armEnd) {
+    const center = vsc(vadd(R_PT, armEnd), 0.5);
+    const dir = vnorm(vsub(armEnd, R_PT));
+    return {x: center.x, y: center.y, angle: Math.atan2(dir.y, dir.x)};
+}
+const UPPER_TUBE = makeArmTube(CONCAVE);
+const LOWER_TUBE = makeArmTube(SRC);
+
+let waterUpper = false, waterLower = false;
+
+let dragging = null; // null or 'pan'
 
 // ── Zoom / pan state ────────────────────────────────
 let zoom = 1, panX = 0, panY = 0;
@@ -187,10 +213,10 @@ function toEdge(o, d) {
 // ── Water tube intersection ─────────────────────────
 // Returns sorted array of t values where ray enters/exits the tube
 // Ray: P(t) = origin + t * dir, t >= 0
-function tubeIntersections(origin, dir) {
+function tubeIntersections(origin, dir, tube) {
     // Transform ray into tube-local coordinates
-    const cosA = Math.cos(-tubeAngle), sinA = Math.sin(-tubeAngle);
-    const dx = origin.x - tubeX, dy = origin.y - tubeY;
+    const cosA = Math.cos(-tube.angle), sinA = Math.sin(-tube.angle);
+    const dx = origin.x - tube.x, dy = origin.y - tube.y;
     const lox = dx * cosA - dy * sinA;
     const loy = dx * sinA + dy * cosA;
     const ldx = dir.x * cosA - dir.y * sinA;
@@ -227,38 +253,57 @@ function tubeIntersections(origin, dir) {
     return [Math.max(0, tmin), tmax];
 }
 
-// Split a segment into sub-segments accounting for the water tube
+// Split a segment into sub-segments accounting for active water tubes
 // Returns array of {s, e, dur} with speed adjusted inside water
 function splitSegForWater(seg) {
     const dir = vsub(seg.e, seg.s);
     const len = vlen(dir);
     if (len < 1e-9) return [seg];
     const d = vnorm(dir);
-    const hits = tubeIntersections(seg.s, d);
-    if (hits.length < 2 || hits[0] >= len - 0.1) return [seg];
 
-    const tEnter = Math.max(0, hits[0]);
-    const tExit = Math.min(len, hits[1]);
-    if (tExit - tEnter < 0.5) return [seg];
+    // Collect water-filled intervals along this segment
+    let intervals = [];
+    if (waterUpper) {
+        const h = tubeIntersections(seg.s, d, UPPER_TUBE);
+        if (h.length === 2) intervals.push([Math.max(0, h[0]), Math.min(len, h[1])]);
+    }
+    if (waterLower) {
+        const h = tubeIntersections(seg.s, d, LOWER_TUBE);
+        if (h.length === 2) intervals.push([Math.max(0, h[0]), Math.min(len, h[1])]);
+    }
+    intervals = intervals.filter(([a,b]) => b - a > 0.5);
+    if (intervals.length === 0) return [seg];
 
+    // Merge overlapping intervals
+    intervals.sort((a,b) => a[0] - b[0]);
+    const merged = [intervals[0].slice()];
+    for (let i = 1; i < intervals.length; i++) {
+        const last = merged[merged.length - 1];
+        if (intervals[i][0] <= last[1] + 0.5) {
+            last[1] = Math.max(last[1], intervals[i][1]);
+        } else {
+            merged.push(intervals[i].slice());
+        }
+    }
+
+    // Build sub-segments alternating air / water
     const result = [];
-    // Before water
-    if (tEnter > 0.5) {
-        const e = vadd(seg.s, vsc(d, tEnter));
-        result.push({s: seg.s, e, dur: tEnter / SIM_SPEED, screen: false});
+    let cursor = 0;
+    for (const [a, b] of merged) {
+        if (a - cursor > 0.5) {
+            const s = vadd(seg.s, vsc(d, cursor));
+            const e = vadd(seg.s, vsc(d, a));
+            result.push({s, e, dur: (a - cursor) / SIM_SPEED, screen: false});
+        }
+        const ws = vadd(seg.s, vsc(d, a));
+        const we = vadd(seg.s, vsc(d, b));
+        result.push({s: ws, e: we, dur: (b - a) / SIM_SPEED_WATER, water: true, screen: false});
+        cursor = b;
     }
-    // In water
-    {
-        const ws = vadd(seg.s, vsc(d, tEnter));
-        const we = vadd(seg.s, vsc(d, tExit));
-        result.push({s: ws, e: we, dur: (tExit - tEnter) / SIM_SPEED_WATER, water: true, screen: false});
-    }
-    // After water
-    if (len - tExit > 0.5) {
-        const ws = vadd(seg.s, vsc(d, tExit));
-        result.push({s: ws, e: seg.e, dur: (len - tExit) / SIM_SPEED, screen: seg.screen || false});
+    if (len - cursor > 0.5) {
+        const s = vadd(seg.s, vsc(d, cursor));
+        result.push({s, e: seg.e, dur: (len - cursor) / SIM_SPEED, screen: seg.screen || false});
     } else if (seg.screen) {
-        // Preserve screen flag on last sub-seg
         result[result.length - 1].screen = true;
     }
     return result;
@@ -481,27 +526,27 @@ function drawRuler() {
     ctx.restore();
 }
 
-function drawWaterTube() {
+function drawTube(tube) {
     ctx.save();
-    ctx.translate(tubeX, tubeY);
-    ctx.rotate(tubeAngle);
+    ctx.translate(tube.x, tube.y);
+    ctx.rotate(tube.angle);
     const halfL = TUBE_LENGTH_PX / 2;
     const halfW = TUBE_WIDTH_PX / 2;
 
     // Water fill
-    ctx.fillStyle = 'rgba(50, 130, 200, 0.12)';
+    ctx.fillStyle = 'rgba(50, 130, 200, 0.18)';
     ctx.fillRect(-halfL, -halfW, TUBE_LENGTH_PX, TUBE_WIDTH_PX);
 
     // Glass walls
-    ctx.strokeStyle = 'rgba(140, 190, 230, 0.5)';
+    ctx.strokeStyle = 'rgba(140, 190, 230, 0.6)';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(-halfL, -halfW, TUBE_LENGTH_PX, TUBE_WIDTH_PX);
 
     // Subtle water ripple lines
-    ctx.strokeStyle = 'rgba(80, 160, 220, 0.08)';
+    ctx.strokeStyle = 'rgba(80, 160, 220, 0.12)';
     ctx.lineWidth = 0.7;
-    for (let i = -3; i <= 3; i++) {
-        const yy = i * (TUBE_WIDTH_PX / 8);
+    for (let i = -2; i <= 2; i++) {
+        const yy = i * (TUBE_WIDTH_PX / 6);
         ctx.beginPath();
         ctx.moveTo(-halfL + 2, yy);
         ctx.lineTo(halfL - 2, yy);
@@ -510,12 +555,17 @@ function drawWaterTube() {
 
     // "water" label centered in tube
     ctx.font = `${10 * S}px Arial, sans-serif`;
-    ctx.fillStyle = 'rgba(120, 180, 230, 0.55)';
+    ctx.fillStyle = 'rgba(140, 200, 240, 0.7)';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText('water', 0, 0);
 
     ctx.restore();
+}
+
+function drawWaterTube() {
+    if (waterUpper) drawTube(UPPER_TUBE);
+    if (waterLower) drawTube(LOWER_TUBE);
 }
 
 function drawSource() {
@@ -681,91 +731,30 @@ function loop(now) {
     requestAnimationFrame(loop);
 }
 
-// ── Water tube dragging ─────────────────────────────
-function pointInTube(px, py) {
-    const cosA = Math.cos(-tubeAngle), sinA = Math.sin(-tubeAngle);
-    const dx = px - tubeX, dy = py - tubeY;
-    const lx = dx * cosA - dy * sinA;
-    const ly = dx * sinA + dy * cosA;
-    const halfL = TUBE_LENGTH_PX / 2;
-    const halfW = TUBE_WIDTH_PX / 2;
-    return Math.abs(lx) <= halfL && Math.abs(ly) <= halfW;
-}
-
-function nearTubeEdge(px, py) {
-    // Return true if near the border (for rotation) vs center (for move)
-    const cosA = Math.cos(-tubeAngle), sinA = Math.sin(-tubeAngle);
-    const dx = px - tubeX, dy = py - tubeY;
-    const lx = dx * cosA - dy * sinA;
-    const ly = dx * sinA + dy * cosA;
-    const halfL = TUBE_LENGTH_PX / 2;
-    const halfW = TUBE_WIDTH_PX / 2;
-    const margin = 12;
-    return Math.abs(lx) > halfL - margin || Math.abs(ly) > halfW - margin;
-}
-
+// ── Canvas pan ──────────────────────────────────────
 canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect();
     const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-    const w = s2w(sx, sy);
-
-    // Right-click or middle-click: pan
-    if (e.button === 1 || e.button === 2) {
-        dragging = 'pan';
-        panStartX = sx; panStartY = sy;
-        panStartPX = panX; panStartPY = panY;
-        e.preventDefault();
-        return;
-    }
-
-    if (pointInTube(w.x, w.y)) {
-        if (nearTubeEdge(w.x, w.y)) {
-            dragging = 'rotate';
-            dragStartAngle = tubeAngle;
-            dragMouseAngle = Math.atan2(w.y - tubeY, w.x - tubeX);
-        } else {
-            dragging = 'move';
-            dragOffX = tubeX - w.x;
-            dragOffY = tubeY - w.y;
-        }
-        e.preventDefault();
-    } else {
-        // Left-click on empty space: pan
-        dragging = 'pan';
-        panStartX = sx; panStartY = sy;
-        panStartPX = panX; panStartPY = panY;
-    }
+    dragging = 'pan';
+    panStartX = sx; panStartY = sy;
+    panStartPX = panX; panStartPY = panY;
+    canvas.style.cursor = 'grabbing';
+    e.preventDefault();
 });
 
 canvas.addEventListener('mousemove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
-    const w = s2w(sx, sy);
-
-    if (dragging === 'move') {
-        tubeX = w.x + dragOffX;
-        tubeY = w.y + dragOffY;
-    } else if (dragging === 'rotate') {
-        const curAngle = Math.atan2(w.y - tubeY, w.x - tubeX);
-        tubeAngle = dragStartAngle + (curAngle - dragMouseAngle);
-    } else if (dragging === 'pan') {
+    if (dragging === 'pan') {
+        const rect = canvas.getBoundingClientRect();
+        const sx = e.clientX - rect.left, sy = e.clientY - rect.top;
         panX = panStartPX + (sx - panStartX);
         panY = panStartPY + (sy - panStartY);
-    }
-
-    // Set cursor
-    if (dragging === 'pan') {
         canvas.style.cursor = 'grabbing';
-    } else if (dragging) {
-        canvas.style.cursor = 'grabbing';
-    } else if (pointInTube(w.x, w.y)) {
-        canvas.style.cursor = nearTubeEdge(w.x, w.y) ? 'crosshair' : 'grab';
     } else {
-        canvas.style.cursor = 'default';
+        canvas.style.cursor = 'grab';
     }
 });
 
-canvas.addEventListener('mouseup', () => { dragging = null; });
+canvas.addEventListener('mouseup', () => { dragging = null; canvas.style.cursor = 'grab'; });
 canvas.addEventListener('mouseleave', () => { dragging = null; canvas.style.cursor = 'default'; });
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
@@ -803,6 +792,27 @@ const aimBtn = document.getElementById('aimBtn');
 aimBtn.style.left = (CONCAVE.x + 36*S - 5) + 'px';
 aimBtn.style.top = (CONCAVE.y + 9*S + 8) + 'px';
 
+// Position the per-arm "Add water" toggles, perpendicular-offset off each arm
+function positionWaterToggle(label, armEnd, perpSide, offsetPx) {
+    const dir = vnorm(vsub(armEnd, R_PT));
+    // Perpendicular (CCW): (-dir.y, dir.x)
+    const perp = v(-dir.y, dir.x);
+    const center = vsc(vadd(R_PT, armEnd), 0.5);
+    const px = center.x + perp.x * offsetPx * perpSide;
+    const py = center.y + perp.y * offsetPx * perpSide;
+    label.style.left = px + 'px';
+    label.style.top = py + 'px';
+}
+positionWaterToggle(document.getElementById('waterUpperLabel'), CONCAVE, -1, 50);
+positionWaterToggle(document.getElementById('waterLowerLabel'), SRC, 1, 50);
+
+document.getElementById('waterUpper').addEventListener('change', (e) => {
+    waterUpper = e.target.checked;
+});
+document.getElementById('waterLower').addEventListener('change', (e) => {
+    waterLower = e.target.checked;
+});
+
 function updateSpeedDisplay() {
     document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '\u2212';
     for (let i=0;i<3;i++) document.getElementById('d'+i).textContent = digits[i];
@@ -834,6 +844,9 @@ document.getElementById('pauseBtn').addEventListener('click', () => {
 
 document.getElementById('resetBtn').addEventListener('click', () => {
     speedSign=1; digits=[0,0,0];
+    waterUpper = false; waterLower = false;
+    document.getElementById('waterUpper').checked = false;
+    document.getElementById('waterLower').checked = false;
     resetSim(); updateSpeedDisplay();
 });
 
