@@ -91,9 +91,16 @@ const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 420;
 const DEG = Math.PI / 180;
-const N_PER_FACE = 200;
 const EYE_GLOW_DUR = 0.2;
 const speedScale = 0.0002;
+
+// Dots per face: ceil(5000/speed). This keeps the firing rate ~constant
+// (~8 dots per simSec) regardless of rotation speed.
+function getNPerFace() {
+    const speed = digits[0]*100 + digits[1]*10 + digits[2];
+    if (speed === 0) return 1;
+    return Math.ceil(5000 / speed);
+}
 
 // ── Layout ─────────────────────────────────────────────
 const OCT_CX = 125, OCT_CY = 340, OCT_R = 22;
@@ -408,12 +415,16 @@ function update(dt) {
     simTime += dt;
     const omega = Math.abs(getOmega());
     if (omega > 1e-6) {
-        // Phase from absolute time — guarantees alignment slots at exact angles
-        const phase = 8 * N_PER_FACE * omega * simTime;
+        // Number of dots per face is ceil(5000/speed); since simTime resets
+        // to 0 when speed changes (so octAngle(0) = BASE_ANGLE = 22.5°), the
+        // offset is 0 — slot 0 fires at simTime=0, when the absolute rotation
+        // angle is exactly 22.5°. Total firing rate ≈ 8 dots/simSec.
+        const NPF = getNPerFace();
+        const phase = 8 * NPF * omega * simTime;
         while (lastEmittedSlot + 1 <= Math.floor(phase)) {
             lastEmittedSlot++;
             // Compute exact spawn time from slot index
-            const t_emit = lastEmittedSlot / (8 * N_PER_FACE * omega);
+            const t_emit = lastEmittedSlot / (8 * NPF * omega);
             photons.push({t0: t_emit, segs: computePath(t_emit)});
         }
     } else {
