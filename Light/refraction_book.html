@@ -96,6 +96,11 @@ input[type=range] {
     <div class="ctrl-val" id="valWater"></div>
   </div>
   <div class="ctrl">
+    <div class="ctrl-label">Container Height</div>
+    <input type="range" id="slContH" min="50" max="180" value="95">
+    <div class="ctrl-val" id="valContH"></div>
+  </div>
+  <div class="ctrl">
     <div class="ctrl-label">Camera Position</div>
     <input type="range" id="slCam" min="0" max="100" value="62">
     <div class="ctrl-val" id="valCam"></div>
@@ -112,27 +117,25 @@ const W = canvas.width;   // 860
 const H = canvas.height;  // 500
 
 // ── Layout constants ──────────────────────────────────────────────────────────
-const FLOOR_Y  = 466;   // ground level
+const FLOOR_Y  = 420;   // ground level (moved up to give space above for the ray)
 
-// Book (stands on floor — very tall so its top is well above the container)
-const BK_W     = 30;
-const BK_H     = 420;
-const BK_TOP   = FLOOR_Y - BK_H;   // 46
-const BK_BOT   = FLOOR_Y;           // 466
+// Book (stands on floor — extends well above canvas top)
+const BK_W     = 22;
+const BK_H     = 800;
+const BK_TOP   = FLOOR_Y - BK_H;   // -380
+const BK_BOT   = FLOOR_Y;
 
 // Container (elevated on a stand, open top, transparent bottom)
-// The container top must be WELL BELOW the book top so the light ray
-// travels clearly downward from the book to P1 and on to the camera.
-const CX_L     = 460;   // inner left wall x
-const CX_R     = 680;   // inner right wall x
-const CX_W     = CX_R - CX_L;          // 220
-const CY_TOP   = 270;   // inner top  (light just barely clears here)
-const CY_BOT   = 420;   // inner bottom
-const CY_H     = CY_BOT - CY_TOP;      // 150
-const WALL_T   = 7;     // wall thickness
+const CX_L     = 455;   // inner left wall x
+const CX_R     = 640;   // inner right wall x
+const CX_W     = CX_R - CX_L;          // 185
+const CY_BOT   = 385;   // inner bottom (fixed; tied to stand height)
+const WALL_T   = 6;     // wall thickness
+let   CY_TOP   = 290;   // inner top — recomputed each frame from container height slider
+let   CY_H     = CY_BOT - CY_TOP;      // recomputed each frame
 
-// Camera (sits just below the container, between its bottom and the floor)
-const CAM_Y    = FLOOR_Y - 10;         // 456
+// Camera (sits just below the container bottom, above the floor)
+const CAM_Y    = FLOOR_Y - 10;         // 410
 
 // Refraction index
 const N_WATER  = 1.33;
@@ -574,13 +577,63 @@ function drawRay(rayData) {
   });
 }
 
+// ── Book exit markers (water=0% and water=100%) ───────────────────────────────
+
+function drawBookMarkers(bookRight, xC, yC) {
+  const ray0   = computeRay(bookRight, 0,   xC, yC);
+  const ray100 = computeRay(bookRight, 1.0, xC, yC);
+
+  const defs = [
+    { ray: ray0,   label: 'water 0%',   color: '#ff9040' },
+    { ray: ray100, label: 'water 100%', color: '#40d8ff' },
+  ];
+
+  defs.forEach(({ ray, label, color }) => {
+    const y = ray.byOnBook;
+    if (y < BK_TOP || y > BK_BOT) return;  // off the book face — skip
+
+    ctx.save();
+
+    // Dot on book right face
+    ctx.shadowColor = color;
+    ctx.shadowBlur = 7;
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(bookRight, y, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Horizontal tick line
+    ctx.shadowBlur = 4;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(bookRight, y);
+    ctx.lineTo(bookRight + 26, y);
+    ctx.stroke();
+
+    // Label
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = color;
+    ctx.font = 'bold 10px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText(label, bookRight + 30, y + 4);
+
+    ctx.restore();
+  });
+}
+
 // ── Main draw ─────────────────────────────────────────────────────────────────
 
 function draw() {
   // Read sliders
   const bookDist  = parseInt(document.getElementById('slBook').value);
   const waterPct  = parseInt(document.getElementById('slWater').value) / 100;
+  const contH     = parseInt(document.getElementById('slContH').value);
   const camPctRaw = parseInt(document.getElementById('slCam').value) / 100;
+
+  // Update mutable container geometry globals before any drawing or ray math
+  CY_TOP = CY_BOT - contH;
+  CY_H   = contH;
 
   // Derived values
   // bookRight: right edge of book, distance from left wall outer edge
@@ -596,6 +649,7 @@ function draw() {
   // Update slider value labels
   document.getElementById('valBook').textContent  = bookDist + ' px';
   document.getElementById('valWater').textContent = Math.round(waterPct * 100) + '%';
+  document.getElementById('valContH').textContent = contH + ' px';
   document.getElementById('valCam').textContent   = Math.round(camPctRaw * 100) + '%';
 
   // Compute ray
@@ -633,6 +687,7 @@ function draw() {
 
   // ── Draw scene ──────────────────────────────────────────────────────────
   drawBook(bookRight);
+  drawBookMarkers(bookRight, xC, yC);
   drawContainer(waterPct, yWS || CY_BOT);
   drawRay(ray);
   drawCamera(xC, yC, ray.inBook);
@@ -683,7 +738,7 @@ function updateInfo(ray, waterPct, yWS, xC, yC) {
 }
 
 // ── Event wiring ──────────────────────────────────────────────────────────────
-['slBook', 'slWater', 'slCam'].forEach(id =>
+['slBook', 'slWater', 'slContH', 'slCam'].forEach(id =>
   document.getElementById(id).addEventListener('input', draw)
 );
 
