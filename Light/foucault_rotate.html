@@ -408,7 +408,7 @@ function update(dt) {
             p.segs = [p.segs[0], ...computePostMirror(p.t0, curAngle, curAngle)];
             p.a1 = curAngle;
             p.a2 = curAngle;
-        } else if (age >= LEG1_DUR && age < LEG1_DUR * 3 && p.a2 !== curAngle) {
+        } else if (age >= LEG1_DUR && age < LEG1_DUR * 3 && p.a2 !== curAngle && p.segs.length >= 4) {
             const r1Dir = vnorm(vsub(p.segs[1].e, p.segs[1].s));
             const returnDir = vsc(r1Dir, -1);
             let nR = mirrorNormal(curAngle);
