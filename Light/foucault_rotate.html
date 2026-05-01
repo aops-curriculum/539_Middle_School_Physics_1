@@ -349,20 +349,20 @@ function drawLabels() {
 }
 
 function drawScaleBar() {
-    const barM = 1;
+    const barM = 2;
     const barPx = barM / M_PER_PX;
     const x0 = 162 * S, y0 = H - 16*S;
-    ctx.strokeStyle = '#778899';
-    ctx.lineWidth = 1.8*S;
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 3.6*S;
     ctx.beginPath();
-    ctx.moveTo(x0, y0 - 3.6*S); ctx.lineTo(x0, y0 + 3.6*S);
+    ctx.moveTo(x0, y0 - 5.4*S); ctx.lineTo(x0, y0 + 5.4*S);
     ctx.moveTo(x0, y0); ctx.lineTo(x0 + barPx, y0);
-    ctx.moveTo(x0 + barPx, y0 - 3.6*S); ctx.lineTo(x0 + barPx, y0 + 3.6*S);
+    ctx.moveTo(x0 + barPx, y0 - 5.4*S); ctx.lineTo(x0 + barPx, y0 + 5.4*S);
     ctx.stroke();
-    ctx.font = `${10*S}px Arial,sans-serif`;
-    ctx.fillStyle = '#778899';
+    ctx.font = `bold ${14*S}px Arial,sans-serif`;
+    ctx.fillStyle = '#ffffff';
     ctx.textAlign = 'center';
-    ctx.fillText(barM + ' m', x0 + barPx / 2, y0 - 6.3*S);
+    ctx.fillText(barM + ' m', x0 + barPx / 2, y0 - 8*S);
     ctx.textAlign = 'right';
     ctx.fillStyle = '#6a8899';
     ctx.fillText('Slow-motion: 1/50,000,000', W - 9*S, y0);
