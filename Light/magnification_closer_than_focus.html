@@ -562,10 +562,9 @@ function draw() {
         ctx.restore();
       }
     } else if (i > 0 && i < 150) {
-      // Real image: in front of mirror, inverted
+      // Real image: in front of mirror, inverted — allow it to extend past canvas edge
       const imgX = cmToX(i);
-      const cappedH = Math.min(maxImgH, H - axisY - 20);
-      drawConeAt(imgX, axisY, cappedH, true, 0.75);
+      drawConeAt(imgX, axisY, hImg, true, 0.75);
     }
   }
 
