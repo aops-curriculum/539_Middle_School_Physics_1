@@ -9,17 +9,17 @@
 body {
   background: #1a1a2e;
   font-family: Arial, sans-serif;
-  max-width: 338px;
+  max-width: 507px;
   margin: 0 auto;
   user-select: none;
   -webkit-user-select: none;
-  padding: 8px 0;
+  padding: 12px 0;
 }
 .instructions {
-  font-size: 11px;
+  font-size: 16px;
   color: #aaa;
   text-align: center;
-  margin: 6px 0;
+  margin: 9px 0;
 }
 canvas {
   border: 1px solid #333;
@@ -33,16 +33,16 @@ canvas.grabbing { cursor: grabbing; }
   display: flex;
   flex-wrap: wrap;
   justify-content: center;
-  gap: 5px;
-  margin: 6px 0;
+  gap: 8px;
+  margin: 9px 0;
 }
 button {
   background: rgba(76, 175, 80, 0.9);
   color: white;
   border: none;
-  border-radius: 4px;
-  padding: 6px 12px;
-  font-size: 9px;
+  border-radius: 6px;
+  padding: 9px 18px;
+  font-size: 14px;
   font-weight: bold;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   cursor: pointer;
@@ -57,7 +57,7 @@ button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
 </head>
 <body>
 <p class="instructions">Drag to tilt the telescope. Scroll to zoom. Middle-drag or Ctrl+drag to pan.</p>
-<canvas id="canvas" width="338" height="338"></canvas>
+<canvas id="canvas" width="507" height="507"></canvas>
 <div class="controls">
   <button class="ray-btn" id="addRay">Add Ray</button>
   <button class="clear-btn" id="clearRays">Clear Rays</button>
@@ -65,7 +65,7 @@ button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
   <button id="btnSpherical">Spherical</button>
   <button id="btnElliptical">Elliptical</button>
   <button id="btnHyperbolic">Hyperbolic</button>
-  <label style="color:#aaa;font-size:9px;display:flex;align-items:center;gap:4px;cursor:pointer;">
+  <label style="color:#aaa;font-size:14px;display:flex;align-items:center;gap:6px;cursor:pointer;">
     <input type="checkbox" id="hideIncident"> Hide incident rays
   </label>
   <button class="clear-btn" id="zoomIn">Zoom In</button>
@@ -76,15 +76,15 @@ button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = 338, H = 338;
+const W = 507, H = 507;
 
 // Telescope parameters
-const tubeLength = 202;
+const tubeLength = 303;
 const tubeWidth = tubeLength / 2;
 const halfW = tubeWidth / 2;
 
 // Vertex radius of curvature — all mirrors share the same Rc
-const Rc = 75.94;
+const Rc = 113.91;
 
 // Conic constants
 const conicK = {
@@ -96,7 +96,7 @@ const conicK = {
 
 // Telescope base position (in world coords)
 const baseX = W / 2;
-const baseY = H - 45;
+const baseY = H - 68;
 
 // Fixed incoming ray angle: 20 degrees from vertical
 const rayAngle = 20 * Math.PI / 180;
@@ -104,8 +104,8 @@ const inDirWx = -Math.sin(rayAngle);
 const inDirWy = Math.cos(rayAngle);
 const perpWx = inDirWy;
 const perpWy = -inDirWx;
-const starX = baseX + 293 * Math.sin(rayAngle);
-const starY = baseY - 293 * Math.cos(rayAngle);
+const starX = baseX + 440 * Math.sin(rayAngle);
+const starY = baseY - 440 * Math.cos(rayAngle);
 
 // View transform state (zoom & pan)
 let viewZoom = 1;
@@ -197,12 +197,12 @@ function draw() {
   const seed = [23,67,134,198,256,312,389,421,478,534,45,89,167,234,290,356,412,467,523,578];
   for (let i = 0; i < 20; i++) {
     ctx.beginPath();
-    ctx.arc(seed[i] % W, (seed[i] * 3 + 17) % (H - 113), 1, 0, Math.PI * 2);
+    ctx.arc(seed[i] % W, (seed[i] * 3 + 17) % (H - 170), 1.5, 0, Math.PI * 2);
     ctx.fill();
   }
 
   // Draw the main star
-  drawStar(starX, starY, 9);
+  drawStar(starX, starY, 13.5);
 
   const cosA = Math.cos(telescopeAngle);
   const sinA = Math.sin(telescopeAngle);
@@ -258,7 +258,7 @@ function draw() {
   // Mirror backing
   ctx.strokeStyle = '#2a6fa8';
   ctx.lineWidth = 2 * viewZoom;
-  const backOffset = 3;
+  const backOffset = 4.5;
   ctx.beginPath();
   for (let i = 0; i <= mirrorSteps; i++) {
     const v = -halfW + (i / mirrorSteps) * tubeWidth;
@@ -273,8 +273,8 @@ function draw() {
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
   ctx.lineWidth = 1 * viewZoom;
   ctx.setLineDash([5 * viewZoom, 5 * viewZoom]);
-  const axisStart = toScreen(-15, 0);
-  const axisEnd = toScreen(tubeLength + 30, 0);
+  const axisStart = toScreen(-23, 0);
+  const axisEnd = toScreen(tubeLength + 45, 0);
   ctx.beginPath();
   ctx.moveTo(axisStart.x, axisStart.y);
   ctx.lineTo(axisEnd.x, axisEnd.y);
@@ -282,9 +282,9 @@ function draw() {
   ctx.setLineDash([]);
 
   // Axis label
-  const axisLabelP = toScreen(tubeLength + 34, 6);
+  const axisLabelP = toScreen(tubeLength + 51, 9);
   ctx.fillStyle = 'rgba(255,255,255,0.25)';
-  ctx.font = (8 * Math.min(viewZoom, 2)) + 'px Arial';
+  ctx.font = (12 * Math.min(viewZoom, 2)) + 'px Arial';
   ctx.textAlign = 'left';
   ctx.fillText('optical axis', axisLabelP.x, axisLabelP.y);
 
@@ -382,7 +382,7 @@ function draw() {
 
     // Draw incoming ray
     if (!hideIncident) {
-      const startW = { x: refWx - 338 * inDirWx, y: refWy - 338 * inDirWy };
+      const startW = { x: refWx - 507 * inDirWx, y: refWy - 507 * inDirWy };
       const startS = worldToScreen(startW.x, startW.y);
 
       let endS;
@@ -391,7 +391,7 @@ function draw() {
       } else if (blockedByWall) {
         endS = toScreen(wallHitU, wallHitV);
       } else {
-        const endW = { x: refWx + 338 * inDirWx, y: refWy + 338 * inDirWy };
+        const endW = { x: refWx + 507 * inDirWx, y: refWy + 507 * inDirWy };
         endS = worldToScreen(endW.x, endW.y);
       }
 
@@ -456,16 +456,16 @@ function draw() {
 
   // Mirror type label (fixed to screen, not world)
   ctx.fillStyle = '#fff';
-  ctx.font = 'bold 12px Arial';
+  ctx.font = 'bold 18px Arial';
   ctx.textAlign = 'center';
-  ctx.fillText(mirrorType.charAt(0).toUpperCase() + mirrorType.slice(1) + ' Mirror', W / 2, H - 15);
+  ctx.fillText(mirrorType.charAt(0).toUpperCase() + mirrorType.slice(1) + ' Mirror', W / 2, H - 23);
 
   // Zoom indicator
   if (Math.abs(viewZoom - 1) > 0.01 || Math.abs(viewPanX) > 1 || Math.abs(viewPanY) > 1) {
     ctx.fillStyle = 'rgba(255,255,255,0.35)';
-    ctx.font = '8px Arial';
+    ctx.font = '12px Arial';
     ctx.textAlign = 'left';
-    ctx.fillText(viewZoom.toFixed(1) + 'x', 8, 15);
+    ctx.fillText(viewZoom.toFixed(1) + 'x', 12, 23);
   }
 }
 
