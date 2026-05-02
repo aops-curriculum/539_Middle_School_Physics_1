@@ -22,9 +22,9 @@ let W, H;
 let cone;      // {x, y} cone center on screen
 let SCREEN_X;  // x position of the vertical projection screen
 
-// Supply box — dynamically positioned
+// Supply box — dynamically positioned at bottom-centre
 const BOX_W = 110, BOX_H = 110;
-function getMirrorBox() { return { x: 20, y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
+function getMirrorBox() { return { x: W / 2 - BOX_W / 2 - 50, y: H - BOX_H - 20, w: BOX_W, h: BOX_H }; }
 
 // Ice cream geometry relative to cone center (cx, cy)
 const TIP_DY  =  22.5;
