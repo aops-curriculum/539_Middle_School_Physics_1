@@ -59,7 +59,7 @@
       return Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
     }
 
-    function toCm(px) { return (px / SCALE).toFixed(2); }
+    function toCm(px) { return (px / SCALE).toFixed(3); }
 
     // Arrowhead at (x2,y2) pointing away from (x1,y1)
     function arrowHead(x1, y1, x2, y2, color, size = 13) {
@@ -227,8 +227,8 @@
       // Angles from the vertical normal
       const angleI = Math.atan2(Math.abs(A.x - c.x), Math.abs(A.y - c.y)); // incidence
       const angleR = Math.atan2(Math.abs(B.x - c.x), Math.abs(B.y - c.y)); // reflection
-      const angleI_deg = (angleI * 180 / Math.PI).toFixed(0);
-      const angleR_deg = (angleR * 180 / Math.PI).toFixed(0);
+      const angleI_deg = (angleI * 180 / Math.PI).toFixed(1);
+      const angleR_deg = (angleR * 180 / Math.PI).toFixed(1);
 
       // Canvas angles for arc drawing
       const dirToA   = Math.atan2(A.y - c.y, A.x - c.x); // toward A from C (upper-left region)
@@ -278,7 +278,7 @@
       const dCB = dist2(c.x, c.y, B.x, B.y);
       const acCm = toCm(dAC);
       const cbCm = toCm(dCB);
-      const totCm = ((dAC + dCB) / SCALE).toFixed(2);
+      const totCm = ((dAC + dCB) / SCALE).toFixed(3);
 
       segLabel(A.x, A.y, c.x, c.y, 'AC = ' + acCm + ' cm', RAY, 22);
       segLabel(c.x, c.y, B.x, B.y, 'CB = ' + cbCm + ' cm', RAY, 22);
