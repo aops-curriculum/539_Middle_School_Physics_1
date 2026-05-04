@@ -90,6 +90,14 @@
       ctx.fillText(text, mx + px * offset, my + py * offset);
     }
 
+    // Optimal reflection point obeying law of reflection (reflect A across mirror,
+    // draw line to B, find x where it crosses MIR_Y).
+    function optimalCx() {
+      const Ay2 = 2 * MIR_Y - A.y;          // A reflected across mirror
+      const t   = (MIR_Y - Ay2) / (B.y - Ay2);
+      return A.x + t * (B.x - A.x);
+    }
+
     // ── light bulb ───────────────────────────────────────────────────────────
 
     function drawBulb(x, y, r) {
@@ -176,8 +184,8 @@
 
       ctx.fillStyle = '#aaa';
       ctx.font = '13px Arial';
-      ctx.textAlign = 'center';
-      ctx.fillText('Mirror', (MIR_X1 + MIR_X2) / 2, MIR_Y + 28);
+      ctx.textAlign = 'right';
+      ctx.fillText('Mirror', MIR_X2 - 6, MIR_Y - 10);
 
       // ── Normal at C (dashed) ──
       ctx.setLineDash([6, 5]);
@@ -293,7 +301,17 @@
       drawBulb(A.x, A.y, 16);
       drawEye(B.x, B.y);
 
-      // C dot
+      // ── Optimal reflection point (red dot) ──
+      const optX = optimalCx();
+      ctx.fillStyle = '#ff3333';
+      ctx.strokeStyle = '#ff9999';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(optX, MIR_Y, 6, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // C dot (drawn on top so it stays visible)
       ctx.fillStyle = '#fff';
       ctx.strokeStyle = '#FFD700';
       ctx.lineWidth = 3;
