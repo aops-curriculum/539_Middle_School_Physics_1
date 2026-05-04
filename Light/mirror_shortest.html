@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Mirror Shortest Path</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #1a1a2e;
+      font-family: Arial, sans-serif;
+      max-width: 600px;
+      margin: 0 auto;
+      padding: 10px;
+      user-select: none;
+    }
+    p.instructions {
+      text-align: center;
+      color: #aaa;
+      font-size: 14px;
+      padding: 6px 0 8px;
+    }
+    canvas {
+      display: block;
+      border: 1px solid #333;
+      border-radius: 6px;
+      cursor: grab;
+    }
+    canvas.grabbing { cursor: grabbing; }
+  </style>
+</head>
+<body>
+  <p class="instructions">Drag point C along the mirror to change where the light reflects.</p>
+  <canvas id="canvas" width="600" height="480"></canvas>
+  <script>
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const W = 600, H = 480;
+
+    // Scale: 1 cm = 16 px
+    const SCALE = 16;
+
+    // Mirror: horizontal line near bottom
+    const MIR_Y  = 390;
+    const MIR_X1 = 45;
+    const MIR_X2 = 555;
+
+    // Fixed points (A = light source, B = observer)
+    const A = { x: 90,  y: 95  };
+    const B = { x: 510, y: 130 };
+
+    // Draggable reflection point on the mirror
+    let Cx = 290;
+    const C = () => ({ x: Cx, y: MIR_Y });
+
+    let dragging = false;
+
+    // ── helpers ──────────────────────────────────────────────────────────────
+
+    function dist2(ax, ay, bx, by) {
+      return Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
+    }
+
+    function toCm(px) { return (px / SCALE).toFixed(1); }
+
+    // Arrowhead at (x2,y2) pointing away from (x1,y1)
+    function arrowHead(x1, y1, x2, y2, color, size = 13) {
+      const a = Math.atan2(y2 - y1, x2 - x1);
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(x2, y2);
+      ctx.lineTo(x2 - size * Math.cos(a - Math.PI / 6), y2 - size * Math.sin(a - Math.PI / 6));
+      ctx.lineTo(x2 - size * Math.cos(a + Math.PI / 6), y2 - size * Math.sin(a + Math.PI / 6));
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Label midway along a segment, offset perpendicular (always toward "up")
+    function segLabel(x1, y1, x2, y2, text, color, offset = 20) {
+      const mx = (x1 + x2) / 2;
+      const my = (y1 + y2) / 2;
+      const dx = x2 - x1, dy = y2 - y1;
+      const len = Math.sqrt(dx * dx + dy * dy);
+      // CCW perpendicular
+      let px = -dy / len, py = dx / len;
+      // Ensure it points upward in canvas (py < 0)
+      if (py > 0) { px = -px; py = -py; }
+      ctx.fillStyle = color;
+      ctx.font = 'bold 13px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(text, mx + px * offset, my + py * offset);
+    }
+
+    // ── light bulb ───────────────────────────────────────────────────────────
+
+    function drawBulb(x, y, r) {
+      // Glow
+      const g = ctx.createRadialGradient(x, y, 2, x, y, r * 3);
+      g.addColorStop(0, 'rgba(255,230,50,0.45)');
+      g.addColorStop(1, 'rgba(255,230,50,0)');
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.arc(x, y, r * 3, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Globe
+      ctx.fillStyle = '#FFE032';
+      ctx.strokeStyle = '#B8860B';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.arc(x, y - r * 0.25, r, Math.PI, 0);
+      ctx.bezierCurveTo(x + r, y + r * 0.85, x + r * 0.6, y + r * 1.3, x + r * 0.45, y + r * 1.6);
+      ctx.lineTo(x - r * 0.45, y + r * 1.6);
+      ctx.bezierCurveTo(x - r * 0.6, y + r * 1.3, x - r, y + r * 0.85, x - r, y - r * 0.25);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      // Base stripes
+      for (let i = 0; i < 3; i++) {
+        ctx.fillStyle = i % 2 === 0 ? '#999' : '#777';
+        ctx.fillRect(x - r * 0.45, y + r * 1.6 + i * 4, r * 0.9, 4);
+      }
+    }
+
+    // ── eye ─────────────────────────────────────────────────────────────────
+
+    function drawEye(x, y) {
+      ctx.fillStyle = 'white';
+      ctx.strokeStyle = '#bbb';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.ellipse(x, y, 13, 8, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+      // Iris
+      ctx.fillStyle = '#3a7bd5';
+      ctx.beginPath();
+      ctx.arc(x, y, 5.5, 0, Math.PI * 2);
+      ctx.fill();
+      // Pupil
+      ctx.fillStyle = '#111';
+      ctx.beginPath();
+      ctx.arc(x, y, 3, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // ── main draw ────────────────────────────────────────────────────────────
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Background
+      ctx.fillStyle = '#1a1a2e';
+      ctx.fillRect(0, 0, W, H);
+
+      const c = C();
+
+      // ── Mirror ──
+      // Shiny silver bar
+      ctx.strokeStyle = '#C8C8C8';
+      ctx.lineWidth = 5;
+      ctx.beginPath();
+      ctx.moveTo(MIR_X1, MIR_Y);
+      ctx.lineTo(MIR_X2, MIR_Y);
+      ctx.stroke();
+
+      // Hatch marks below mirror
+      ctx.strokeStyle = '#777';
+      ctx.lineWidth = 1.5;
+      for (let x = MIR_X1 + 5; x <= MIR_X2; x += 14) {
+        ctx.beginPath();
+        ctx.moveTo(x, MIR_Y);
+        ctx.lineTo(x - 9, MIR_Y + 13);
+        ctx.stroke();
+      }
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '13px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('Mirror', (MIR_X1 + MIR_X2) / 2, MIR_Y + 28);
+
+      // ── Normal at C (dashed) ──
+      ctx.setLineDash([6, 5]);
+      ctx.strokeStyle = 'rgba(160,160,160,0.5)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(c.x, MIR_Y + 35);
+      ctx.lineTo(c.x, MIR_Y - 100);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // "Normal" label
+      ctx.fillStyle = 'rgba(160,160,160,0.65)';
+      ctx.font = '11px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText('Normal', c.x + 5, MIR_Y - 88);
+
+      // ── Light rays A→C and C→B ──
+      const RAY = '#FFD700';
+
+      ctx.strokeStyle = RAY;
+      ctx.lineWidth = 2.5;
+
+      // A → C
+      ctx.beginPath();
+      ctx.moveTo(A.x, A.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.stroke();
+      arrowHead(A.x, A.y, c.x, c.y, RAY);
+
+      // C → B
+      ctx.beginPath();
+      ctx.moveTo(c.x, c.y);
+      ctx.lineTo(B.x, B.y);
+      ctx.stroke();
+      arrowHead(c.x, c.y, B.x, B.y, RAY);
+
+      // ── Angle arcs ──
+      // Angles from the vertical normal
+      const angleI = Math.atan2(Math.abs(A.x - c.x), Math.abs(A.y - c.y)); // incidence
+      const angleR = Math.atan2(Math.abs(B.x - c.x), Math.abs(B.y - c.y)); // reflection
+      const angleI_deg = (angleI * 180 / Math.PI).toFixed(0);
+      const angleR_deg = (angleR * 180 / Math.PI).toFixed(0);
+
+      // Canvas angles for arc drawing
+      const dirToA   = Math.atan2(A.y - c.y, A.x - c.x); // toward A from C (upper-left region)
+      const dirToB   = Math.atan2(B.y - c.y, B.x - c.x); // toward B from C (upper-right region)
+      const upNormal = -Math.PI / 2;                       // straight up
+
+      const ARC_R = 48;
+
+      // Incidence arc: dirToA → upNormal (clockwise in canvas = short arc, upper-left wedge)
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, ARC_R, dirToA, upNormal, false);
+      ctx.strokeStyle = '#FF6B6B';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Reflection arc: upNormal → dirToB (clockwise in canvas = short arc, upper-right wedge)
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, ARC_R, upNormal, dirToB, false);
+      ctx.strokeStyle = '#4FC3F7';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Angle labels on arcs
+      const midI = (dirToA + upNormal) / 2;
+      const midR = (upNormal + dirToB) / 2;
+      const LABEL_R = ARC_R + 18;
+
+      ctx.font = 'bold 13px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.fillStyle = '#FF6B6B';
+      ctx.fillText(angleI_deg + '°', c.x + LABEL_R * Math.cos(midI), c.y + LABEL_R * Math.sin(midI));
+
+      ctx.fillStyle = '#4FC3F7';
+      ctx.fillText(angleR_deg + '°', c.x + LABEL_R * Math.cos(midR), c.y + LABEL_R * Math.sin(midR));
+
+      // ── Segment length labels ──
+      const dAC = dist2(A.x, A.y, c.x, c.y);
+      const dCB = dist2(c.x, c.y, B.x, B.y);
+      const acCm = toCm(dAC);
+      const cbCm = toCm(dCB);
+      const totCm = ((dAC + dCB) / SCALE).toFixed(1);
+
+      segLabel(A.x, A.y, c.x, c.y, 'AC = ' + acCm + ' cm', RAY, 22);
+      segLabel(c.x, c.y, B.x, B.y, 'CB = ' + cbCm + ' cm', RAY, 22);
+
+      // ── Point labels ──
+      ctx.font = 'bold 17px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      ctx.fillStyle = '#fff';
+      ctx.fillText('A', A.x, A.y - 48);
+
+      ctx.fillStyle = '#fff';
+      ctx.fillText('B', B.x + 22, B.y - 5);
+
+      ctx.fillStyle = '#fff';
+      ctx.fillText('C', c.x, c.y + 28);
+
+      // ── Draw objects ──
+      drawBulb(A.x, A.y, 16);
+      drawEye(B.x, B.y);
+
+      // C dot
+      ctx.fillStyle = '#fff';
+      ctx.strokeStyle = '#FFD700';
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(c.x, c.y, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.stroke();
+
+      // ── Legend (top-left) ──
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'middle';
+      ctx.font = 'bold 13px Arial';
+
+      ctx.fillStyle = '#FF6B6B';
+      ctx.fillText('Angle of incidence: ' + angleI_deg + '°', 12, 20);
+
+      ctx.fillStyle = '#4FC3F7';
+      ctx.fillText('Angle of reflection: ' + angleR_deg + '°', 12, 40);
+
+      // ── Total length ──
+      ctx.fillStyle = '#fff';
+      ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'left';
+      ctx.fillText('Total length (AC + CB): ' + totCm + ' cm', 12, H - 38);
+
+      // ── Scale bar ──
+      const SB_CM   = 5;
+      const SB_PX   = SB_CM * SCALE;
+      const SB_X    = W - SB_PX - 18;
+      const SB_Y    = H - 26;
+
+      ctx.strokeStyle = '#aaa';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      ctx.moveTo(SB_X, SB_Y);
+      ctx.lineTo(SB_X + SB_PX, SB_Y);
+      ctx.stroke();
+
+      // End ticks
+      [SB_X, SB_X + SB_PX].forEach(tx => {
+        ctx.beginPath();
+        ctx.moveTo(tx, SB_Y - 4);
+        ctx.lineTo(tx, SB_Y + 4);
+        ctx.stroke();
+      });
+
+      ctx.fillStyle = '#aaa';
+      ctx.font = '11px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText(SB_CM + ' cm', SB_X + SB_PX / 2, SB_Y - 7);
+    }
+
+    // ── pointer helpers ──────────────────────────────────────────────────────
+
+    function getPos(e) {
+      const r = canvas.getBoundingClientRect();
+      const src = e.touches ? e.touches[0] : e;
+      return { x: src.clientX - r.left, y: src.clientY - r.top };
+    }
+
+    function tryStartDrag(p) {
+      const c = C();
+      if (dist2(p.x, p.y, c.x, c.y) < 18) {
+        dragging = true;
+        canvas.classList.add('grabbing');
+      }
+    }
+
+    function moveDrag(p) {
+      if (!dragging) return;
+      Cx = Math.max(MIR_X1 + 6, Math.min(MIR_X2 - 6, p.x));
+      draw();
+    }
+
+    function endDrag() {
+      dragging = false;
+      canvas.classList.remove('grabbing');
+    }
+
+    // ── mouse events ─────────────────────────────────────────────────────────
+
+    canvas.addEventListener('mousedown',  e => tryStartDrag(getPos(e)));
+    canvas.addEventListener('mousemove',  e => moveDrag(getPos(e)));
+    canvas.addEventListener('mouseup',    endDrag);
+    canvas.addEventListener('mouseleave', endDrag);
+
+    // ── touch events ─────────────────────────────────────────────────────────
+
+    canvas.addEventListener('touchstart', e => { e.preventDefault(); tryStartDrag(getPos(e)); }, { passive: false });
+    canvas.addEventListener('touchmove',  e => { e.preventDefault(); moveDrag(getPos(e)); },     { passive: false });
+    canvas.addEventListener('touchend',   e => { e.preventDefault(); endDrag(); },               { passive: false });
+
+    // ── initial draw ─────────────────────────────────────────────────────────
+    draw();
+  </script>
+</body>
+</html>
