@@ -9,7 +9,7 @@
     body {
       background: #1a1a2e;
       font-family: Arial, sans-serif;
-      max-width: 600px;
+      max-width: 584px;
       margin: 0 auto;
       padding: 0;
       user-select: none;
@@ -22,11 +22,11 @@
   </style>
 </head>
 <body>
-  <canvas id="canvas" width="600" height="430"></canvas>
+  <canvas id="canvas" width="584" height="430"></canvas>
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const W = 600, H = 430;
+    const W = 584, H = 430;
 
     // Scale: 1 cm = 16 px
     const SCALE = 16;
@@ -321,7 +321,7 @@
       // ── Scale bar (above mirror, right side) ──
       const SB_CM   = 5;
       const SB_PX   = SB_CM * SCALE;
-      const SB_X    = W - SB_PX - 18;
+      const SB_X    = MIR_X2 - SB_PX - 20;
       const SB_Y    = MIR_Y - 32;
 
       ctx.strokeStyle = '#aaa';
