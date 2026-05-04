@@ -30,7 +30,7 @@
   </style>
 </head>
 <body>
-  <p class="instructions">Drag point C along the mirror to change where the light reflects.</p>
+  <p class="instructions">Drag A, B, or C to explore the reflection path.</p>
   <canvas id="canvas" width="600" height="480"></canvas>
   <script>
     const canvas = document.getElementById('canvas');
@@ -45,15 +45,13 @@
     const MIR_X1 = 45;
     const MIR_X2 = 555;
 
-    // Fixed points (A = light source, B = observer)
-    const A = { x: 90,  y: 95  };
-    const B = { x: 510, y: 130 };
-
-    // Draggable reflection point on the mirror
-    let Cx = 290;
+    // Draggable points
+    let A = { x: 90,  y: 95  };  // light source
+    let B = { x: 510, y: 130 };  // observer
+    let Cx = 290;                 // C slides along mirror
     const C = () => ({ x: Cx, y: MIR_Y });
 
-    let dragging = false;
+    let dragging = null; // null | 'A' | 'B' | 'C'
 
     // ── helpers ──────────────────────────────────────────────────────────────
 
@@ -61,7 +59,7 @@
       return Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
     }
 
-    function toCm(px) { return (px / SCALE).toFixed(1); }
+    function toCm(px) { return (px / SCALE).toFixed(2); }
 
     // Arrowhead at (x2,y2) pointing away from (x1,y1)
     function arrowHead(x1, y1, x2, y2, color, size = 13) {
@@ -231,23 +229,30 @@
 
       const ARC_R = 48;
 
-      // Incidence arc: dirToA → upNormal (clockwise in canvas = short arc, upper-left wedge)
+      // Always draw the short arc by going clockwise from the smaller angle to the larger.
+      // This works whether A/B are left or right of C.
+      const iStart = Math.min(dirToA, upNormal);
+      const iEnd   = Math.max(dirToA, upNormal);
+      const rStart = Math.min(upNormal, dirToB);
+      const rEnd   = Math.max(upNormal, dirToB);
+
+      // Incidence arc
       ctx.beginPath();
-      ctx.arc(c.x, c.y, ARC_R, dirToA, upNormal, false);
+      ctx.arc(c.x, c.y, ARC_R, iStart, iEnd, false);
       ctx.strokeStyle = '#FF6B6B';
       ctx.lineWidth = 2;
       ctx.stroke();
 
-      // Reflection arc: upNormal → dirToB (clockwise in canvas = short arc, upper-right wedge)
+      // Reflection arc
       ctx.beginPath();
-      ctx.arc(c.x, c.y, ARC_R, upNormal, dirToB, false);
+      ctx.arc(c.x, c.y, ARC_R, rStart, rEnd, false);
       ctx.strokeStyle = '#4FC3F7';
       ctx.lineWidth = 2;
       ctx.stroke();
 
       // Angle labels on arcs
-      const midI = (dirToA + upNormal) / 2;
-      const midR = (upNormal + dirToB) / 2;
+      const midI = (iStart + iEnd) / 2;
+      const midR = (rStart + rEnd) / 2;
       const LABEL_R = ARC_R + 18;
 
       ctx.font = 'bold 13px Arial';
@@ -265,7 +270,7 @@
       const dCB = dist2(c.x, c.y, B.x, B.y);
       const acCm = toCm(dAC);
       const cbCm = toCm(dCB);
-      const totCm = ((dAC + dCB) / SCALE).toFixed(1);
+      const totCm = ((dAC + dCB) / SCALE).toFixed(2);
 
       segLabel(A.x, A.y, c.x, c.y, 'AC = ' + acCm + ' cm', RAY, 22);
       segLabel(c.x, c.y, B.x, B.y, 'CB = ' + cbCm + ' cm', RAY, 22);
@@ -349,22 +354,39 @@
       return { x: src.clientX - r.left, y: src.clientY - r.top };
     }
 
+    const HIT = 18; // hit-test radius in px
+
     function tryStartDrag(p) {
       const c = C();
-      if (dist2(p.x, p.y, c.x, c.y) < 18) {
-        dragging = true;
-        canvas.classList.add('grabbing');
+      // Check A and B first (slightly smaller hitbox so C on mirror takes priority
+      // only when near mirror level — order: C, A, B)
+      if (dist2(p.x, p.y, c.x, c.y) < HIT) {
+        dragging = 'C';
+      } else if (dist2(p.x, p.y, A.x, A.y) < HIT + 4) {
+        dragging = 'A';
+      } else if (dist2(p.x, p.y, B.x, B.y) < HIT + 4) {
+        dragging = 'B';
       }
+      if (dragging) canvas.classList.add('grabbing');
     }
 
     function moveDrag(p) {
       if (!dragging) return;
-      Cx = Math.max(MIR_X1 + 6, Math.min(MIR_X2 - 6, p.x));
+      const MARGIN = 20; // keep A/B this many px above mirror
+      if (dragging === 'C') {
+        Cx = Math.max(MIR_X1 + 6, Math.min(MIR_X2 - 6, p.x));
+      } else if (dragging === 'A') {
+        A.x = Math.max(8, Math.min(W - 8, p.x));
+        A.y = Math.max(20, Math.min(MIR_Y - MARGIN, p.y));
+      } else if (dragging === 'B') {
+        B.x = Math.max(8, Math.min(W - 8, p.x));
+        B.y = Math.max(20, Math.min(MIR_Y - MARGIN, p.y));
+      }
       draw();
     }
 
     function endDrag() {
-      dragging = false;
+      dragging = null;
       canvas.classList.remove('grabbing');
     }
 
