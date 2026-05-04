@@ -14,12 +14,6 @@
       padding: 10px;
       user-select: none;
     }
-    p.instructions {
-      text-align: center;
-      color: #aaa;
-      font-size: 14px;
-      padding: 6px 0 8px;
-    }
     canvas {
       display: block;
       border: 1px solid #333;
@@ -30,12 +24,11 @@
   </style>
 </head>
 <body>
-  <p class="instructions">Drag A, B, or C to explore the reflection path.</p>
-  <canvas id="canvas" width="600" height="480"></canvas>
+  <canvas id="canvas" width="600" height="430"></canvas>
   <script>
     const canvas = document.getElementById('canvas');
     const ctx = canvas.getContext('2d');
-    const W = 600, H = 480;
+    const W = 600, H = 430;
 
     // Scale: 1 cm = 16 px
     const SCALE = 16;
@@ -320,28 +313,18 @@
       ctx.fill();
       ctx.stroke();
 
-      // ── Legend (top-left) ──
-      ctx.textAlign = 'left';
-      ctx.textBaseline = 'middle';
-      ctx.font = 'bold 13px Arial';
-
-      ctx.fillStyle = '#FF6B6B';
-      ctx.fillText('Angle of incidence: ' + angleI_deg + '°', 12, 20);
-
-      ctx.fillStyle = '#4FC3F7';
-      ctx.fillText('Angle of reflection: ' + angleR_deg + '°', 12, 40);
-
-      // ── Total length ──
+      // ── Total length (centered, near top) ──
       ctx.fillStyle = '#fff';
       ctx.font = 'bold 14px Arial';
-      ctx.textAlign = 'left';
-      ctx.fillText('Total length (AC + CB): ' + totCm + ' cm', 12, H - 38);
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('Total length (AC + CB): ' + totCm + ' cm', W / 2, 95);
 
-      // ── Scale bar ──
+      // ── Scale bar (above mirror, right side) ──
       const SB_CM   = 5;
       const SB_PX   = SB_CM * SCALE;
       const SB_X    = W - SB_PX - 18;
-      const SB_Y    = H - 26;
+      const SB_Y    = MIR_Y - 32;
 
       ctx.strokeStyle = '#aaa';
       ctx.lineWidth = 2;
@@ -361,7 +344,7 @@
       ctx.fillStyle = '#aaa';
       ctx.font = '11px Arial';
       ctx.textAlign = 'center';
-      ctx.fillText(SB_CM + ' cm', SB_X + SB_PX / 2, SB_Y - 7);
+      ctx.fillText(SB_CM + ' cm', SB_X + SB_PX / 2, SB_Y - 8);
     }
 
     // ── pointer helpers ──────────────────────────────────────────────────────
