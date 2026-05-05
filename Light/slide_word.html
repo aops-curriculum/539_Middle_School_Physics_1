@@ -1,0 +1,504 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Slide Word</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    font-family: system-ui, sans-serif;
+    background: #f0f0f0;
+    color: #222;
+    margin: 0;
+    padding: 16px 20px;
+  }
+  h1 { margin: 0 0 14px; font-size: 22px; color: #333; }
+
+  .top-controls {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: center;
+    margin-bottom: 14px;
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .top-controls label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: #555;
+  }
+  #wordInput {
+    padding: 5px 8px;
+    font-size: 20px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    width: 220px;
+    background: #fafafa;
+  }
+  select {
+    padding: 4px 6px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fafafa;
+    font-size: 13px;
+  }
+  input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; }
+  input[type="range"] { cursor: pointer; accent-color: #d04040; }
+  .range-wrap { display: flex; align-items: center; gap: 5px; }
+  .range-wrap .val { font-size: 12px; color: #666; min-width: 28px; text-align: right; }
+
+  .canvases {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    margin-bottom: 14px;
+  }
+  .canvas-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+  }
+  .canvas-label {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+    font-weight: 600;
+  }
+  .copy-btn {
+    margin-top: 6px;
+    padding: 5px 14px;
+    font-size: 13px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    background: #fafafa;
+    cursor: pointer;
+    color: #333;
+  }
+  .copy-btn:hover { background: #e8e8e8; }
+  .copy-btn.copied { background: #d4edda; border-color: #a3c9a8; color: #2a6e3a; }
+  canvas {
+    background: #fff;
+    border-radius: 4px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.15);
+    cursor: ns-resize;
+    display: block;
+  }
+
+  .main-sliders {
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+    margin-bottom: 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+  .slider-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .slider-row .lbl {
+    font-size: 13px;
+    color: #555;
+    min-width: 130px;
+  }
+  .slider-row input[type="range"] { width: 240px; }
+  .slider-row .val { font-size: 13px; color: #333; min-width: 40px; }
+
+  .letter-section {
+    background: #fff;
+    border-radius: 8px;
+    padding: 10px 14px;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+  }
+  .letter-section h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: #888;
+    margin: 0 0 10px;
+    font-weight: 600;
+  }
+  .letters-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+  .letter-card {
+    background: #f7f7f7;
+    border: 1px solid #e0e0e0;
+    border-radius: 6px;
+    padding: 8px 10px;
+    min-width: 100px;
+  }
+  .letter-card .ltr {
+    font-size: 26px;
+    text-align: center;
+    font-weight: bold;
+    color: #d04040;
+    line-height: 1;
+    margin-bottom: 6px;
+    font-family: serif;
+  }
+  .letter-card .ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    margin-bottom: 3px;
+  }
+  .letter-card .ctrl-lbl {
+    font-size: 11px;
+    color: #888;
+    min-width: 18px;
+    text-align: center;
+  }
+  .letter-card input[type="range"] { width: 72px; }
+  .letter-card .val {
+    font-size: 11px;
+    color: #555;
+    min-width: 24px;
+    text-align: right;
+  }
+  .letter-card .reset-btn {
+    font-size: 10px;
+    color: #999;
+    cursor: pointer;
+    border: none;
+    background: none;
+    padding: 1px 0 0;
+    width: 100%;
+    text-align: center;
+  }
+  .letter-card .reset-btn:hover { color: #d04040; }
+</style>
+</head>
+<body>
+<h1>Slide Word</h1>
+
+<div class="top-controls">
+  <label>Word
+    <input type="text" id="wordInput" value="SLIDE" autocomplete="off" spellcheck="false">
+  </label>
+  <label>Font
+    <select id="fontSelect">
+      <option value="Georgia">Georgia</option>
+      <option value="'Times New Roman', serif">Times New Roman</option>
+      <option value="Palatino, serif">Palatino</option>
+      <option value="Garamond, serif">Garamond</option>
+      <option value="serif">Serif (generic)</option>
+      <option value="Arial, sans-serif">Arial</option>
+      <option value="'Arial Black', sans-serif">Arial Black</option>
+      <option value="Verdana, sans-serif">Verdana</option>
+      <option value="'Trebuchet MS', sans-serif">Trebuchet MS</option>
+      <option value="Impact, sans-serif">Impact</option>
+      <option value="sans-serif">Sans-serif (generic)</option>
+      <option value="'Courier New', monospace">Courier New</option>
+      <option value="monospace">Monospace (generic)</option>
+      <option value="'Comic Sans MS', cursive">Comic Sans MS</option>
+    </select>
+  </label>
+  <label><input type="checkbox" id="boldCheck"> Bold</label>
+  <label><input type="checkbox" id="italicCheck"> Italic</label>
+  <label>Size
+    <div class="range-wrap">
+      <input type="range" id="sizeSlider" min="18" max="160" value="80">
+      <span class="val" id="sizeVal">80</span>px
+    </div>
+  </label>
+</div>
+
+<div class="canvases">
+  <div class="canvas-col">
+    <div class="canvas-label">Original</div>
+    <canvas id="leftCanvas" width="600" height="240"></canvas>
+  </div>
+  <div class="canvas-col">
+    <div class="canvas-label">Slid</div>
+    <canvas id="rightCanvas" width="600" height="240"></canvas>
+    <button class="copy-btn" id="copyBtn">Copy image</button>
+  </div>
+</div>
+
+<div class="main-sliders">
+  <div class="slider-row">
+    <span class="lbl">Split line (drag on canvas)</span>
+    <input type="range" id="splitSlider" min="0" max="240" value="148">
+    <span class="val" id="splitVal">148</span>px
+    <label style="margin-left:16px;font-size:13px;color:#555;display:flex;align-items:center;gap:5px;">
+      <input type="checkbox" id="showLineCheck" checked> Show line
+    </label>
+  </div>
+  <div class="slider-row">
+    <span class="lbl">Slide amount</span>
+    <input type="range" id="slideSlider" min="-250" max="250" value="50">
+    <span class="val" id="slideVal">+50</span>px
+  </div>
+</div>
+
+<div class="letter-section">
+  <h2>Per-letter adjustments</h2>
+  <div class="letters-grid" id="lettersGrid"></div>
+</div>
+
+<script>
+const wordInput   = document.getElementById('wordInput');
+const fontSelect  = document.getElementById('fontSelect');
+const boldCheck   = document.getElementById('boldCheck');
+const italicCheck = document.getElementById('italicCheck');
+const sizeSlider  = document.getElementById('sizeSlider');
+const sizeVal     = document.getElementById('sizeVal');
+const splitSlider = document.getElementById('splitSlider');
+const splitVal    = document.getElementById('splitVal');
+const slideSlider   = document.getElementById('slideSlider');
+const slideVal      = document.getElementById('slideVal');
+const showLineCheck = document.getElementById('showLineCheck');
+const copyBtn       = document.getElementById('copyBtn');
+const lettersGrid   = document.getElementById('lettersGrid');
+const leftCanvas  = document.getElementById('leftCanvas');
+const rightCanvas = document.getElementById('rightCanvas');
+const leftCtx     = leftCanvas.getContext('2d');
+const rightCtx    = rightCanvas.getContext('2d');
+
+const CW = 600;
+const CH = 240;
+
+// Per-letter offsets: [{x, y}, ...]
+let letterOffsets = [];
+let prevWord = '';
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+
+function getFont(size) {
+  const b = boldCheck.checked   ? 'bold '   : '';
+  const i = italicCheck.checked ? 'italic ' : '';
+  return `${i}${b}${size ?? sizeSlider.value}px ${fontSelect.value}`;
+}
+
+function ensureOffsets(word) {
+  while (letterOffsets.length < word.length) letterOffsets.push({ x: 0, y: 0 });
+  letterOffsets.length = word.length;
+}
+
+// Compute letter x positions (baseline x for each letter, ignoring individual offsets)
+function measureLetters(word) {
+  const font = getFont();
+  const tmp = document.createElement('canvas').getContext('2d');
+  tmp.font = font;
+  const letters = [...word];
+  const widths  = letters.map(l => tmp.measureText(l).width);
+  const total   = widths.reduce((s, w) => s + w, 0);
+  const startX  = (CW - total) / 2;
+  let x = startX;
+  const positions = widths.map(w => { const px = x; x += w; return px; });
+  return { letters, widths, positions };
+}
+
+// ── rendering ─────────────────────────────────────────────────────────────────
+
+function renderWordToCtx(ctx, word) {
+  ctx.clearRect(0, 0, CW, CH);
+  if (!word) return;
+
+  const font = getFont();
+  ctx.font = font;
+  ctx.fillStyle = '#111';
+  ctx.textBaseline = 'alphabetic';
+
+  const { letters, widths, positions } = measureLetters(word);
+  const baseY = Math.round(CH * 0.64);
+
+  letters.forEach((letter, i) => {
+    const ox = letterOffsets[i]?.x ?? 0;
+    const oy = letterOffsets[i]?.y ?? 0;
+    ctx.fillText(letter, positions[i] + ox, baseY + oy);
+  });
+}
+
+function drawSplitLine(ctx, y) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(200, 40, 40, 0.5)';
+  ctx.setLineDash([6, 4]);
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(0, y);
+  ctx.lineTo(CW, y);
+  ctx.stroke();
+  ctx.restore();
+}
+
+function render() {
+  const word        = wordInput.value;
+  const splitY      = +splitSlider.value;
+  const slideAmount = +slideSlider.value;
+
+  ensureOffsets(word);
+
+  // ── Left canvas: original ──
+  renderWordToCtx(leftCtx, word);
+  if (showLineCheck.checked) drawSplitLine(leftCtx, splitY);
+
+  // ── Offscreen for slid version ──
+  const off    = document.createElement('canvas');
+  off.width    = CW;
+  off.height   = CH;
+  const offCtx = off.getContext('2d');
+  renderWordToCtx(offCtx, word);
+
+  // ── Right canvas: split + slide ──
+  rightCtx.clearRect(0, 0, CW, CH);
+
+  if (splitY > 0) {
+    rightCtx.drawImage(off, 0, 0, CW, splitY, 0, 0, CW, splitY);
+  }
+  if (splitY < CH) {
+    const h = CH - splitY;
+    rightCtx.drawImage(off, 0, splitY, CW, h, slideAmount, splitY, CW, h);
+  }
+
+  if (showLineCheck.checked) drawSplitLine(rightCtx, splitY);
+}
+
+// ── Per-letter controls ────────────────────────────────────────────────────────
+
+function buildLetterControls() {
+  const word = wordInput.value;
+  if (word === prevWord) return;
+  prevWord = word;
+  ensureOffsets(word);
+
+  lettersGrid.innerHTML = '';
+  ;[...word].forEach((letter, i) => {
+    const card = document.createElement('div');
+    card.className = 'letter-card';
+
+    const display = letter === ' ' ? '⎵' : letter;
+
+    card.innerHTML = `
+      <div class="ltr">${display}</div>
+      <div class="ctrl-row">
+        <span class="ctrl-lbl">←→</span>
+        <input type="range" class="lx" min="-100" max="100" value="${letterOffsets[i].x}">
+        <span class="val lxv">${letterOffsets[i].x}</span>
+      </div>
+      <div class="ctrl-row">
+        <span class="ctrl-lbl">↑↓</span>
+        <input type="range" class="ly" min="-100" max="100" value="${letterOffsets[i].y}">
+        <span class="val lyv">${letterOffsets[i].y}</span>
+      </div>
+      <button class="reset-btn">reset</button>
+    `;
+
+    const lxInput = card.querySelector('.lx');
+    const lyInput = card.querySelector('.ly');
+    const lxSpan  = card.querySelector('.lxv');
+    const lySpan  = card.querySelector('.lyv');
+
+    lxInput.addEventListener('input', () => {
+      letterOffsets[i].x = +lxInput.value;
+      lxSpan.textContent = lxInput.value;
+      render();
+    });
+    lyInput.addEventListener('input', () => {
+      letterOffsets[i].y = +lyInput.value;
+      lySpan.textContent = lyInput.value;
+      render();
+    });
+    card.querySelector('.reset-btn').addEventListener('click', () => {
+      letterOffsets[i] = { x: 0, y: 0 };
+      lxInput.value = 0; lxSpan.textContent = '0';
+      lyInput.value = 0; lySpan.textContent = '0';
+      render();
+    });
+
+    lettersGrid.appendChild(card);
+  });
+}
+
+// Keep letter cards' letter label in sync when font/size changes
+// (positions change but labels don't need rebuilding)
+
+// ── Canvas drag to set split line ─────────────────────────────────────────────
+
+function setSplitFromEvent(e, canvas) {
+  const rect = canvas.getBoundingClientRect();
+  const y = Math.max(0, Math.min(CH, Math.round((e.clientY - rect.top) * (CH / rect.height))));
+  splitSlider.value = y;
+  splitVal.textContent = y;
+  render();
+}
+
+[leftCanvas, rightCanvas].forEach(canvas => {
+  let dragging = false;
+  canvas.addEventListener('mousedown', e => {
+    dragging = true;
+    setSplitFromEvent(e, canvas);
+  });
+  canvas.addEventListener('mousemove', e => {
+    if (dragging) setSplitFromEvent(e, canvas);
+  });
+  canvas.addEventListener('mouseup',   () => { dragging = false; });
+  canvas.addEventListener('mouseleave',() => { dragging = false; });
+});
+
+// ── Global event listeners ────────────────────────────────────────────────────
+
+wordInput.addEventListener('input', () => {
+  buildLetterControls();
+  render();
+});
+
+fontSelect.addEventListener('change', render);
+boldCheck.addEventListener('change',  render);
+italicCheck.addEventListener('change', render);
+
+sizeSlider.addEventListener('input', () => {
+  sizeVal.textContent = sizeSlider.value;
+  render();
+});
+
+splitSlider.addEventListener('input', () => {
+  splitVal.textContent = splitSlider.value;
+  render();
+});
+
+slideSlider.addEventListener('input', () => {
+  const v = +slideSlider.value;
+  slideVal.textContent = (v >= 0 ? '+' : '') + v;
+  render();
+});
+
+showLineCheck.addEventListener('change', render);
+
+copyBtn.addEventListener('click', () => {
+  rightCanvas.toBlob(blob => {
+    navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })])
+      .then(() => {
+        copyBtn.textContent = 'Copied!';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy image';
+          copyBtn.classList.remove('copied');
+        }, 1500);
+      })
+      .catch(() => {
+        copyBtn.textContent = 'Failed';
+        setTimeout(() => { copyBtn.textContent = 'Copy image'; }, 1500);
+      });
+  });
+});
+
+// ── Init ──────────────────────────────────────────────────────────────────────
+buildLetterControls();
+render();
+</script>
+</body>
+</html>
