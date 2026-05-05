@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Refraction GIF Generator</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { background: #1a1a2e; display: flex; flex-direction: column; align-items: center; padding: 16px; }
+canvas { display: block; border-radius: 6px; }
+#status { color: #7090b0; font-family: Arial, sans-serif; font-size: 0.85rem; margin-top: 10px; }
+/* Hidden sliders needed by draw() */
+.hidden-controls { display: none; }
+</style>
+</head>
+<body>
+<canvas id="canvas" width="860" height="500"></canvas>
+<div id="status">Generating GIF...</div>
+
+<!-- Hidden sliders required by draw() -->
+<div class="hidden-controls">
+  <input type="range" id="slBook"  min="20"  max="180" value="100">
+  <input type="range" id="slWater" min="0"   max="100" value="0">
+  <input type="range" id="slContH" min="50"  max="180" value="90">
+  <input type="range" id="slCam"   min="0"   max="100" value="35">
+  <div id="valBook"></div>
+  <div id="valWater"></div>
+  <div id="valContH"></div>
+  <div id="valCam"></div>
+  <div id="info"></div>
+</div>
+
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SIMULATION CODE (from refraction_book.html, drawBookMarkers removed from draw)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+const FLOOR_Y  = 420;
+const BK_W     = 22;
+const BK_H     = 800;
+const BK_TOP   = FLOOR_Y - BK_H;
+const BK_BOT   = FLOOR_Y;
+const CX_L     = 455;
+const CX_R     = 640;
+const CX_W     = CX_R - CX_L;
+const CY_BOT   = 385;
+const WALL_T   = 6;
+let   CY_TOP   = 290;
+let   CY_H     = CY_BOT - CY_TOP;
+const CAM_Y    = FLOOR_Y - 10;
+const N_WATER  = 1.33;
+
+function solveSnell(yWS, xC, yC) {
+  const xL = CX_L, yT = CY_TOP;
+  function residual(x) {
+    const dxa = x  - xL,   dya = yWS - yT;
+    const dxw = xC - x,    dyw = yC  - yWS;
+    const sinA = dxa / Math.hypot(dxa, dya);
+    const sinW = dxw / Math.hypot(dxw, dyw);
+    return sinA - N_WATER * sinW;
+  }
+  let lo = xL + 1e-4, hi = Math.min(xC - 1e-4, CX_R - 1e-4);
+  if (hi <= lo) return lo;
+  for (let i = 0; i < 60; i++) {
+    const mid = (lo + hi) / 2;
+    residual(mid) < 0 ? lo = mid : hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+function bookY(bookRight, dx, dy) {
+  const t = (bookRight - CX_L) / dx;
+  return CY_TOP + t * dy;
+}
+
+function computeRay(bookRight, waterPct, xC, yC) {
+  const P1 = { x: CX_L, y: CY_TOP };
+  const yWS = waterPct < 1e-3 ? CY_BOT : CY_TOP + (1 - waterPct) * CY_H;
+  let points, x_ws, refracts;
+
+  if (waterPct < 1e-3) {
+    const dx = xC - CX_L, dy = yC - CY_TOP;
+    const by = bookY(bookRight, dx, dy);
+    points   = [{ x: bookRight, y: by }, P1, { x: xC, y: yC }];
+    x_ws     = null;
+    refracts = false;
+  } else if (Math.abs(yWS - CY_TOP) < 2) {
+    const dxw = xC - CX_L, dyw = yC - CY_TOP;
+    const distW = Math.hypot(dxw, dyw);
+    const sinW  = dxw / distW;
+    const sinA  = N_WATER * sinW;
+    if (sinA > 1) {
+      const dx = xC - CX_L, dy = yC - CY_TOP;
+      const by = bookY(bookRight, dx, dy);
+      points = [{ x: bookRight, y: by }, P1, { x: xC, y: yC }];
+      x_ws = null; refracts = false;
+    } else {
+      const cosA = Math.sqrt(1 - sinA * sinA);
+      const absT = (CX_L - bookRight) / sinA;
+      const byy  = CY_TOP - absT * cosA;
+      x_ws     = CX_L;
+      refracts = true;
+      points   = [{ x: bookRight, y: byy }, P1, { x: xC, y: yC }];
+    }
+  } else {
+    if (xC <= CX_L + 2) {
+      const dx = xC - CX_L, dy = yC - CY_TOP;
+      const by = bookY(bookRight, dx, dy);
+      points = [{ x: bookRight, y: by }, P1, { x: xC, y: yC }];
+      x_ws = null; refracts = false;
+    } else {
+      x_ws = solveSnell(yWS, xC, yC);
+      x_ws = Math.max(CX_L + 1, Math.min(CX_R - 1, x_ws));
+      const dxa = x_ws - CX_L;
+      const dya = yWS  - CY_TOP;
+      const by  = bookY(bookRight, dxa, dya);
+      points   = [
+        { x: bookRight, y: by },
+        P1,
+        { x: x_ws, y: yWS },
+        { x: xC,   y: yC  }
+      ];
+      refracts = true;
+    }
+  }
+
+  const by0 = points[0].y;
+  const inBook = by0 >= BK_TOP && by0 <= BK_BOT;
+  return { points, x_ws, refracts, byOnBook: by0, inBook,
+           P1, yWS: waterPct < 1e-3 ? null : yWS, waterPct };
+}
+
+function drawArrowhead(x, y, angle) {
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.rotate(angle);
+  ctx.beginPath();
+  ctx.moveTo(7, 0);
+  ctx.lineTo(-4, 4);
+  ctx.lineTo(-4, -4);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(255, 215, 40, 0.85)';
+  ctx.fill();
+  ctx.restore();
+}
+
+function midArrow(p1, p2) {
+  const mx = (p1.x + p2.x) / 2, my = (p1.y + p2.y) / 2;
+  drawArrowhead(mx, my, Math.atan2(p2.y - p1.y, p2.x - p1.x));
+}
+
+function drawBook(bookRight) {
+  const bL = bookRight - BK_W;
+  ctx.fillStyle = 'rgba(0,0,0,0.35)';
+  ctx.fillRect(bL + 4, BK_TOP + 4, BK_W, BK_H);
+  const sg = ctx.createLinearGradient(bL, 0, bL + 7, 0);
+  sg.addColorStop(0, '#4a1000');
+  sg.addColorStop(1, '#7a2400');
+  ctx.fillStyle = sg;
+  ctx.fillRect(bL, BK_TOP, 7, BK_H);
+  const bg = ctx.createLinearGradient(bL + 7, 0, bookRight, 0);
+  bg.addColorStop(0, '#a03010');
+  bg.addColorStop(0.6, '#c04020');
+  bg.addColorStop(1, '#8a2c0c');
+  ctx.fillStyle = bg;
+  ctx.fillRect(bL + 7, BK_TOP, BK_W - 7, BK_H);
+  const pg = ctx.createLinearGradient(bookRight - 4, 0, bookRight, 0);
+  pg.addColorStop(0, '#d8d0b0');
+  pg.addColorStop(1, '#f0e8c8');
+  ctx.fillStyle = pg;
+  ctx.fillRect(bookRight - 4, BK_TOP + 2, 4, BK_H - 4);
+  ctx.strokeStyle = 'rgba(150,130,90,0.3)';
+  ctx.lineWidth = 1;
+  for (let y = BK_TOP + 20; y < BK_BOT - 10; y += 14) {
+    ctx.beginPath();
+    ctx.moveTo(bL + 9, y);
+    ctx.lineTo(bookRight - 5, y);
+    ctx.stroke();
+  }
+  ctx.fillStyle = 'rgba(255,200,100,0.18)';
+  ctx.fillRect(bL + 2, BK_TOP + BK_H * 0.35, 5, BK_H * 0.30);
+  ctx.strokeStyle = '#3a0e00';
+  ctx.lineWidth = 1;
+  ctx.strokeRect(bL, BK_TOP, BK_W, BK_H);
+  ctx.fillStyle = '#8090a0';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Book', bL + BK_W / 2, BK_BOT + 16);
+}
+
+function drawContainer(waterPct, yWS) {
+  const xL = CX_L, xR = CX_R;
+  const yT = CY_TOP, yB = CY_BOT;
+  const wt = WALL_T;
+  if (waterPct > 1e-3) {
+    const wg = ctx.createLinearGradient(0, yWS, 0, yB);
+    wg.addColorStop(0, 'rgba(40, 110, 210, 0.50)');
+    wg.addColorStop(1, 'rgba(20,  70, 170, 0.68)');
+    ctx.fillStyle = wg;
+    ctx.fillRect(xL, yWS, xR - xL, yB - yWS);
+    ctx.strokeStyle = 'rgba(110, 190, 255, 0.90)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(xL, yWS);
+    ctx.lineTo(xR, yWS);
+    ctx.stroke();
+    ctx.strokeStyle = 'rgba(180, 230, 255, 0.35)';
+    ctx.lineWidth = 1;
+    for (let sx = xL + 18; sx < xR - 15; sx += 44) {
+      ctx.beginPath();
+      ctx.moveTo(sx, yWS + 4);
+      ctx.lineTo(sx + 22, yWS + 4);
+      ctx.stroke();
+    }
+    if (yB - yWS > 28) {
+      ctx.fillStyle = 'rgba(110,180,255,0.45)';
+      ctx.font = 'italic 12px Arial';
+      ctx.textAlign = 'center';
+      ctx.fillText('water', xL + (xR - xL) / 2, yWS + (yB - yWS) / 2 + 5);
+    }
+  }
+  const glsFill   = 'rgba(150, 200, 240, 0.18)';
+  const glsStroke = 'rgba(180, 220, 255, 0.72)';
+  ctx.fillStyle = glsFill;
+  ctx.fillRect(xL - wt, yT, wt, yB - yT + 2);
+  ctx.strokeStyle = glsStroke;
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(xL - wt, yT, wt, yB - yT + 2);
+  ctx.fillStyle = glsFill;
+  ctx.fillRect(xR, yT, wt, yB - yT + 2);
+  ctx.strokeStyle = glsStroke;
+  ctx.strokeRect(xR, yT, wt, yB - yT + 2);
+  ctx.strokeStyle = 'rgba(180,220,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(xL - wt, yB);
+  ctx.lineTo(xR + wt, yB);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  const legW = 8, legH = FLOOR_Y - yB;
+  const legPositions = [xL - wt + 6, xR + wt - 6 - legW];
+  ctx.fillStyle = '#2a3850';
+  legPositions.forEach(lx => ctx.fillRect(lx, yB, legW, legH));
+  ctx.strokeStyle = '#3a5070';
+  ctx.lineWidth = 1;
+  legPositions.forEach(lx => ctx.strokeRect(lx, yB, legW, legH));
+  ctx.strokeStyle = 'rgba(180,220,255,0.20)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(xL, yT);
+  ctx.lineTo(xR, yT);
+  ctx.stroke();
+  ctx.fillStyle = '#6080a0';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Container', xL + (xR - xL) / 2, yT - 10);
+  if (waterPct > 0.02 && waterPct < 0.98) {
+    ctx.fillStyle = 'rgba(100,170,255,0.55)';
+    ctx.font = '10px Arial';
+    ctx.textAlign = 'left';
+    ctx.fillText('← water surface', xR + wt + 5, yWS + 4);
+  }
+}
+
+function drawCamera(xC, yC, highlight) {
+  ctx.save();
+  ctx.translate(xC, yC);
+  const bg = ctx.createLinearGradient(0, -14, 0, 10);
+  bg.addColorStop(0, '#4a5a6a');
+  bg.addColorStop(1, '#28343f');
+  ctx.fillStyle = bg;
+  ctx.beginPath();
+  ctx.roundRect(-24, -14, 48, 26, 4);
+  ctx.fill();
+  ctx.strokeStyle = highlight ? 'rgba(255,210,40,0.7)' : '#3a4a5a';
+  ctx.lineWidth = 1.5;
+  ctx.stroke();
+  ctx.fillStyle = '#2a3848';
+  ctx.beginPath();
+  ctx.roundRect(-9, -20, 18, 8, 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(0, -1, 11, 0, Math.PI * 2);
+  ctx.fillStyle = '#1a2430';
+  ctx.fill();
+  ctx.strokeStyle = '#5a7090';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  const lg = ctx.createRadialGradient(-3, -4, 1, 0, -1, 9);
+  lg.addColorStop(0, 'rgba(120,170,240,0.90)');
+  lg.addColorStop(0.5, 'rgba(50, 90,180,0.80)');
+  lg.addColorStop(1,   'rgba(10, 30, 80,0.90)');
+  ctx.beginPath();
+  ctx.arc(0, -1, 9, 0, Math.PI * 2);
+  ctx.fillStyle = lg;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(-3, -4, 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(220,235,255,0.50)';
+  ctx.fill();
+  ctx.restore();
+  ctx.fillStyle = '#6080a0';
+  ctx.font = '11px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillText('Camera', xC, yC + 24);
+}
+
+function drawRay(rayData) {
+  const { points, inBook, refracts, P1, yWS, waterPct } = rayData;
+  if (!points || points.length < 2) return;
+  const bookPt = points[0];
+  if (!inBook) {
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255,100,100,0.55)';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([5, 5]);
+    ctx.shadowColor = 'rgba(255,80,80,0.4)';
+    ctx.shadowBlur = 6;
+    ctx.beginPath();
+    ctx.moveTo(bookPt.x, bookPt.y);
+    ctx.lineTo(P1.x, P1.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  ctx.save();
+  ctx.shadowColor = 'rgba(255,210,0,0.65)';
+  ctx.shadowBlur  = 11;
+  ctx.strokeStyle = 'rgba(255, 215, 30, 0.93)';
+  ctx.lineWidth   = 2.8;
+  ctx.beginPath();
+  const startPt = inBook
+    ? bookPt
+    : { x: bookPt.x, y: Math.max(BK_TOP, Math.min(BK_BOT, bookPt.y)) };
+  ctx.moveTo(startPt.x, startPt.y);
+  for (let i = 1; i < points.length; i++) ctx.lineTo(points[i].x, points[i].y);
+  ctx.stroke();
+  ctx.restore();
+  for (let i = 0; i < points.length - 1; i++) {
+    const pa = (i === 0 && !inBook)
+      ? { x: bookPt.x, y: Math.max(BK_TOP, Math.min(BK_BOT, bookPt.y)) }
+      : points[i];
+    midArrow(pa, points[i + 1]);
+  }
+  if (refracts && yWS != null && Math.abs(yWS - CY_TOP) > 3 && rayData.x_ws != null) {
+    const xw = rayData.x_ws;
+    ctx.save();
+    ctx.setLineDash([4, 4]);
+    ctx.strokeStyle = 'rgba(120, 200, 255, 0.40)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(xw, yWS - 38);
+    ctx.lineTo(xw, yWS + 38);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+  }
+  const dotPts = [];
+  if (refracts) {
+    dotPts.push(P1);
+    if (yWS != null && Math.abs(yWS - CY_TOP) > 3 && rayData.x_ws != null)
+      dotPts.push({ x: rayData.x_ws, y: yWS });
+  }
+  dotPts.forEach(pt => {
+    ctx.save();
+    ctx.shadowColor = 'rgba(255,215,30,0.8)';
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 4.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255,215,30,0.95)';
+    ctx.fill();
+    ctx.restore();
+  });
+}
+
+function draw() {
+  const bookDist  = parseInt(document.getElementById('slBook').value);
+  const waterPct  = parseInt(document.getElementById('slWater').value) / 100;
+  const contH     = parseInt(document.getElementById('slContH').value);
+  const camPctRaw = parseInt(document.getElementById('slCam').value) / 100;
+
+  CY_TOP = CY_BOT - contH;
+  CY_H   = contH;
+
+  const bookRight = CX_L - WALL_T - 14 - bookDist;
+  const xC        = CX_L + camPctRaw * CX_W;
+  const yC        = CAM_Y;
+  const yWS = waterPct < 1e-3 ? null : CY_TOP + (1 - waterPct) * CY_H;
+
+  document.getElementById('valBook').textContent  = bookDist + ' px';
+  document.getElementById('valWater').textContent = Math.round(waterPct * 100) + '%';
+  document.getElementById('valContH').textContent = contH + ' px';
+  document.getElementById('valCam').textContent   = Math.round(camPctRaw * 100) + '%';
+
+  const ray = computeRay(bookRight, waterPct, xC, yC);
+
+  const bgGrad = ctx.createLinearGradient(0, 0, 0, H);
+  bgGrad.addColorStop(0, '#0f1520');
+  bgGrad.addColorStop(1, '#151e2e');
+  ctx.fillStyle = bgGrad;
+  ctx.fillRect(0, 0, W, H);
+
+  const floorGrad = ctx.createLinearGradient(0, FLOOR_Y, 0, H);
+  floorGrad.addColorStop(0, '#1e2c3a');
+  floorGrad.addColorStop(1, '#111820');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, FLOOR_Y, W, H - FLOOR_Y);
+  ctx.strokeStyle = '#2a3c50';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, FLOOR_Y);
+  ctx.lineTo(W, FLOOR_Y);
+  ctx.stroke();
+
+  ctx.strokeStyle = 'rgba(80,110,150,0.40)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.moveTo(CX_L, CAM_Y + 1);
+  ctx.lineTo(CX_R, CAM_Y + 1);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  drawBook(bookRight);
+  // drawBookMarkers intentionally omitted
+  drawContainer(waterPct, yWS || CY_BOT);
+  drawRay(ray);
+  drawCamera(xC, yC, ray.inBook);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// GIF ENCODER
+// ─────────────────────────────────────────────────────────────────────────────
+
+// --- Median Cut Color Quantizer ---
+
+function medianCut(samples, numColors) {
+  // samples: array of packed 24-bit ints (r<<16|g<<8|b)
+  let buckets = [new Int32Array(samples)];
+
+  while (buckets.length < numColors) {
+    let maxRange = -1, splitIdx = 0, splitDim = 0;
+    for (let b = 0; b < buckets.length; b++) {
+      const bucket = buckets[b];
+      if (bucket.length === 0) continue;
+      for (let d = 0; d < 3; d++) {
+        let mn = 255, mx = 0;
+        const shift = (2 - d) * 8;
+        for (let i = 0; i < bucket.length; i++) {
+          const v = (bucket[i] >> shift) & 0xff;
+          if (v < mn) mn = v;
+          if (v > mx) mx = v;
+        }
+        if (mx - mn > maxRange) { maxRange = mx - mn; splitIdx = b; splitDim = d; }
+      }
+    }
+    if (maxRange === 0) break;
+
+    const bucket = buckets[splitIdx];
+    const shift = (2 - splitDim) * 8;
+    bucket.sort((a, b_) => ((a >> shift) & 0xff) - ((b_ >> shift) & 0xff));
+    const mid = Math.floor(bucket.length / 2);
+    buckets.splice(splitIdx, 1,
+      bucket.slice(0, mid),
+      bucket.slice(mid)
+    );
+  }
+
+  // Average each bucket → palette entry
+  const palette = new Uint8Array(numColors * 3);
+  for (let b = 0; b < numColors && b < buckets.length; b++) {
+    const bucket = buckets[b];
+    if (bucket.length === 0) continue;
+    let sr = 0, sg = 0, sb_ = 0;
+    for (let i = 0; i < bucket.length; i++) {
+      sr += (bucket[i] >> 16) & 0xff;
+      sg += (bucket[i] >> 8)  & 0xff;
+      sb_ += bucket[i] & 0xff;
+    }
+    palette[b * 3]     = Math.round(sr / bucket.length);
+    palette[b * 3 + 1] = Math.round(sg / bucket.length);
+    palette[b * 3 + 2] = Math.round(sb_ / bucket.length);
+  }
+  return palette;
+}
+
+function buildPaletteFromCanvas() {
+  // Render a mid-animation frame (water=50%) for palette sampling
+  document.getElementById('slWater').value = 50;
+  draw();
+  const imgData = ctx.getImageData(0, 0, W, H).data;
+
+  // Sample every 8th pixel (W*H/8 ≈ 53750 samples)
+  const step = 8;
+  const samples = [];
+  for (let i = 0; i < imgData.length; i += 4 * step) {
+    samples.push((imgData[i] << 16) | (imgData[i+1] << 8) | imgData[i+2]);
+  }
+  return medianCut(samples, 256);
+}
+
+function buildLUT(palette) {
+  // 5-bit per channel lookup table (32×32×32 = 32768 entries)
+  const lut = new Uint8Array(32768);
+  for (let r5 = 0; r5 < 32; r5++) {
+    for (let g5 = 0; g5 < 32; g5++) {
+      for (let b5 = 0; b5 < 32; b5++) {
+        const r = (r5 << 3) | (r5 >> 2);
+        const g = (g5 << 3) | (g5 >> 2);
+        const b = (b5 << 3) | (b5 >> 2);
+        let minD = Infinity, best = 0;
+        for (let i = 0; i < 256; i++) {
+          const dr = r - palette[i*3],
+                dg = g - palette[i*3+1],
+                db = b - palette[i*3+2];
+          const d = dr*dr + dg*dg + db*db;
+          if (d < minD) { minD = d; best = i; }
+        }
+        lut[(r5 << 10) | (g5 << 5) | b5] = best;
+      }
+    }
+  }
+  return lut;
+}
+
+function pixelsToIndices(imgData, lut) {
+  const n = W * H;
+  const indices = new Uint8Array(n);
+  for (let i = 0; i < n; i++) {
+    const off = i * 4;
+    const r5 = imgData[off]   >> 3;
+    const g5 = imgData[off+1] >> 3;
+    const b5 = imgData[off+2] >> 3;
+    indices[i] = lut[(r5 << 10) | (g5 << 5) | b5];
+  }
+  return indices;
+}
+
+// --- LZW Encoder ---
+
+function lzwEncode(indices) {
+  const minCodeSize = 8;  // for 256 colors
+  const clearCode = 256;
+  const endCode   = 257;
+
+  const bytes = [];
+  let buf = 0, bufBits = 0;
+  let codeSize = minCodeSize + 1;  // 9
+  let nextCode = endCode + 1;      // 258
+  const table = new Map();
+
+  const writeCode = (code) => {
+    buf |= (code << bufBits);
+    bufBits += codeSize;
+    while (bufBits >= 8) {
+      bytes.push(buf & 0xff);
+      buf >>>= 8;
+      bufBits -= 8;
+    }
+  };
+
+  const resetTable = () => {
+    table.clear();
+    codeSize = minCodeSize + 1;
+    nextCode = endCode + 1;
+  };
+
+  resetTable();
+  writeCode(clearCode);
+
+  let prefix = indices[0];
+
+  for (let i = 1; i < indices.length; i++) {
+    const sym = indices[i];
+    const key = (prefix * 256) + sym;  // unique key for (prefix, sym) where prefix < 4096, sym < 256
+    // Note: prefix can be > 255 (a table code), so use a larger key
+    const key2 = prefix * 256 + sym;
+
+    if (table.has(key2)) {
+      prefix = table.get(key2);
+    } else {
+      writeCode(prefix);
+
+      if (nextCode < 4096) {
+        table.set(key2, nextCode++);
+        if (nextCode >= (1 << codeSize) && codeSize < 12) {
+          codeSize++;
+        }
+      } else {
+        writeCode(clearCode);
+        resetTable();
+      }
+      prefix = sym;
+    }
+  }
+
+  writeCode(prefix);
+  writeCode(endCode);
+  if (bufBits > 0) bytes.push(buf & 0xff);
+  return bytes;
+}
+
+function packSubBlocks(bytes) {
+  const out = [];
+  let i = 0;
+  while (i < bytes.length) {
+    const len = Math.min(255, bytes.length - i);
+    out.push(len);
+    for (let j = 0; j < len; j++) out.push(bytes[i + j]);
+    i += len;
+  }
+  out.push(0);  // block terminator
+  return out;
+}
+
+// --- GIF Binary Writer ---
+
+class GIFWriter {
+  constructor() { this.data = []; }
+
+  byte(v)   { this.data.push(v & 0xff); }
+  short(v)  { this.data.push(v & 0xff, (v >> 8) & 0xff); }
+  bytes(arr){ for (const b of arr) this.data.push(b); }
+
+  writeHeader(w, h, palette) {
+    // Signature + version
+    for (const c of 'GIF89a') this.byte(c.charCodeAt(0));
+    // Logical Screen Descriptor
+    this.short(w);
+    this.short(h);
+    this.byte(0b11110111);  // global color table present, 8bpp, size=7 (2^8=256 colors)
+    this.byte(0);           // background color index
+    this.byte(0);           // pixel aspect ratio
+    // Global Color Table (256 × 3 bytes)
+    for (let i = 0; i < 256 * 3; i++) this.byte(palette[i] || 0);
+  }
+
+  writeNetscapeExt() {
+    this.byte(0x21); this.byte(0xFF); this.byte(11);
+    for (const c of 'NETSCAPE2.0') this.byte(c.charCodeAt(0));
+    this.byte(3); this.byte(1);
+    this.short(0);  // 0 = loop forever
+    this.byte(0);
+  }
+
+  writeFrame(indices, delayCentiseconds) {
+    // Graphic Control Extension
+    this.byte(0x21); this.byte(0xF9); this.byte(4);
+    this.byte(0x00);  // packed: no disposal, no user input, no transparency
+    this.short(delayCentiseconds);
+    this.byte(0);     // transparent color index (unused)
+    this.byte(0);     // block terminator
+
+    // Image Descriptor
+    this.byte(0x2C);
+    this.short(0); this.short(0);   // left, top
+    this.short(W); this.short(H);   // width, height
+    this.byte(0x00);                // packed: no local color table, not interlaced
+
+    // Image Data
+    this.byte(8);  // LZW minimum code size
+    const lzwBytes = lzwEncode(indices);
+    this.bytes(packSubBlocks(lzwBytes));
+  }
+
+  finish() {
+    this.byte(0x3B);  // GIF trailer
+    return this.data;
+  }
+}
+
+// --- Main GIF Generation ---
+
+async function generateGIF() {
+  const status = document.getElementById('status');
+
+  // Set fixed parameters
+  document.getElementById('slBook').value  = 100;
+  document.getElementById('slContH').value = 90;
+  document.getElementById('slCam').value   = 35;
+
+  status.textContent = 'Building color palette...';
+  await new Promise(r => setTimeout(r, 10));
+
+  const palette = buildPaletteFromCanvas();
+  status.textContent = 'Building color lookup table...';
+  await new Promise(r => setTimeout(r, 10));
+
+  const lut = buildLUT(palette);
+
+  const gif = new GIFWriter();
+  gif.writeHeader(W, H, palette);
+  gif.writeNetscapeExt();
+
+  // Frame specs: [{waterPct, delayCentiseconds}]
+  const frameSpecs = [];
+  // First frame: water=0%, 500ms = 50cs
+  frameSpecs.push({ w: 0, delay: 50 });
+  // Frames water=2% to 100% in 2% steps
+  for (let w = 2; w <= 100; w += 2) {
+    frameSpecs.push({ w, delay: w >= 100 ? 100 : 4 });  // 4cs=40ms, 100cs=1000ms
+  }
+
+  for (let f = 0; f < frameSpecs.length; f++) {
+    const { w, delay } = frameSpecs[f];
+    document.getElementById('slWater').value = w;
+    draw();
+    const imgData = ctx.getImageData(0, 0, W, H).data;
+    const indices = pixelsToIndices(imgData, lut);
+    gif.writeFrame(indices, delay);
+
+    if (f % 5 === 0) {
+      status.textContent = `Encoding frame ${f + 1} of ${frameSpecs.length}...`;
+      await new Promise(r => setTimeout(r, 0));
+    }
+  }
+
+  const gifData = gif.finish();
+  status.textContent = 'Saving GIF...';
+  await new Promise(r => setTimeout(r, 10));
+
+  // Expose for retrieval
+  window._gifData = gifData;
+  window._gifDone = true;
+
+  // Also trigger download
+  const blob = new Blob([new Uint8Array(gifData)], { type: 'image/gif' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'add_water.gif';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+
+  status.textContent = 'Done! GIF saved as add_water.gif';
+}
+
+window.addEventListener('load', generateGIF);
+</script>
+</body>
+</html>
