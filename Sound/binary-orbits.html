@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+  width: 600px; height: 450px; overflow: hidden;
+  background: #07070e;
+  font-family: 'Courier New', monospace;
+}
+
+#scene {
+  position: relative;
+  width: 600px; height: 386px;
+}
+
+canvas { display: block; }
+
+#tilt-panel {
+  position: absolute;
+  right: 0; top: 0;
+  width: 44px; height: 386px;
+  background: rgba(244,243,236,0.92);
+  border-left: 1px solid #ccc9bb;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 10;
+}
+
+.tl {
+  font-size: 8px;
+  color: #55546a;
+  letter-spacing: 0.10em;
+  text-align: center;
+  line-height: 1.5;
+}
+
+.tv {
+  font-size: 10px;
+  color: #1a1a2e;
+  font-family: 'Courier New', monospace;
+  text-align: center;
+}
+
+#tick-wrap {
+  position: relative;
+  height: 300px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+#face-tick {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 20px;
+  height: 1px;
+  background: #ccc9bb;
+  pointer-events: none;
+}
+
+input#slTilt {
+  -webkit-appearance: none;
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 4px;
+  height: 300px;
+  background: #c4c1b4;
+  border-radius: 2px;
+  outline: none;
+  cursor: pointer;
+}
+input#slTilt::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #4455aa;
+  cursor: pointer;
+  border: 1.5px solid #6677cc;
+  box-shadow: 0 0 4px rgba(68,85,170,0.4);
+}
+input#slTilt::-moz-range-thumb {
+  width: 12px; height: 12px;
+  border-radius: 50%;
+  background: #4455aa;
+  border: 1.5px solid #6677cc;
+}
+
+#controls {
+  height: 64px;
+  padding: 4px 18px;
+  background: #f4f3ec;
+  border-top: 1px solid #ccc9bb;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+}
+.ctrl { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+.ch   { display: flex; justify-content: space-between; align-items: baseline; }
+label { font-size: 9px; color: #55546a; letter-spacing: 0.12em; text-transform: uppercase; }
+.val  { font-size: 12px; color: #1a1a2e; font-family: 'Courier New', monospace; }
+input[type=range] {
+  -webkit-appearance: none; width: 100%; height: 3px;
+  margin: 1px 0;
+  background: #c4c1b4; border-radius: 2px; outline: none; cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none; width: 12px; height: 12px;
+  border-radius: 50%; background: #4455aa; cursor: pointer;
+  border: 1.5px solid #6677cc; box-shadow: 0 0 4px rgba(68,85,170,0.4);
+}
+input[type=range]::-moz-range-thumb {
+  width: 12px; height: 12px; border-radius: 50%;
+  background: #4455aa; border: 1.5px solid #6677cc;
+}
+.legend { display: flex; gap: 14px; }
+.li  { display: flex; align-items: center; gap: 5px; font-size: 10px; color: #55546a; }
+.dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; }
+.div { width: 1px; height: 36px; background: #ccc9bb; flex-shrink: 0; }
+</style>
+</head>
+<body>
+
+<div id="scene">
+  <canvas id="c" width="600" height="386"></canvas>
+
+  <div id="tilt-panel">
+    <div class="tl">EDGE<br>ON</div>
+    <div id="tick-wrap">
+      <input type="range" id="slTilt" min="-90" max="90" value="0" orient="vertical">
+      <div id="face-tick"></div>
+    </div>
+    <div class="tl">EDGE<br>ON</div>
+    <div class="tv" id="tiltVal">i&nbsp;=&nbsp;0°</div>
+  </div>
+</div>
+
+<div id="controls">
+  <div class="ctrl">
+    <div class="ch">
+      <label>Mass Ratio M&#x2081;/M&#x2082;</label>
+      <span class="val" id="qDisplay">1.00</span>
+    </div>
+    <input type="range" id="slQ" min="0.2" max="5" step="0.05" value="1">
+    <div class="legend">
+      <div class="li"><div class="dot" style="background:#fff2b4;"></div>M&#x2081;</div>
+      <div class="li"><div class="dot" style="background:#fff2b4;"></div>M&#x2082;</div>
+    </div>
+  </div>
+
+  <div class="div"></div>
+
+  <div class="ctrl">
+    <div class="ch">
+      <label>Eccentricity e</label>
+      <span class="val" id="eDisplay">0.30</span>
+    </div>
+    <input type="range" id="slE" min="0" max="0.95" step="0.01" value="0.3">
+  </div>
+
+  <div class="div"></div>
+
+  <div class="ctrl">
+    <div class="ch">
+      <label>Speed</label>
+      <span class="val" id="sDisplay">1.0&times;</span>
+    </div>
+    <input type="range" id="slS" min="0.1" max="4" step="0.05" value="1">
+  </div>
+</div>
+
+<script>
+// ── Canvas ────────────────────────────────────────────────────────────────────
+const canvas = document.getElementById('c');
+const ctx    = canvas.getContext('2d');
+
+// ── Background starfield (generated once) ─────────────────────────────────────
+const BG = Array.from({length: 120}, () => ({
+  x: Math.random() * 600,
+  y: Math.random() * 386,
+  r: Math.random() * 1.3 + 0.15,
+  a: Math.random() * 0.50 + 0.10
+})).filter(s => {
+  const dx = s.x - 300, dy = s.y - 193;
+  return Math.sqrt(dx * dx + dy * dy) > 155;
+});
+
+// ── Parameters (updated by sliders) ──────────────────────────────────────────
+let q    = 1.00;   // mass ratio M1/M2
+let ecc  = 0.30;   // eccentricity
+let spd  = 1.00;   // speed multiplier
+let tilt = 0;      // degrees: 0 = face-on, ±90 = edge-on
+
+const A  = 140;    // semi-major axis of relative orbit (px)
+const BX = 300;    // barycenter screen x
+const BY = 193;    // barycenter screen y
+
+let meanAnom = 0.0;
+let lastTime = null;
+
+// ── Kepler solver (Newton-Raphson) ────────────────────────────────────────────
+// Finds eccentric anomaly E from mean anomaly M and eccentricity e.
+// M advances uniformly; E encodes the non-uniform speed along the ellipse.
+function solveKepler(M, e) {
+  let E = M;
+  for (let i = 0; i < 60; i++) {
+    const dE = (M - E + e * Math.sin(E)) / (1 - e * Math.cos(E));
+    E += dE;
+    if (Math.abs(dE) < 1e-12) break;
+  }
+  return E;
+}
+
+// ── Orbital positions (in the face-on orbital plane) ─────────────────────────
+function orbitalPos(E) {
+  const xRel = A * (Math.cos(E) - ecc);
+  const yRel = A * Math.sqrt(1 - ecc * ecc) * Math.sin(E);
+  const f1 = 1 / (q + 1);
+  const f2 = q / (q + 1);
+  return {
+    x1: BX - f1 * xRel,  y1: BY - f1 * yRel,
+    x2: BX + f2 * xRel,  y2: BY + f2 * yRel
+  };
+}
+
+// ── Draw background ───────────────────────────────────────────────────────────
+function drawBg() {
+  ctx.fillStyle = '#07070e';
+  ctx.fillRect(0, 0, 600, 386);
+  for (const s of BG) {
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,255,255,${s.a})`;
+    ctx.fill();
+  }
+}
+
+// ── Draw orbital ellipses (projected) ────────────────────────────────────────
+// Each star's orbit is an ellipse with the barycenter at one focus.
+// yScale = cos(tilt): squashes the vertical axis of each ellipse.
+// At yScale=1 (face-on) the full ellipse shows; at yScale=0 (edge-on)
+// the ellipse collapses to a horizontal line through the barycenter.
+function drawOrbits(yScale) {
+  const absY = Math.abs(yScale);
+
+  const a1  = A / (q + 1);
+  const b1  = a1 * Math.sqrt(1 - ecc * ecc);
+  const cx1 = BX + a1 * ecc;   // ellipse center, star 1
+
+  const a2  = A * q / (q + 1);
+  const b2  = a2 * Math.sqrt(1 - ecc * ecc);
+  const cx2 = BX - a2 * ecc;   // ellipse center, star 2
+
+  ctx.lineWidth = 1;
+
+  ctx.beginPath();
+  ctx.ellipse(cx1, BY, Math.max(a1, 0.5), Math.max(b1 * absY, 0.5), 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,242,180,0.18)';
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(cx2, BY, Math.max(a2, 0.5), Math.max(b2 * absY, 0.5), 0, 0, Math.PI * 2);
+  ctx.strokeStyle = 'rgba(255,242,180,0.18)';
+  ctx.stroke();
+}
+
+// ── Draw barycenter crosshair ─────────────────────────────────────────────────
+function drawBary() {}
+
+// ── Draw a glowing star ───────────────────────────────────────────────────────
+function drawStar(x, y, r, g, b, rad) {
+  const gr = ctx.createRadialGradient(x, y, rad * 0.4, x, y, rad * 5.5);
+  gr.addColorStop(0,    `rgba(${r},${g},${b},0.65)`);
+  gr.addColorStop(0.30, `rgba(${r},${g},${b},0.18)`);
+  gr.addColorStop(1,    `rgba(${r},${g},${b},0.00)`);
+  ctx.beginPath();
+  ctx.arc(x, y, rad * 5.5, 0, Math.PI * 2);
+  ctx.fillStyle = gr;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y, rad, 0, Math.PI * 2);
+  ctx.fillStyle = `rgb(${r},${g},${b})`;
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x, y, rad * 0.42, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(255,255,255,0.90)';
+  ctx.fill();
+}
+
+// ── Main animation loop ───────────────────────────────────────────────────────
+function frame(ts) {
+  if (!lastTime) lastTime = ts;
+  const dt = Math.min((ts - lastTime) / 1000, 0.05);
+  lastTime = ts;
+
+  meanAnom = (meanAnom + spd * 0.5 * dt) % (2 * Math.PI);
+  const E  = solveKepler(meanAnom, ecc);
+  const p  = orbitalPos(E);
+
+  // Inclination projection:
+  // Tilting the orbital plane by angle `tilt` relative to face-on causes
+  // every y-displacement from the barycenter to be multiplied by cos(tilt).
+  // This is an orthographic projection — the x-axis (line of nodes) is
+  // unaffected; y-distances are foreshortened by the cosine factor.
+  // At tilt=0: yScale=1 → full ellipse (face-on view)
+  // At tilt=±90: yScale=0 → all y-offsets collapse to zero (edge-on view)
+  const yScale = Math.cos(tilt * Math.PI / 180);
+  const sy1 = BY + (p.y1 - BY) * yScale;
+  const sy2 = BY + (p.y2 - BY) * yScale;
+
+  const r1 = 4.5 + 4.0 * (q / (q + 1));
+  const r2 = 4.5 + 4.0 * (1 / (q + 1));
+
+  drawBg();
+  drawOrbits(yScale);
+  drawBary();
+  drawStar(p.x1, sy1, 255, 242, 180, r1);   // M1: pale yellow
+  drawStar(p.x2, sy2, 255, 242, 180, r2);   // M2: pale yellow
+
+  requestAnimationFrame(frame);
+}
+
+// ── Slider wiring ─────────────────────────────────────────────────────────────
+document.getElementById('slQ').addEventListener('input', function() {
+  q = parseFloat(this.value);
+  document.getElementById('qDisplay').textContent = q.toFixed(2);
+});
+document.getElementById('slE').addEventListener('input', function() {
+  ecc = parseFloat(this.value);
+  document.getElementById('eDisplay').textContent = ecc.toFixed(2);
+});
+document.getElementById('slS').addEventListener('input', function() {
+  spd = parseFloat(this.value);
+  document.getElementById('sDisplay').textContent = spd.toFixed(1) + '×';
+});
+document.getElementById('slTilt').addEventListener('input', function() {
+  let v = parseFloat(this.value);
+  if (Math.abs(v) <= 3) { v = 0; this.value = 0; }
+  tilt = v;
+  document.getElementById('tiltVal').textContent =
+    'i\u00a0=\u00a0' + Math.round(Math.abs(tilt)) + '\u00b0';
+});
+
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>
