@@ -753,6 +753,13 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Light/refraction_book_gif.html",
+      "title": "Refraction GIF Generator",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
