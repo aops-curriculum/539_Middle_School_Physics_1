@@ -760,6 +760,13 @@
       "description": "New simulation - description pending.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Sound/binary-orbits.html",
+      "title": "Binary Orbits",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
