@@ -1,0 +1,518 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Fiber Refraction</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    background: #06060f;
+    color: #d0d8f0;
+    font-family: 'Segoe UI', sans-serif;
+    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #controls {
+    padding: 8px 14px;
+    display: flex;
+    gap: 18px;
+    align-items: center;
+    flex-wrap: wrap;
+    background: #0d0d22;
+    border-bottom: 1px solid #1e2245;
+    flex-shrink: 0;
+  }
+  .ctrl { display: flex; align-items: center; gap: 7px; font-size: 13px; }
+  .ctrl label { color: #8899cc; min-width: 70px; }
+  .ctrl input[type=range] { width: 120px; cursor: pointer; }
+  .ctrl .val { min-width: 44px; font-weight: bold; color: #99ccff; font-size: 13px; }
+  button {
+    padding: 5px 13px;
+    background: #1a3888;
+    color: #cce;
+    border: 1px solid #2255aa;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 13px;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  button:hover { background: #2255cc; }
+  #btnWater.active {
+    background: #0a4455;
+    border-color: #0099cc;
+    color: #7df0ff;
+  }
+  #btnWater.active:hover { background: #0a5566; }
+  canvas { flex: 1; display: block; width: 100%; }
+</style>
+</head>
+<body>
+<div id="controls">
+  <div class="ctrl">
+    <label>Circles</label>
+    <input type="range" id="slN" min="1" max="10000" value="30">
+    <span class="val" id="valN">30</span>
+  </div>
+  <div class="ctrl">
+    <label>Radius&nbsp;(px)</label>
+    <input type="range" id="slR" min="2" max="120" value="30">
+    <span class="val" id="valR">30</span>
+  </div>
+  <div class="ctrl">
+    <label>Glass&nbsp;n</label>
+    <input type="range" id="slN2" min="1.01" max="3.0" step="0.01" value="1.5">
+    <span class="val" id="valN2">1.50</span>
+  </div>
+  <div class="ctrl">
+    <label>Water&nbsp;n</label>
+    <input type="range" id="slNw" min="1.01" max="2.0" step="0.01" value="1.33">
+    <span class="val" id="valNw">1.33</span>
+  </div>
+  <div class="ctrl">
+    <label>Ray&nbsp;spacing</label>
+    <input type="range" id="slSpacing" min="1" max="20" value="4">
+    <span class="val" id="valSpacing">4</span>
+  </div>
+  <button id="btnRepos">Reposition</button>
+  <button id="btnWater">Add Water</button>
+</div>
+<canvas id="canvas"></canvas>
+
+<script>
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx    = canvas.getContext('2d');
+
+let W, H, UPPER_Y;
+let circles      = [];
+let n_glass      = 1.5;
+let n_water      = 1.33;
+let waterOn      = false;
+let numCircles   = 30;
+let circleRadius = 30;
+let raySpacing   = 4;
+
+// ── vector helpers ────────────────────────────────────────────────────────────
+function norm(a) {
+  const l = Math.sqrt(a.x*a.x + a.y*a.y);
+  return (l < 1e-12) ? {x:0,y:1} : {x:a.x/l, y:a.y/l};
+}
+
+// ── ray–circle intersection ───────────────────────────────────────────────────
+// Returns [t1,t2] or null.  Assumes |d|=1.
+function rayCircleTs(px, py, dx, dy, cx, cy, r) {
+  const fx = px-cx, fy = py-cy;
+  const bh = fx*dx + fy*dy;
+  const c  = fx*fx + fy*fy - r*r;
+  const disc = bh*bh - c;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  return [-bh - sq, -bh + sq];
+}
+
+// ── Snell's-law refraction (vector form) ──────────────────────────────────────
+// d: incident direction (unit).  nOut: outward surface normal (unit).
+// Returns refracted unit direction, or null on TIR.
+function refract(d, nOut, n1, n2) {
+  let nx = nOut.x, ny = nOut.y;
+  let cosI = -(d.x*nx + d.y*ny);
+  if (cosI < 0) { nx=-nx; ny=-ny; cosI=-cosI; }
+  const r     = n1 / n2;
+  const sin2T = r*r*(1 - cosI*cosI);
+  if (sin2T > 1) return null;
+  const cosT = Math.sqrt(1 - sin2T);
+  return norm({x: r*d.x + (r*cosI - cosT)*nx,
+               y: r*d.y + (r*cosI - cosT)*ny});
+}
+
+// ── specular reflection ───────────────────────────────────────────────────────
+function reflectDir(d, nOut) {
+  let nx = nOut.x, ny = nOut.y;
+  let cosI = -(d.x*nx + d.y*ny);
+  if (cosI < 0) { nx=-nx; ny=-ny; cosI=-cosI; }
+  return norm({x: d.x + 2*cosI*nx, y: d.y + 2*cosI*ny});
+}
+
+// ── Fresnel reflectance (unpolarized) ─────────────────────────────────────────
+// cosI: cos of angle of incidence (positive).  Returns R in [0,1]; 1.0 for TIR.
+function fresnelR(cosI, n1, n2) {
+  const sinI2 = 1 - cosI * cosI;
+  const sinT2 = (n1 / n2) * (n1 / n2) * sinI2;
+  if (sinT2 >= 1) return 1.0;
+  const cosT = Math.sqrt(1 - sinT2);
+  const n1cI = n1*cosI, n2cT = n2*cosT;
+  const n2cI = n2*cosI, n1cT = n1*cosT;
+  const Rs = ((n1cI - n2cT) / (n1cI + n2cT)) ** 2;
+  const Rp = ((n2cI - n1cT) / (n2cI + n1cT)) ** 2;
+  return (Rs + Rp) * 0.5;
+}
+
+// ── trace one ray downward from (startX, 0) ──────────────────────────────────
+// Segments carry a 'medium' field: 'air' | 'water' | 'glass'.
+// When water is on, the air-water boundary at y=UPPER_Y is a real optical surface.
+// Circle interactions use the current background medium (air or water) as n1/n2.
+function traceRay(startX) {
+  const EPS         = 1e-4;
+  const MAX_STEPS   = 60;
+  const MAX_BOUNCES = 20;
+
+  const segments = [];
+  let px = startX, py = 0;
+  let dx = 0, dy = 1;
+
+  // Track whether ray is currently in water (always starts in air at y=0)
+  let inWater = false;
+
+  for (let step = 0; step < MAX_STEPS; step++) {
+    if (px < -W || px > 2*W || py < -H || py > 2*H) break;
+
+    const n_bg = (waterOn && inWater) ? n_water : 1.0;
+
+    // ── find nearest surface (water boundary or circle) ───────────────────────
+    let minT = Infinity, hitIdx = -1;
+
+    // Air–water horizontal boundary
+    let t_wsurf = Infinity;
+    if (waterOn && dy !== 0) {
+      const t = (UPPER_Y - py) / dy;
+      if (t > EPS) {
+        // Only relevant if we're actually crossing into the other medium
+        const crossDown = !inWater && dy > 0;   // air → water
+        const crossUp   =  inWater && dy < 0;   // water → air
+        if (crossDown || crossUp) t_wsurf = t;
+      }
+    }
+
+    // Circles
+    for (let i = 0; i < circles.length; i++) {
+      const c  = circles[i];
+      const ts = rayCircleTs(px, py, dx, dy, c.x, c.y, c.r);
+      if (!ts) continue;
+      const t = ts[0] > EPS ? ts[0] : (ts[1] > EPS ? ts[1] : null);
+      if (t !== null && t < minT) { minT = t; hitIdx = i; }
+    }
+
+    // Nothing hit at all
+    if (t_wsurf === Infinity && hitIdx === -1) {
+      let tEnd = Infinity;
+      if (dx > 0) tEnd = Math.min(tEnd, (W  - px) / dx);
+      if (dx < 0) tEnd = Math.min(tEnd, (0  - px) / dx);
+      if (dy > 0) tEnd = Math.min(tEnd, (H  - py) / dy);
+      if (dy < 0) tEnd = Math.min(tEnd, (-py)      / dy);
+      if (isFinite(tEnd) && tEnd > 0)
+        segments.push({x1:px, y1:py, x2:px+dx*tEnd, y2:py+dy*tEnd, medium: inWater ? 'water' : 'air'});
+      break;
+    }
+
+    // ── air–water surface is nearer ───────────────────────────────────────────
+    if (t_wsurf < minT) {
+      const wx = px + dx*t_wsurf;
+      const wy = UPPER_Y;
+      // outward normal of water body points upward (into air)
+      const wnx = 0, wny = -1;
+      const n2 = inWater ? 1.0 : n_water;
+
+      segments.push({x1:px, y1:py, x2:wx, y2:wy, medium: inWater ? 'water' : 'air'});
+
+      const cosI_w = Math.abs(dx*wnx + dy*wny);
+      const R_w    = fresnelR(cosI_w, n_bg, n2);
+
+      if (Math.random() < R_w) {
+        // Reflect off water surface
+        const rDir = reflectDir({x:dx,y:dy}, {x:wnx,y:wny});
+        px = wx + rDir.x*EPS;  py = wy + rDir.y*EPS;
+        dx = rDir.x;            dy = rDir.y;
+      } else {
+        // Refract through water surface
+        const refW = refract({x:dx,y:dy}, {x:wnx,y:wny}, n_bg, n2);
+        if (!refW) {
+          // TIR (water→air at steep angle) — reflect instead
+          const rDir = reflectDir({x:dx,y:dy}, {x:wnx,y:wny});
+          px = wx + rDir.x*EPS;  py = wy + rDir.y*EPS;
+          dx = rDir.x;            dy = rDir.y;
+        } else {
+          px = wx + refW.x*EPS;  py = wy + refW.y*EPS;
+          dx = refW.x;            dy = refW.y;
+          inWater = !inWater;   // crossed the boundary
+        }
+      }
+      continue;
+    }
+
+    // ── circle surface is nearer ──────────────────────────────────────────────
+    const ex = px + dx*minT, ey = py + dy*minT;
+    const circle = circles[hitIdx];
+    const nex = (ex - circle.x) / circle.r;
+    const ney = (ey - circle.y) / circle.r;
+
+    segments.push({x1:px, y1:py, x2:ex, y2:ey, medium: inWater ? 'water' : 'air'});
+
+    const cosI_entry = Math.abs(dx*nex + dy*ney);
+    const R_entry    = fresnelR(cosI_entry, n_bg, n_glass);
+
+    if (Math.random() < R_entry) {
+      // Fresnel reflection off circle surface — stay in current background
+      const rDir = reflectDir({x:dx,y:dy}, {x:nex,y:ney});
+      px = ex + rDir.x*EPS;  py = ey + rDir.y*EPS;
+      dx = rDir.x;            dy = rDir.y;
+      continue;
+    }
+
+    // Refract into glass
+    const refEnter = refract({x:dx,y:dy}, {x:nex,y:ney}, n_bg, n_glass);
+    if (!refEnter) break;  // guard
+
+    px = ex + refEnter.x*EPS;  py = ey + refEnter.y*EPS;
+    dx = refEnter.x;            dy = refEnter.y;
+
+    // ── trace inside circle (glass) ───────────────────────────────────────────
+    for (let bounce = 0; bounce < MAX_BOUNCES; bounce++) {
+      const ts = rayCircleTs(px, py, dx, dy, circle.x, circle.y, circle.r);
+      if (!ts) break;
+      const t = ts[1] > EPS ? ts[1] : (ts[0] > EPS ? ts[0] : null);
+      if (!t) break;
+
+      const exitX = px + dx*t, exitY = py + dy*t;
+      const enx = (exitX - circle.x) / circle.r;
+      const eny = (exitY - circle.y) / circle.r;
+
+      segments.push({x1:px, y1:py, x2:exitX, y2:exitY, medium: 'glass'});
+
+      const cosI_exit = Math.abs(dx*enx + dy*eny);
+      const R_exit    = fresnelR(cosI_exit, n_glass, n_bg); // glass → background
+
+      if (Math.random() < R_exit) {
+        // Reflect inside (Fresnel or TIR)
+        const rDir = reflectDir({x:dx,y:dy}, {x:enx,y:eny});
+        px = exitX + rDir.x*EPS;  py = exitY + rDir.y*EPS;
+        dx = rDir.x;               dy = rDir.y;
+      } else {
+        // Refract out into background medium
+        const refOut = refract({x:dx,y:dy}, {x:enx,y:eny}, n_glass, n_bg);
+        if (!refOut) {
+          // FP edge case
+          const rDir = reflectDir({x:dx,y:dy}, {x:enx,y:eny});
+          px = exitX + rDir.x*EPS;  py = exitY + rDir.y*EPS;
+          dx = rDir.x;               dy = rDir.y;
+          continue;
+        }
+        px = exitX + refOut.x*EPS;  py = exitY + refOut.y*EPS;
+        dx = refOut.x;               dy = refOut.y;
+        break;
+      }
+    }
+  }
+
+  return segments;
+}
+
+// ── place circles randomly, no overlaps ──────────────────────────────────────
+function generateCircles() {
+  circles = [];
+  const r = circleRadius;
+  const yMin = UPPER_Y + r;
+  const yMax = H - r;
+  const xMin = r;
+  const xMax = W - r;
+  if (yMax <= yMin || xMax <= xMin) { updateCircleCountDisplay(); return; }
+
+  const minDist2 = (2*r + 0.5) * (2*r + 0.5);
+  const cellSize = 2*r + 0.5;
+  const grid     = new Map();
+  const gridKey  = (col, row) => col * 100003 + row;
+
+  function addToGrid(idx, x, y) {
+    const col = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    const key = gridKey(col, row);
+    if (!grid.has(key)) grid.set(key, []);
+    grid.get(key).push(idx);
+  }
+
+  function overlaps(x, y) {
+    const col = Math.floor(x / cellSize);
+    const row = Math.floor(y / cellSize);
+    for (let dc = -2; dc <= 2; dc++) {
+      for (let dr = -2; dr <= 2; dr++) {
+        const cell = grid.get(gridKey(col+dc, row+dr));
+        if (!cell) continue;
+        for (const idx of cell) {
+          const c = circles[idx];
+          const ddx = x-c.x, ddy = y-c.y;
+          if (ddx*ddx + ddy*ddy < minDist2) return true;
+        }
+      }
+    }
+    return false;
+  }
+
+  const MAX_ATTEMPTS = 300;
+  for (let i = 0; i < numCircles; i++) {
+    let placed = false;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      const x = xMin + Math.random() * (xMax - xMin);
+      const y = yMin + Math.random() * (yMax - yMin);
+      if (!overlaps(x, y)) {
+        const idx = circles.length;
+        circles.push({ x, y, r });
+        addToGrid(idx, x, y);
+        placed = true;
+        break;
+      }
+    }
+    if (!placed) break;
+  }
+  updateCircleCountDisplay();
+}
+
+function updateCircleCountDisplay() {
+  const placed = circles.length;
+  const el = document.getElementById('valN');
+  if (placed < numCircles) {
+    el.textContent = placed + '\u202f/\u202f' + numCircles;
+    el.title = 'Canvas is full — only ' + placed + ' circles fit';
+  } else {
+    el.textContent = numCircles;
+    el.title = '';
+  }
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+function render() {
+  W       = canvas.width;
+  H       = canvas.height;
+  UPPER_Y = Math.round(H / 3);
+
+  // Dark background
+  ctx.fillStyle = '#05050e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Sky tint (upper zone)
+  const skyGrad = ctx.createLinearGradient(0, 0, 0, UPPER_Y);
+  skyGrad.addColorStop(0, 'rgba(60,100,200,0.06)');
+  skyGrad.addColorStop(1, 'rgba(60,100,200,0.01)');
+  ctx.fillStyle = skyGrad;
+  ctx.fillRect(0, 0, W, UPPER_Y);
+
+  // Water fill (lower zone)
+  if (waterOn) {
+    ctx.fillStyle = 'rgba(0,55,110,0.35)';
+    ctx.fillRect(0, UPPER_Y, W, H - UPPER_Y);
+  }
+
+  // Boundary line
+  ctx.save();
+  if (waterOn) {
+    ctx.strokeStyle = 'rgba(40,200,255,0.55)';
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1.5;
+  } else {
+    ctx.strokeStyle = 'rgba(160,190,255,0.18)';
+    ctx.setLineDash([5, 7]);
+    ctx.lineWidth = 1;
+  }
+  ctx.beginPath();
+  ctx.moveTo(0, UPPER_Y);
+  ctx.lineTo(W, UPPER_Y);
+  ctx.stroke();
+  ctx.restore();
+
+  // Circles
+  for (const c of circles) {
+    ctx.beginPath();
+    ctx.arc(c.x, c.y, c.r, 0, Math.PI*2);
+    ctx.fillStyle = waterOn ? 'rgba(120,180,255,0.07)' : 'rgba(70,130,220,0.07)';
+    ctx.fill();
+    ctx.strokeStyle = waterOn ? 'rgba(140,200,255,0.50)' : 'rgba(100,160,255,0.45)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Rays
+  for (let x = 0; x <= W; x += raySpacing) {
+    const segs = traceRay(x);
+    for (const s of segs) {
+      ctx.beginPath();
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x2, s.y2);
+      if (s.medium === 'glass') {
+        ctx.strokeStyle = 'rgba(255,210,60,0.85)';
+        ctx.lineWidth   = 1.6;
+      } else {
+        ctx.strokeStyle = 'rgba(200,220,255,0.30)';
+        ctx.lineWidth   = 1.0;
+      }
+      ctx.stroke();
+    }
+  }
+}
+
+// ── controls ──────────────────────────────────────────────────────────────────
+function initControls() {
+  document.getElementById('slN').addEventListener('input', function() {
+    numCircles = +this.value;
+    generateCircles();
+    render();
+  });
+
+  document.getElementById('slR').addEventListener('input', function() {
+    circleRadius = +this.value;
+    document.getElementById('valR').textContent = circleRadius;
+    generateCircles();
+    render();
+  });
+
+  document.getElementById('slN2').addEventListener('input', function() {
+    n_glass = +this.value;
+    document.getElementById('valN2').textContent = n_glass.toFixed(2);
+    render();
+  });
+
+  document.getElementById('slNw').addEventListener('input', function() {
+    n_water = +this.value;
+    document.getElementById('valNw').textContent = n_water.toFixed(2);
+    if (waterOn) render();
+  });
+
+  document.getElementById('slSpacing').addEventListener('input', function() {
+    raySpacing = +this.value;
+    document.getElementById('valSpacing').textContent = raySpacing;
+    render();
+  });
+
+  document.getElementById('btnRepos').addEventListener('click', () => {
+    generateCircles();
+    render();
+  });
+
+  document.getElementById('btnWater').addEventListener('click', function() {
+    waterOn = !waterOn;
+    this.textContent = waterOn ? 'Remove Water' : 'Add Water';
+    this.classList.toggle('active', waterOn);
+    render();
+  });
+}
+
+// ── init ──────────────────────────────────────────────────────────────────────
+function init() {
+  const resize = () => {
+    canvas.width  = canvas.clientWidth  || window.innerWidth;
+    canvas.height = canvas.clientHeight || (window.innerHeight - document.getElementById('controls').offsetHeight);
+    W       = canvas.width;
+    H       = canvas.height;
+    UPPER_Y = Math.round(H / 3);
+    generateCircles();
+    render();
+  };
+  window.addEventListener('resize', resize);
+  initControls();
+  resize();
+}
+
+init();
+</script>
+</body>
+</html>
