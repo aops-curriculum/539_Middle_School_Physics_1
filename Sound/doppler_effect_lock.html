@@ -100,15 +100,13 @@ canvas { display: block; }
   <!-- Row 1: Speed slider -->
   <div class="slider-row">
     <label>Source speed:</label>
-    <span class="slider-lbl">Slow</span>
-    <input type="range" id="speedSlider" min="0" max="107" value="60" step="5">
-    <span class="slider-lbl">Fast</span>
-    <span class="slider-val" id="speedVal">25.2 m/s</span>
+    <input type="range" id="speedSlider" min="0" max="40" value="20" step="1">
+    <span class="slider-val" id="speedVal">20 m/s</span>
   </div>
 
   <!-- Row 2: Frequency readout + action buttons -->
   <div id="info-row">
-    <span id="freq-display">Observed f = 622 Hz</span>
+    <span id="freq-display">Observed f = — Hz</span>
     <div class="row">
       <button class="action" id="startBtn">&#9654; Start</button>
       <button class="action" id="resetBtn">&#x21BA; Reset</button>
@@ -166,7 +164,7 @@ let simTime        = 0;
 let running        = false;
 let finished       = false;
 let lastTimestamp  = null;
-let sourceVx       = 60;
+let sourceVx       = 20 / PX_TO_MS;   // internal px/s, set from m/s slider
 let sourceX        = SOURCE_START_X;
 let nextEmitTime   = 0;
 let emitFlashTimer = 0;
@@ -181,10 +179,13 @@ const OBSERVER_Y = SOURCE_Y;   // zero vertical separation — locked
 // SPEED SLIDER
 // ============================================================
 speedSlider.addEventListener('input', () => {
-  sourceVx = parseFloat(speedSlider.value);
-  speedVal.textContent = (sourceVx * PX_TO_MS).toFixed(1) + ' m/s';
+  const ms = parseFloat(speedSlider.value);
+  sourceVx = ms / PX_TO_MS;
+  speedVal.textContent = ms.toFixed(0) + ' m/s';
   if (!running && !finished) {
+    prePopulateWaves();
     updateFreqDisplay();
+    draw();
   }
 });
 
@@ -197,7 +198,8 @@ function prePopulateWaves() {
   for (let t = -SOURCE_PERIOD; t >= -maxBackTime; t -= SOURCE_PERIOD) {
     const radius = WAVE_SPEED * (0 - t);
     if (radius > MAX_WAVE_RADIUS) break;
-    waves.push({ emitTime: t, emitX: SOURCE_START_X, emitY: SOURCE_Y });
+    // Source was at SOURCE_START_X + sourceVx*t at time t (t is negative here)
+    waves.push({ emitTime: t, emitX: SOURCE_START_X + sourceVx * t, emitY: SOURCE_Y });
   }
   waves.push({ emitTime: 0, emitX: SOURCE_START_X, emitY: SOURCE_Y });
   nextEmitTime = SOURCE_PERIOD;
