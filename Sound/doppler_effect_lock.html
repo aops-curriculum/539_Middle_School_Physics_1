@@ -1,0 +1,545 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doppler Effect – Flyby (Locked)</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 600px;
+  height: 500px;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: #333333;
+  display: flex;
+  flex-direction: column;
+}
+
+#controls {
+  padding: 8px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+
+button {
+  padding: 5px 9px;
+  border: 1px solid #b0b8c4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: #f0f2f5;
+  color: #444;
+  transition: all 0.15s;
+}
+button:hover { background: #dce1e8; border-color: #8894a2; }
+button.action {
+  background: #2a9d8f;
+  border-color: #2a9d8f;
+  color: white;
+  font-weight: bold;
+  padding: 5px 14px;
+}
+button.action:hover { background: #38b2a3; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+.slider-row label {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+}
+input[type="range"] {
+  width: 180px;
+  accent-color: #2563eb;
+}
+.slider-lbl {
+  font-size: 11px;
+  color: #aaa;
+}
+.slider-val {
+  font-size: 12px;
+  color: #555;
+  min-width: 58px;
+  font-weight: 600;
+}
+
+#info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+}
+#freq-display {
+  font-size: 18px;
+  font-weight: bold;
+  color: #d97706;
+  transition: color 0.15s;
+  min-width: 190px;
+}
+
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <!-- Row 1: Speed slider -->
+  <div class="slider-row">
+    <label>Source speed:</label>
+    <span class="slider-lbl">Slow</span>
+    <input type="range" id="speedSlider" min="0" max="107" value="60" step="5">
+    <span class="slider-lbl">Fast</span>
+    <span class="slider-val" id="speedVal">25.2 m/s</span>
+  </div>
+
+  <!-- Row 2: Frequency readout + action buttons -->
+  <div id="info-row">
+    <span id="freq-display">Observed f = 622 Hz</span>
+    <div class="row">
+      <button class="action" id="startBtn">&#9654; Start</button>
+      <button class="action" id="resetBtn">&#x21BA; Reset</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="sim"></canvas>
+
+<script>
+// ============================================================
+// PHYSICS CONSTANTS
+// ============================================================
+const WAVE_SPEED      = 120;
+const SOURCE_FREQ     = 2;
+const SOURCE_PERIOD   = 1 / SOURCE_FREQ;
+const MAX_WAVE_RADIUS = 900;
+
+const DISPLAY_SOURCE_FREQ = 622.25;
+const BASE_VS_RATIO       = 0.07337;
+const BASE_SOURCE_VX      = 60;
+
+const V_SOUND  = 343;
+const PX_TO_MS = (BASE_VS_RATIO / BASE_SOURCE_VX) * V_SOUND;
+
+const SOURCE_Y       = 30;
+const SOURCE_START_X = -60;
+const SOURCE_END_X   = 660;
+
+// ============================================================
+// DOM REFERENCES
+// ============================================================
+const canvas      = document.getElementById('sim');
+const ctx         = canvas.getContext('2d');
+const freqEl      = document.getElementById('freq-display');
+const startBtn    = document.getElementById('startBtn');
+const resetBtn    = document.getElementById('resetBtn');
+const speedSlider = document.getElementById('speedSlider');
+const speedVal    = document.getElementById('speedVal');
+
+// ============================================================
+// CANVAS SIZING
+// ============================================================
+function resizeCanvas() {
+  const ctrlH = document.getElementById('controls').offsetHeight;
+  canvas.width  = 600;
+  canvas.height = 500 - ctrlH;
+}
+resizeCanvas();
+
+// ============================================================
+// SIMULATION STATE
+// ============================================================
+let simTime        = 0;
+let running        = false;
+let finished       = false;
+let lastTimestamp  = null;
+let sourceVx       = 60;
+let sourceX        = SOURCE_START_X;
+let nextEmitTime   = 0;
+let emitFlashTimer = 0;
+let waves          = [];
+
+// Observer – locked at zero separation (same y as source path)
+const SMILEY_R   = 22;
+const OBSERVER_X = 300;
+const OBSERVER_Y = SOURCE_Y;   // zero vertical separation — locked
+
+// ============================================================
+// SPEED SLIDER
+// ============================================================
+speedSlider.addEventListener('input', () => {
+  sourceVx = parseFloat(speedSlider.value);
+  speedVal.textContent = (sourceVx * PX_TO_MS).toFixed(1) + ' m/s';
+  if (!running && !finished) {
+    updateFreqDisplay();
+  }
+});
+
+// ============================================================
+// PRE-POPULATE WAVES
+// ============================================================
+function prePopulateWaves() {
+  waves = [];
+  const maxBackTime = MAX_WAVE_RADIUS / WAVE_SPEED;
+  for (let t = -SOURCE_PERIOD; t >= -maxBackTime; t -= SOURCE_PERIOD) {
+    const radius = WAVE_SPEED * (0 - t);
+    if (radius > MAX_WAVE_RADIUS) break;
+    waves.push({ emitTime: t, emitX: SOURCE_START_X, emitY: SOURCE_Y });
+  }
+  waves.push({ emitTime: 0, emitX: SOURCE_START_X, emitY: SOURCE_Y });
+  nextEmitTime = SOURCE_PERIOD;
+}
+
+// ============================================================
+// FREQUENCY CALCULATIONS
+// ============================================================
+function computeObservedFreq() {
+  const dx   = OBSERVER_X - sourceX;
+  const dy   = OBSERVER_Y - SOURCE_Y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return SOURCE_FREQ;
+
+  const vRadial = sourceVx * (dx / dist);
+  const denom   = WAVE_SPEED - vRadial;
+  if (denom < 5) return SOURCE_FREQ * WAVE_SPEED / 5;
+  return SOURCE_FREQ * WAVE_SPEED / denom;
+}
+
+function computeDisplayFreq() {
+  const dx      = OBSERVER_X - sourceX;
+  const dy      = OBSERVER_Y - SOURCE_Y;
+  const dist    = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return DISPLAY_SOURCE_FREQ;
+
+  const cosTheta = dx / dist;
+  const vsRatio  = BASE_VS_RATIO * (sourceVx / BASE_SOURCE_VX);
+  const denom    = 1 - vsRatio * cosTheta;
+  if (denom < 0.01) return DISPLAY_SOURCE_FREQ / 0.01;
+  return DISPLAY_SOURCE_FREQ / denom;
+}
+
+// ============================================================
+// START / PAUSE / RESET
+// ============================================================
+startBtn.addEventListener('click', () => {
+  if (finished) return;
+  if (running) {
+    running = false;
+    lastTimestamp = null;
+    startBtn.textContent = '\u25B6 Resume';
+  } else {
+    running = true;
+    startBtn.textContent = '\u23F8 Pause';
+    speedSlider.disabled = true;
+    requestAnimationFrame(gameLoop);
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  running        = false;
+  finished       = false;
+  simTime        = 0;
+  lastTimestamp  = null;
+  sourceX        = SOURCE_START_X;
+  emitFlashTimer = 0;
+
+  prePopulateWaves();
+
+  startBtn.textContent = '\u25B6 Start';
+  startBtn.disabled    = false;
+  speedSlider.disabled = false;
+
+  updateFreqDisplay();
+  draw();
+});
+
+// ============================================================
+// DISPLAY UPDATES
+// ============================================================
+function updateFreqDisplay() {
+  const f = computeDisplayFreq();
+  freqEl.textContent = `Observed f\u2080 = ${f.toFixed(0)} Hz`;
+
+  if (f > DISPLAY_SOURCE_FREQ + 2) {
+    freqEl.style.color = '#2563eb';
+  } else if (f < DISPLAY_SOURCE_FREQ - 2) {
+    freqEl.style.color = '#dc2626';
+  } else {
+    freqEl.style.color = '#d97706';
+  }
+}
+
+// ============================================================
+// MAIN GAME LOOP
+// ============================================================
+function gameLoop(timestamp) {
+  if (!running) return;
+
+  if (lastTimestamp === null) lastTimestamp = timestamp;
+  let dt = (timestamp - lastTimestamp) / 1000;
+  dt = Math.min(dt, 0.05);
+  lastTimestamp = timestamp;
+
+  simTime        += dt;
+  emitFlashTimer  = Math.max(0, emitFlashTimer - dt);
+
+  sourceX = SOURCE_START_X + sourceVx * simTime;
+
+  while (nextEmitTime <= simTime) {
+    const ex = SOURCE_START_X + sourceVx * nextEmitTime;
+    waves.push({ emitTime: nextEmitTime, emitX: ex, emitY: SOURCE_Y });
+    emitFlashTimer = 0.12;
+    nextEmitTime  += SOURCE_PERIOD;
+  }
+
+  waves = waves.filter(w => WAVE_SPEED * (simTime - w.emitTime) < MAX_WAVE_RADIUS);
+
+  if (sourceVx > 0 && sourceX > SOURCE_END_X) {
+    running  = false;
+    finished = true;
+    startBtn.textContent = '\u2713 Done';
+    startBtn.disabled    = true;
+  }
+
+  updateFreqDisplay();
+  draw();
+
+  if (running) requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// DRAWING
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Source path line
+  ctx.beginPath();
+  ctx.moveTo(0, SOURCE_Y);
+  ctx.lineTo(canvas.width, SOURCE_Y);
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Dashed line from source to observer
+  if (sourceX > -30 && sourceX < canvas.width + 30) {
+    ctx.beginPath();
+    ctx.moveTo(sourceX, SOURCE_Y);
+    ctx.lineTo(OBSERVER_X, OBSERVER_Y);
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Wave fronts
+  for (const w of waves) {
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    if (radius <= 0) continue;
+    const alpha = Math.max(0.04, 0.7 - radius / 650);
+    ctx.beginPath();
+    ctx.arc(w.emitX, w.emitY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(30,120,220,${alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Source (trumpet)
+  if (sourceX > -50 && sourceX < canvas.width + 50) {
+    drawTrumpet(sourceX, SOURCE_Y);
+  }
+
+  // Observer (smiley) — locked on the flight path
+  drawSmiley(OBSERVER_X, OBSERVER_Y, SMILEY_R);
+
+  // Label
+  ctx.textAlign = 'center';
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#777';
+  ctx.fillText('Observer', OBSERVER_X, OBSERVER_Y + SMILEY_R + 14);
+}
+
+// ── Trumpet (facing right — bell on right, mouthpiece on left) ─
+function drawTrumpet(x, y) {
+  const bright = emitFlashTimer > 0;
+  ctx.save();
+  ctx.translate(x, y);
+
+  const gold  = bright ? '#FFE14D' : '#D4A017';
+  const dark  = bright ? '#C8940A' : '#8B6508';
+  const shade = '#5a3800';
+
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+
+  // ── Body loop (drawn first, behind main tube) ──
+  const lx = -3, ly = 14, lrx = 16, lry = 14;
+
+  ctx.beginPath();
+  ctx.ellipse(lx, ly, lrx, lry, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = dark;
+  ctx.lineWidth   = 9.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(lx, ly, lrx, lry, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = gold;
+  ctx.lineWidth   = 6.5;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(lx, ly, lrx, lry, 0, Math.PI * 0.65, Math.PI * 1.1);
+  ctx.strokeStyle = bright ? 'rgba(255,255,200,0.55)' : 'rgba(255,240,160,0.22)';
+  ctx.lineWidth   = 3;
+  ctx.stroke();
+
+  // ── Bell (right) ──
+  ctx.beginPath();
+  ctx.moveTo(10, -4);
+  ctx.lineTo(20, -4);
+  ctx.lineTo(26, -14);
+  ctx.lineTo(32, -14);
+  ctx.lineTo(32, 14);
+  ctx.lineTo(26, 14);
+  ctx.lineTo(20,  4);
+  ctx.lineTo(10,  4);
+  ctx.closePath();
+  ctx.fillStyle   = gold;
+  ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth   = 1.2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(32, -14);
+  ctx.quadraticCurveTo(40, 0, 32, 14);
+  ctx.strokeStyle = dark;
+  ctx.lineWidth   = 2.5;
+  ctx.stroke();
+
+  // ── Main tube ──
+  ctx.beginPath();
+  ctx.rect(-18, -3.5, 30, 7);
+  ctx.fillStyle   = gold;
+  ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  // ── 3 valve casings ──
+  for (let i = 0; i < 3; i++) {
+    const vx = -12 + i * 10;
+    ctx.beginPath();
+    ctx.rect(vx - 3.5, -15, 7, 13);
+    ctx.fillStyle   = dark;
+    ctx.fill();
+    ctx.strokeStyle = shade;
+    ctx.lineWidth   = 0.8;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.rect(vx - 3, -18, 6, 5);
+    ctx.fillStyle   = bright ? '#e8c86a' : '#b8943a';
+    ctx.fill();
+    ctx.strokeStyle = shade;
+    ctx.stroke();
+    ctx.beginPath();
+    ctx.arc(vx, -20, 2.5, 0, Math.PI * 2);
+    ctx.fillStyle = '#ccc';
+    ctx.fill();
+  }
+
+  // ── Leadpipe / mouthpiece ──
+  ctx.beginPath();
+  ctx.rect(-34, -2.5, 18, 5);
+  ctx.fillStyle   = gold;
+  ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.ellipse(-36, 0, 3.5, 5, 0, 0, Math.PI * 2);
+  ctx.fillStyle   = bright ? '#ffe97a' : '#c8a020';
+  ctx.fill();
+  ctx.strokeStyle = dark;
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+
+  // ── Tube shine ──
+  ctx.beginPath();
+  ctx.moveTo(-32, -1.5);
+  ctx.lineTo(9, -1.5);
+  ctx.strokeStyle = bright ? 'rgba(255,255,210,0.70)' : 'rgba(255,240,160,0.28)';
+  ctx.lineWidth   = 1.8;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.moveTo(32, -10);
+  ctx.quadraticCurveTo(38, 0, 32, 10);
+  ctx.strokeStyle = bright ? 'rgba(255,240,140,0.80)' : 'rgba(255,230,100,0.30)';
+  ctx.lineWidth   = 2.5;
+  ctx.stroke();
+
+  if (bright) {
+    ctx.beginPath();
+    ctx.arc(38, 0, 9, -0.7, 0.7);
+    ctx.strokeStyle = 'rgba(255,210,80,0.65)';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ── Smiley observer ───────────────────────────────────────────
+function drawSmiley(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle   = '#f4d35e';
+  ctx.fill();
+  ctx.strokeStyle = '#c9a227';
+  ctx.lineWidth   = 2;
+  ctx.stroke();
+
+  ctx.fillStyle = '#333';
+  ctx.beginPath();
+  ctx.arc(x - 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.beginPath();
+  ctx.arc(x + 8, y - 6, 3.5, 0, Math.PI * 2);
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y + 2, 10, 0.15, Math.PI - 0.15);
+  ctx.strokeStyle = '#333';
+  ctx.lineWidth   = 2.5;
+  ctx.stroke();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+prePopulateWaves();
+updateFreqDisplay();
+draw();
+</script>
+</body>
+</html>
