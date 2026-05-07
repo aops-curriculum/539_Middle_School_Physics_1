@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Refraction at Water-Air Interface</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      background: #111;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      font-family: sans-serif;
+    }
+    canvas {
+      display: block;
+      cursor: grab;
+      border-radius: 4px;
+    }
+    canvas.dragging { cursor: grabbing; }
+    #legend {
+      margin-top: 12px;
+      display: flex;
+      gap: 24px;
+      font-size: 13px;
+      color: #aaa;
+    }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .legend-line {
+      width: 28px;
+      height: 3px;
+      border-radius: 2px;
+    }
+    .legend-dashed {
+      width: 28px;
+      height: 0;
+      border-top: 2px dashed rgba(255,210,0,0.7);
+    }
+  </style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="legend">
+  <div class="legend-item">
+    <div class="legend-line" style="background:#00e5ff;"></div>
+    <span>Refracted path (Snell's law)</span>
+  </div>
+  <div class="legend-item">
+    <div class="legend-dashed"></div>
+    <span>Straight-line path</span>
+  </div>
+</div>
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+const W = 820, H = 580;
+canvas.width = W;
+canvas.height = H;
+
+const N_WATER = 1.33;
+const N_AIR = 1.0;
+const MID = W / 2;
+const RADIUS = 9;
+const HIT_RADIUS = RADIUS + 6;
+
+let waterDot = { x: MID + 170, y: H * 0.62 };
+let airDot   = { x: MID - 170, y: H * 0.35 };
+let dragging = null;
+
+// Snell's law: find y_r on the boundary such that
+// n_w*(y_r - y_w)/Lw = n_a*(y_a - y_r)/La
+// Solved by bisection (monotone, always one root).
+function findRefractionY(xw, yw, xa, ya) {
+  const dw = Math.abs(xw - MID);
+  const da = Math.abs(xa - MID);
+  const f = y => {
+    const Lw = Math.sqrt(dw * dw + (y - yw) * (y - yw));
+    const La = Math.sqrt(da * da + (ya - y) * (ya - y));
+    return N_WATER * (y - yw) / Lw - N_AIR * (ya - y) / La;
+  };
+  let lo = -H * 6, hi = H * 6;
+  for (let i = 0; i < 80; i++) {
+    const mid = (lo + hi) / 2;
+    if (f(mid) < 0) lo = mid; else hi = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  // --- backgrounds ---
+  ctx.fillStyle = '#b8d8e8';
+  ctx.fillRect(0, 0, MID, H);
+
+  ctx.fillStyle = '#184a7a';
+  ctx.fillRect(MID, 0, W - MID, H);
+
+  // subtle texture / gradient on water side
+  const grad = ctx.createLinearGradient(MID, 0, W, 0);
+  grad.addColorStop(0, 'rgba(0,100,180,0.35)');
+  grad.addColorStop(1, 'rgba(0,60,120,0.0)');
+  ctx.fillStyle = grad;
+  ctx.fillRect(MID, 0, W - MID, H);
+
+  // --- boundary line ---
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 6]);
+  ctx.beginPath();
+  ctx.moveTo(MID, 0);
+  ctx.lineTo(MID, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // --- labels ---
+  ctx.font = 'bold 15px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(30,70,110,0.85)';
+  ctx.fillText('Air', MID / 2, 26);
+  ctx.fillStyle = 'rgba(180,220,255,0.75)';
+  ctx.fillText('Water', MID + (W - MID) / 2, 26);
+
+  ctx.font = '13px sans-serif';
+  ctx.fillStyle = 'rgba(30,70,110,0.7)';
+  ctx.fillText('n = 1.00', MID / 2, 46);
+  ctx.fillStyle = 'rgba(180,220,255,0.6)';
+  ctx.fillText('n = 1.33', MID + (W - MID) / 2, 46);
+
+  // --- compute refraction point ---
+  const yr = findRefractionY(waterDot.x, waterDot.y, airDot.x, airDot.y);
+  const refPt = { x: MID, y: yr };
+
+  // --- straight-line path ---
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,210,0,0.55)';
+  ctx.lineWidth = 1.8;
+  ctx.setLineDash([7, 5]);
+  ctx.beginPath();
+  ctx.moveTo(airDot.x, airDot.y);
+  ctx.lineTo(waterDot.x, waterDot.y);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // --- refracted (Snell's law) path ---
+  ctx.save();
+  ctx.strokeStyle = '#00e5ff';
+  ctx.lineWidth = 2.5;
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 8;
+  ctx.beginPath();
+  ctx.moveTo(waterDot.x, waterDot.y);
+  ctx.lineTo(refPt.x, refPt.y);
+  ctx.lineTo(airDot.x, airDot.y);
+  ctx.stroke();
+  ctx.restore();
+
+  // --- normal line at boundary (faint) ---
+  ctx.save();
+  ctx.strokeStyle = 'rgba(255,255,255,0.25)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.beginPath();
+  ctx.moveTo(MID - 60, yr);
+  ctx.lineTo(MID + 60, yr);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+
+  // --- refraction point dot ---
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = '#00e5ff';
+  ctx.shadowBlur = 10;
+  ctx.beginPath();
+  ctx.arc(refPt.x, refPt.y, 4, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+
+  // --- dots ---
+  drawDot(waterDot, '#ff7043', 'Water');
+  drawDot(airDot,   '#ff7043', 'Air');
+}
+
+function drawDot(pt, color, label) {
+  ctx.save();
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.arc(pt.x, pt.y, RADIUS, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1.8;
+  ctx.stroke();
+  ctx.restore();
+}
+
+// --- interaction ---
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const sx = W / r.width;
+  const sy = H / r.height;
+  if (e.touches) {
+    return {
+      x: (e.touches[0].clientX - r.left) * sx,
+      y: (e.touches[0].clientY - r.top) * sy
+    };
+  }
+  return {
+    x: (e.clientX - r.left) * sx,
+    y: (e.clientY - r.top) * sy
+  };
+}
+
+function dist2(a, b) {
+  return (a.x - b.x) ** 2 + (a.y - b.y) ** 2;
+}
+
+function onDown(e) {
+  e.preventDefault();
+  const pos = getPos(e);
+  const hr2 = HIT_RADIUS * HIT_RADIUS;
+  if (dist2(pos, waterDot) < hr2) {
+    dragging = 'water';
+    canvas.classList.add('dragging');
+  } else if (dist2(pos, airDot) < hr2) {
+    dragging = 'air';
+    canvas.classList.add('dragging');
+  }
+}
+
+function onMove(e) {
+  if (!dragging) return;
+  e.preventDefault();
+  const pos = getPos(e);
+  const py = Math.max(2, Math.min(H - 2, pos.y));
+  if (dragging === 'water') {
+    waterDot.x = Math.max(MID + 2, Math.min(W - 2, pos.x));
+    waterDot.y = py;
+  } else {
+    airDot.x = Math.max(2, Math.min(MID - 2, pos.x));
+    airDot.y = py;
+  }
+  draw();
+}
+
+function onUp() {
+  dragging = null;
+  canvas.classList.remove('dragging');
+}
+
+canvas.addEventListener('mousedown',  onDown);
+canvas.addEventListener('mousemove',  onMove);
+canvas.addEventListener('mouseup',    onUp);
+canvas.addEventListener('mouseleave', onUp);
+canvas.addEventListener('touchstart', onDown, { passive: false });
+canvas.addEventListener('touchmove',  onMove, { passive: false });
+canvas.addEventListener('touchend',   onUp);
+
+draw();
+</script>
+</body>
+</html>
