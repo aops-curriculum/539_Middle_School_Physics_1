@@ -1,0 +1,525 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doppler Effect – Both Moving</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 600px;
+  height: 500px;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: #333333;
+  display: flex;
+  flex-direction: column;
+}
+
+#controls {
+  padding: 8px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+
+button {
+  padding: 5px 9px;
+  border: 1px solid #b0b8c4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: #f0f2f5;
+  color: #444;
+  transition: all 0.15s;
+}
+button:hover { background: #dce1e8; border-color: #8894a2; }
+button.action {
+  background: #2a9d8f;
+  border-color: #2a9d8f;
+  color: white;
+  font-weight: bold;
+  padding: 5px 14px;
+}
+button.action:hover { background: #38b2a3; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+.slider-row label {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+  min-width: 112px;
+  text-align: right;
+}
+input[type="range"] {
+  width: 170px;
+  accent-color: #2563eb;
+}
+.slider-val {
+  font-size: 12px;
+  color: #555;
+  min-width: 72px;
+  font-weight: 600;
+}
+
+#info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+}
+#freq-display {
+  font-size: 17px;
+  font-weight: bold;
+  color: #d97706;
+  transition: color 0.15s;
+  min-width: 190px;
+}
+
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <div class="slider-row">
+    <label>Source speed:</label>
+    <input type="range" id="srcSpeedSlider" min="0" max="40" value="20" step="1">
+    <span class="slider-val" id="srcSpeedVal">20 m/s →</span>
+  </div>
+  <div class="slider-row">
+    <label>Observer speed:</label>
+    <input type="range" id="obsSpeedSlider" min="-25" max="25" value="0" step="1">
+    <span class="slider-val" id="obsSpeedVal">0 m/s (still)</span>
+  </div>
+  <div id="info-row">
+    <span id="freq-display">Observed f&#8320; = &#8212; Hz</span>
+    <div class="row">
+      <button class="action" id="startBtn">&#9654; Start</button>
+      <button class="action" id="resetBtn">&#x21BA; Reset</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="sim"></canvas>
+
+<script>
+// ============================================================
+// ZOOM — world is WORLD_W px wide, drawn into a 600px canvas.
+// All physics runs in world coordinates; ZOOM converts to canvas.
+// ============================================================
+const ZOOM    = 0.6;   // canvas px = world px × ZOOM
+const WORLD_W = 600 / ZOOM;   // ≈ 1000 world px
+
+// ============================================================
+// PHYSICS CONSTANTS  (world-coordinate px/s)
+// ============================================================
+const WAVE_SPEED      = 120;          // world px/s
+const SOURCE_FREQ     = 2;            // Hz (wave emit rate)
+const SOURCE_PERIOD   = 1 / SOURCE_FREQ;
+const MAX_WAVE_RADIUS = WORLD_W * 1.1;
+
+const DISPLAY_SOURCE_FREQ = 622.25;   // Hz shown to user (stationary)
+const BASE_VS_RATIO       = 0.07337;  // v_source / v_sound at 20 m/s
+const BASE_SOURCE_VX      = 60;       // world px/s when slider = 20 m/s
+const PX_TO_MS = (BASE_VS_RATIO / BASE_SOURCE_VX) * 343;  // ≈ 0.419
+
+// ── World layout ──
+const SOURCE_Y_W         = 55;              // world y of the track
+const SOURCE_START_X_W   = -220;            // world x, left start
+const SOURCE_END_X_W     = WORLD_W + 220;   // world x, right exit
+const OBSERVER_START_X_W = WORLD_W / 2;     // center of world
+const OBSERVER_Y_W       = SOURCE_Y_W;
+const SMILEY_R_W         = 25;              // world radius → ≈15 canvas px
+
+// ============================================================
+// DOM
+// ============================================================
+const canvas         = document.getElementById('sim');
+const ctx            = canvas.getContext('2d');
+const freqEl         = document.getElementById('freq-display');
+const startBtn       = document.getElementById('startBtn');
+const resetBtn       = document.getElementById('resetBtn');
+const srcSpeedSlider = document.getElementById('srcSpeedSlider');
+const srcSpeedVal    = document.getElementById('srcSpeedVal');
+const obsSpeedSlider = document.getElementById('obsSpeedSlider');
+const obsSpeedVal    = document.getElementById('obsSpeedVal');
+
+// ============================================================
+// CANVAS SIZING
+// ============================================================
+function resizeCanvas() {
+  canvas.width  = 600;
+  canvas.height = 500 - document.getElementById('controls').offsetHeight;
+}
+resizeCanvas();
+
+// ============================================================
+// SIMULATION STATE
+// ============================================================
+let simTime        = 0;
+let running        = false;
+let finished       = false;
+let lastTimestamp  = null;
+
+let sourceVx   = 20 / PX_TO_MS;   // world px/s
+let observerVx = 0;                // world px/s
+
+let sourceX   = SOURCE_START_X_W;
+let observerX = OBSERVER_START_X_W;
+
+let nextEmitTime   = 0;
+let emitFlashTimer = 0;
+let waves          = [];
+
+// ============================================================
+// SLIDER EVENTS
+// ============================================================
+srcSpeedSlider.addEventListener('input', () => {
+  const ms = parseFloat(srcSpeedSlider.value);
+  sourceVx = ms / PX_TO_MS;
+  srcSpeedVal.textContent = ms.toFixed(0) + ' m/s \u2192';
+  if (!running && !finished) { prePopulateWaves(); updateFreqDisplay(); draw(); }
+});
+
+obsSpeedSlider.addEventListener('input', () => {
+  const ms = parseFloat(obsSpeedSlider.value);
+  observerVx = ms / PX_TO_MS;
+  if      (ms === 0) obsSpeedVal.textContent = '0 m/s (still)';
+  else if (ms  >  0) obsSpeedVal.textContent = ms.toFixed(0) + ' m/s \u2192';
+  else               obsSpeedVal.textContent = Math.abs(ms).toFixed(0) + ' m/s \u2190';
+  if (!running && !finished) { updateFreqDisplay(); draw(); }
+});
+
+// ============================================================
+// PRE-POPULATE WAVES
+// ============================================================
+function prePopulateWaves() {
+  waves = [];
+  const maxBack = MAX_WAVE_RADIUS / WAVE_SPEED;
+  for (let t = -SOURCE_PERIOD; t >= -maxBack; t -= SOURCE_PERIOD) {
+    const r = WAVE_SPEED * (-t);
+    if (r > MAX_WAVE_RADIUS) break;
+    waves.push({ emitTime: t, emitX: SOURCE_START_X_W + sourceVx * t, emitY: SOURCE_Y_W });
+  }
+  waves.push({ emitTime: 0, emitX: SOURCE_START_X_W, emitY: SOURCE_Y_W });
+  nextEmitTime = SOURCE_PERIOD;
+}
+
+// ============================================================
+// DOPPLER FREQUENCY
+// Uses real-world speed ratios so the displayed Hz is correct:
+//   f_obs = f_src × (1 − v_obs/v_sound · r̂) / (1 − v_src/v_sound · r̂)
+// r̂ = unit vector from source → observer.
+// sourceVx/observerVx are world px/s; multiply by PX_TO_MS to get m/s.
+// ============================================================
+const V_SOUND_REAL = 343;   // m/s
+
+function computeDisplayFreq() {
+  const dx   = observerX - sourceX;
+  const dist = Math.abs(dx);   // dy = 0 (same track)
+  if (dist < 1) return DISPLAY_SOURCE_FREQ;
+
+  const rx = dx / dist;   // r̂ x-component (+1 when obs is right of src)
+
+  const vsRatio = (sourceVx   * PX_TO_MS) / V_SOUND_REAL;  // v_src  / v_sound
+  const voRatio = (observerVx * PX_TO_MS) / V_SOUND_REAL;  // v_obs  / v_sound
+
+  const num = 1 - voRatio * rx;   // moving obs away from src → lower f
+  const den = 1 - vsRatio * rx;   // src approaching obs      → higher f
+
+  if (Math.abs(den) < 0.01) return DISPLAY_SOURCE_FREQ * 100;
+  return DISPLAY_SOURCE_FREQ * (num / den);
+}
+
+function updateFreqDisplay() {
+  const f = computeDisplayFreq();
+  freqEl.textContent = `Observed f\u2080 = ${f.toFixed(0)} Hz`;
+  freqEl.style.color = f > DISPLAY_SOURCE_FREQ + 3 ? '#2563eb'
+                     : f < DISPLAY_SOURCE_FREQ - 3 ? '#dc2626'
+                     : '#d97706';
+}
+
+// ============================================================
+// START / PAUSE / RESET
+// ============================================================
+startBtn.addEventListener('click', () => {
+  if (finished) return;
+  if (running) {
+    running = false;
+    lastTimestamp = null;
+    startBtn.textContent = '\u25B6 Resume';
+  } else {
+    running = true;
+    startBtn.textContent = '\u23F8 Pause';
+    srcSpeedSlider.disabled = true;
+    obsSpeedSlider.disabled = true;
+    requestAnimationFrame(gameLoop);
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  running = finished = false;
+  simTime = 0;
+  lastTimestamp  = null;
+  sourceX        = SOURCE_START_X_W;
+  observerX      = OBSERVER_START_X_W;
+  emitFlashTimer = 0;
+  prePopulateWaves();
+  startBtn.textContent    = '\u25B6 Start';
+  startBtn.disabled       = false;
+  srcSpeedSlider.disabled = false;
+  obsSpeedSlider.disabled = false;
+  updateFreqDisplay();
+  draw();
+});
+
+// ============================================================
+// GAME LOOP
+// ============================================================
+function gameLoop(timestamp) {
+  if (!running) return;
+  if (lastTimestamp === null) lastTimestamp = timestamp;
+  let dt = Math.min((timestamp - lastTimestamp) / 1000, 0.05);
+  lastTimestamp = timestamp;
+
+  simTime        += dt;
+  emitFlashTimer  = Math.max(0, emitFlashTimer - dt);
+
+  sourceX   = SOURCE_START_X_W   + sourceVx   * simTime;
+  observerX = OBSERVER_START_X_W + observerVx * simTime;
+
+  while (nextEmitTime <= simTime) {
+    waves.push({
+      emitTime: nextEmitTime,
+      emitX: SOURCE_START_X_W + sourceVx * nextEmitTime,
+      emitY: SOURCE_Y_W
+    });
+    emitFlashTimer = 0.12;
+    nextEmitTime  += SOURCE_PERIOD;
+  }
+
+  waves = waves.filter(w => WAVE_SPEED * (simTime - w.emitTime) < MAX_WAVE_RADIUS);
+
+  if (sourceX > SOURCE_END_X_W) {
+    running = false; finished = true;
+    startBtn.textContent = '\u2713 Done';
+    startBtn.disabled    = true;
+  }
+
+  updateFreqDisplay();
+  draw();
+  if (running) requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// DRAWING
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Canvas-space positions for on-screen tests and text placement
+  const srcCx = sourceX   * ZOOM;
+  const obsCx = observerX * ZOOM;
+  const trackCy = SOURCE_Y_W * ZOOM;
+
+  const srcOnScreen = srcCx > -100 && srcCx < canvas.width + 100;
+  const obsOnScreen = obsCx > -60  && obsCx < canvas.width + 60;
+
+  // ── World-space drawing (everything scales together) ──────
+  ctx.save();
+  ctx.scale(ZOOM, ZOOM);
+
+  // Track line
+  ctx.beginPath();
+  ctx.moveTo(0, SOURCE_Y_W);
+  ctx.lineTo(WORLD_W, SOURCE_Y_W);
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([7, 7]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Connector between source and observer
+  if (srcOnScreen && obsOnScreen) {
+    ctx.beginPath();
+    ctx.moveTo(sourceX, SOURCE_Y_W);
+    ctx.lineTo(observerX, OBSERVER_Y_W);
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 1.5;
+    ctx.setLineDash([5, 9]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Wave fronts
+  for (const w of waves) {
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    if (radius <= 0) continue;
+    const alpha = Math.max(0.12, 0.90 - radius / 1400);
+    ctx.beginPath();
+    ctx.arc(w.emitX, w.emitY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(30,120,220,${alpha})`;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // Direction arrows (drawn in world space, appear appropriately small)
+  const sMs = parseFloat(srcSpeedSlider.value);
+  const oMs = parseFloat(obsSpeedSlider.value);
+
+  if (srcOnScreen && sMs > 0) {
+    drawArrow(sourceX + 42, SOURCE_Y_W + 4, 1, Math.min(sMs / 40, 1));
+  }
+  if (obsOnScreen && Math.abs(oMs) > 0) {
+    drawArrow(observerX, OBSERVER_Y_W + SMILEY_R_W + 18, oMs > 0 ? 1 : -1, Math.min(Math.abs(oMs) / 25, 1));
+  }
+
+  // Source (trumpet)
+  if (srcOnScreen) drawTrumpet(sourceX, SOURCE_Y_W);
+
+  // Observer (smiley)
+  if (obsOnScreen) drawSmiley(observerX, OBSERVER_Y_W, SMILEY_R_W);
+
+  ctx.restore();
+  // ── End world-space ───────────────────────────────────────
+
+  // Text labels — drawn at canvas coords so font stays readable
+  ctx.textAlign = 'center';
+  ctx.font = '11px Arial';
+  ctx.fillStyle = '#777';
+
+  if (obsOnScreen) {
+    const labelY = trackCy + SMILEY_R_W * ZOOM + (Math.abs(oMs) > 0 ? 26 : 13);
+    ctx.fillText('Observer', obsCx, labelY);
+  }
+}
+
+// ── Direction arrow (world coordinates) ───────────────────────
+function drawArrow(x, y, dir, strength) {
+  const len = 22 + strength * 26;
+  const ex  = x + dir * len;
+  const col = dir > 0 ? 'rgba(37,99,235,0.50)' : 'rgba(220,38,38,0.50)';
+  ctx.beginPath();
+  ctx.moveTo(x, y); ctx.lineTo(ex, y);
+  ctx.strokeStyle = col; ctx.lineWidth = 2.5; ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(ex, y);
+  ctx.lineTo(ex - dir * 9, y - 5.5);
+  ctx.lineTo(ex - dir * 9, y + 5.5);
+  ctx.closePath();
+  ctx.fillStyle = col; ctx.fill();
+}
+
+// ── Trumpet ───────────────────────────────────────────────────
+function drawTrumpet(x, y) {
+  const bright = emitFlashTimer > 0;
+  ctx.save();
+  ctx.translate(x, y);
+
+  const gold  = bright ? '#FFE14D' : '#D4A017';
+  const dark  = bright ? '#C8940A' : '#8B6508';
+  const shade = '#5a3800';
+  ctx.lineCap  = 'round';
+  ctx.lineJoin = 'round';
+
+  // Body loop
+  ctx.beginPath();
+  ctx.ellipse(-3, 14, 16, 14, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = dark; ctx.lineWidth = 9.5; ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(-3, 14, 16, 14, 0, 0, Math.PI * 2);
+  ctx.strokeStyle = gold; ctx.lineWidth = 6.5; ctx.stroke();
+  ctx.beginPath();
+  ctx.ellipse(-3, 14, 16, 14, 0, Math.PI * 0.65, Math.PI * 1.1);
+  ctx.strokeStyle = bright ? 'rgba(255,255,200,0.55)' : 'rgba(255,240,160,0.22)';
+  ctx.lineWidth = 3; ctx.stroke();
+
+  // Bell
+  ctx.beginPath();
+  ctx.moveTo(10,-4); ctx.lineTo(20,-4); ctx.lineTo(26,-14);
+  ctx.lineTo(32,-14); ctx.lineTo(32,14); ctx.lineTo(26,14);
+  ctx.lineTo(20,4); ctx.lineTo(10,4); ctx.closePath();
+  ctx.fillStyle = gold; ctx.fill();
+  ctx.strokeStyle = dark; ctx.lineWidth = 1.2; ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(32,-14); ctx.quadraticCurveTo(40,0,32,14);
+  ctx.strokeStyle = dark; ctx.lineWidth = 2.5; ctx.stroke();
+
+  // Main tube
+  ctx.beginPath(); ctx.rect(-18,-3.5,30,7);
+  ctx.fillStyle = gold; ctx.fill();
+  ctx.strokeStyle = dark; ctx.lineWidth = 1; ctx.stroke();
+
+  // Valve casings
+  for (let i = 0; i < 3; i++) {
+    const vx = -12 + i * 10;
+    ctx.beginPath(); ctx.rect(vx-3.5,-15,7,13);
+    ctx.fillStyle = dark; ctx.fill(); ctx.strokeStyle = shade; ctx.lineWidth = 0.8; ctx.stroke();
+    ctx.beginPath(); ctx.rect(vx-3,-18,6,5);
+    ctx.fillStyle = bright ? '#e8c86a' : '#b8943a'; ctx.fill(); ctx.strokeStyle = shade; ctx.stroke();
+    ctx.beginPath(); ctx.arc(vx,-20,2.5,0,Math.PI*2);
+    ctx.fillStyle = '#ccc'; ctx.fill();
+  }
+
+  // Leadpipe / mouthpiece
+  ctx.beginPath(); ctx.rect(-34,-2.5,18,5);
+  ctx.fillStyle = gold; ctx.fill(); ctx.strokeStyle = dark; ctx.lineWidth = 1; ctx.stroke();
+  ctx.beginPath(); ctx.ellipse(-36,0,3.5,5,0,0,Math.PI*2);
+  ctx.fillStyle = bright ? '#ffe97a' : '#c8a020'; ctx.fill(); ctx.strokeStyle = dark; ctx.stroke();
+
+  // Shine
+  ctx.beginPath(); ctx.moveTo(-32,-1.5); ctx.lineTo(9,-1.5);
+  ctx.strokeStyle = bright ? 'rgba(255,255,210,0.70)' : 'rgba(255,240,160,0.28)';
+  ctx.lineWidth = 1.8; ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(32,-10); ctx.quadraticCurveTo(38,0,32,10);
+  ctx.strokeStyle = bright ? 'rgba(255,240,140,0.80)' : 'rgba(255,230,100,0.30)';
+  ctx.lineWidth = 2.5; ctx.stroke();
+  if (bright) {
+    ctx.beginPath(); ctx.arc(38,0,9,-0.7,0.7);
+    ctx.strokeStyle = 'rgba(255,210,80,0.65)'; ctx.lineWidth = 3; ctx.stroke();
+  }
+
+  ctx.restore();
+}
+
+// ── Smiley observer ───────────────────────────────────────────
+function drawSmiley(x, y, r) {
+  ctx.beginPath();
+  ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4d35e'; ctx.fill();
+  ctx.strokeStyle = '#c9a227'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.arc(x - r*0.32, y - r*0.22, r*0.13, 0, Math.PI*2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + r*0.32, y - r*0.22, r*0.13, 0, Math.PI*2); ctx.fill();
+
+  ctx.beginPath();
+  ctx.arc(x, y + r*0.09, r*0.50, 0.2, Math.PI - 0.2);
+  ctx.strokeStyle = '#333'; ctx.lineWidth = r * 0.09; ctx.stroke();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+prePopulateWaves();
+updateFreqDisplay();
+draw();
+</script>
+</body>
+</html>
