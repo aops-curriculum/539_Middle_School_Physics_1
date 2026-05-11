@@ -102,7 +102,6 @@
         <button class="zoom-btn" id="zoomIn">+</button>
     </div>
     <label class="water-toggle" id="waterUpperLabel"><input type="checkbox" id="waterUpper">Add water</label>
-    <label class="water-toggle" id="waterLowerLabel"><input type="checkbox" id="waterLower">Add water</label>
 </div>
 
 <script>
@@ -167,9 +166,8 @@ function makeArmTube(armEnd) {
     return {x: center.x, y: center.y, angle: Math.atan2(dir.y, dir.x)};
 }
 const UPPER_TUBE = makeArmTube(CONCAVE);
-const LOWER_TUBE = makeArmTube(SRC);
 
-let waterUpper = false, waterLower = false;
+let waterUpper = false;
 
 let dragging = null; // null or 'pan'
 
@@ -265,10 +263,6 @@ function splitSegForWater(seg) {
     let intervals = [];
     if (waterUpper) {
         const h = tubeIntersections(seg.s, d, UPPER_TUBE);
-        if (h.length === 2) intervals.push([Math.max(0, h[0]), Math.min(len, h[1])]);
-    }
-    if (waterLower) {
-        const h = tubeIntersections(seg.s, d, LOWER_TUBE);
         if (h.length === 2) intervals.push([Math.max(0, h[0]), Math.min(len, h[1])]);
     }
     intervals = intervals.filter(([a,b]) => b - a > 0.5);
@@ -565,7 +559,6 @@ function drawTube(tube) {
 
 function drawWaterTube() {
     if (waterUpper) drawTube(UPPER_TUBE);
-    if (waterLower) drawTube(LOWER_TUBE);
 }
 
 function drawSource() {
@@ -804,13 +797,9 @@ function positionWaterToggle(label, armEnd, perpSide, offsetPx) {
     label.style.top = py + 'px';
 }
 positionWaterToggle(document.getElementById('waterUpperLabel'), CONCAVE, -1, 50);
-positionWaterToggle(document.getElementById('waterLowerLabel'), SRC, 1, 50);
 
 document.getElementById('waterUpper').addEventListener('change', (e) => {
     waterUpper = e.target.checked;
-});
-document.getElementById('waterLower').addEventListener('change', (e) => {
-    waterLower = e.target.checked;
 });
 
 function updateSpeedDisplay() {
@@ -844,9 +833,8 @@ document.getElementById('pauseBtn').addEventListener('click', () => {
 
 document.getElementById('resetBtn').addEventListener('click', () => {
     speedSign=1; digits=[0,0,0];
-    waterUpper = false; waterLower = false;
+    waterUpper = false;
     document.getElementById('waterUpper').checked = false;
-    document.getElementById('waterLower').checked = false;
     resetSim(); updateSpeedDisplay();
 });
 
