@@ -87,7 +87,7 @@
       return Math.sqrt((bx - ax) ** 2 + (by - ay) ** 2);
     }
 
-    function toCm(px) { return (px / SCALE).toFixed(3); }
+    function toCm(px) { return (px / SCALE).toFixed(4); }
 
     // Arrowhead at (x2,y2) pointing away from (x1,y1)
     function arrowHead(x1, y1, x2, y2, color, size = 13) {
@@ -306,7 +306,7 @@
       const dCB = dist2(c.x, c.y, B.x, B.y);
       const acCm = toCm(dAC);
       const cbCm = toCm(dCB);
-      const totCm = ((dAC + dCB) / SCALE).toFixed(3);
+      const totCm = ((dAC + dCB) / SCALE).toFixed(4);
 
       segLabel(A.x, A.y, c.x, c.y, 'AC = ' + acCm + ' cm', RAY, 22);
       segLabel(c.x, c.y, B.x, B.y, 'CB = ' + cbCm + ' cm', RAY, 22);
