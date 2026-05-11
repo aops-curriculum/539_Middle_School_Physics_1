@@ -44,6 +44,43 @@
 
     let dragging = null; // null | 'A' | 'B' | 'C'
 
+    // Hit-areas for the C arrow buttons (updated each draw)
+    let leftArrowRect  = null;
+    let rightArrowRect = null;
+
+    function isInRect(p, r) {
+      return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+    }
+
+    // Move C so the *displayed* angle of incidence changes by delta degrees (±0.1).
+    // Snaps to the optimal reflection point whenever the step would cross it, so
+    // the user can always reach a state where both displayed angles are equal.
+    function moveCByAngleDelta(delta) {
+      const AH = MIR_Y - A.y;                                     // vertical A-to-mirror dist
+      const currentRad = Math.atan2(Math.abs(A.x - Cx), AH);
+      const currentDeg = parseFloat((currentRad * 180 / Math.PI).toFixed(1));
+      const targetDeg  = currentDeg + delta;
+
+      let newCx;
+      if (targetDeg <= 0) {
+        newCx = A.x;                                               // clamp at 0°
+      } else {
+        const horizDist = AH * Math.tan(targetDeg * Math.PI / 180);
+        // Keep C on the same side of A; if exactly at A.x default to right
+        newCx = (Cx >= A.x) ? A.x + horizDist : A.x - horizDist;
+      }
+
+      // If the step would cross the optimal reflection point (where angleI == angleR),
+      // snap to it so the user can always reach displayed equality.
+      const optX = optimalCx();
+      if ((Cx < optX && newCx > optX) || (Cx > optX && newCx < optX)) {
+        newCx = optX;
+      }
+
+      Cx = Math.max(MIR_X1 + 6, Math.min(MIR_X2 - 6, newCx));
+      draw();
+    }
+
     // ── helpers ──────────────────────────────────────────────────────────────
 
     function dist2(ax, ay, bx, by) {
@@ -285,8 +322,26 @@
       ctx.fillStyle = '#fff';
       ctx.fillText('B', B.x + 22, B.y - 5);
 
+      // C label with flanking arrow buttons
+      const cLabelX = c.x;
+      const cLabelY = c.y + 28;
+      const ARROW_OFF = 17;   // horizontal offset from C centre to arrow centre
+      const ARROW_HIT = 11;   // half-size of clickable square
+
+      ctx.font = 'bold 13px Arial';
+      ctx.fillStyle = 'rgba(220,220,220,0.85)';
+      ctx.fillText('◀', cLabelX - ARROW_OFF, cLabelY);
+      ctx.fillText('▶', cLabelX + ARROW_OFF, cLabelY);
+
+      ctx.font = 'bold 17px Arial';
       ctx.fillStyle = '#fff';
-      ctx.fillText('C', c.x, c.y + 28);
+      ctx.fillText('C', cLabelX, cLabelY);
+
+      // Persist hit-areas for pointer/click detection
+      leftArrowRect  = { x: cLabelX - ARROW_OFF - ARROW_HIT, y: cLabelY - ARROW_HIT,
+                         w: ARROW_HIT * 2,                    h: ARROW_HIT * 2 };
+      rightArrowRect = { x: cLabelX + ARROW_OFF - ARROW_HIT, y: cLabelY - ARROW_HIT,
+                         w: ARROW_HIT * 2,                    h: ARROW_HIT * 2 };
 
       // ── Draw objects ──
       drawBulb(A.x, A.y, 16);
@@ -356,6 +411,10 @@
     const HIT = 18; // hit-test radius in px
 
     function tryStartDrag(p) {
+      // Arrow buttons take priority — act immediately, no drag
+      if (leftArrowRect  && isInRect(p, leftArrowRect))  { moveCByAngleDelta(-0.1); return; }
+      if (rightArrowRect && isInRect(p, rightArrowRect)) { moveCByAngleDelta(+0.1); return; }
+
       const c = C();
       // Check A and B first (slightly smaller hitbox so C on mirror takes priority
       // only when near mirror level — order: C, A, B)
@@ -392,7 +451,15 @@
     // ── mouse events ─────────────────────────────────────────────────────────
 
     canvas.addEventListener('mousedown',  e => tryStartDrag(getPos(e)));
-    canvas.addEventListener('mousemove',  e => moveDrag(getPos(e)));
+    canvas.addEventListener('mousemove', e => {
+      const p = getPos(e);
+      if (!dragging) {
+        const onArrow = (leftArrowRect  && isInRect(p, leftArrowRect)) ||
+                        (rightArrowRect && isInRect(p, rightArrowRect));
+        canvas.style.cursor = onArrow ? 'pointer' : 'grab';
+      }
+      moveDrag(p);
+    });
     canvas.addEventListener('mouseup',    endDrag);
     canvas.addEventListener('mouseleave', endDrag);
 
