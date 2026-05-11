@@ -438,13 +438,8 @@ function render() {
       ctx.beginPath();
       ctx.moveTo(s.x1, s.y1);
       ctx.lineTo(s.x2, s.y2);
-      if (s.medium === 'glass') {
-        ctx.strokeStyle = 'rgba(255,210,60,0.85)';
-        ctx.lineWidth   = 1.6;
-      } else {
-        ctx.strokeStyle = 'rgba(255,210,60,0.30)';
-        ctx.lineWidth   = 1.0;
-      }
+      ctx.strokeStyle = 'rgba(255,210,60,0.85)';
+      ctx.lineWidth   = 1.6;
       ctx.stroke();
     }
   }
