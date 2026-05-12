@@ -14,31 +14,25 @@
       user-select: none;
       padding: 16px 0;
     }
-    p.instructions {
-      font-size: 14px;
-      color: #666;
-      text-align: center;
-      margin-bottom: 8px;
-    }
     .photo-wrap {
       position: relative;
       width: 100%;
       line-height: 0;
     }
-    #photo {
+    canvas {
       width: 100%;
       display: block;
       border: 1px solid #333;
       border-radius: 6px;
+      cursor: crosshair;
     }
     .nav-buttons {
       position: absolute;
       bottom: 14px;
-      left: 0;
-      right: 0;
+      left: 50%;
+      transform: translateX(-50%);
       display: flex;
-      justify-content: space-between;
-      padding: 0 14px;
+      gap: 8px;
       pointer-events: none;
     }
     .nav-btn {
@@ -54,29 +48,14 @@
       pointer-events: all;
       line-height: 1;
     }
-    .nav-btn:hover { background: rgba(76, 175, 80, 1); }
+    .nav-btn:hover  { background: rgba(76, 175, 80, 1); }
     .nav-btn:active { background: rgba(56, 142, 60, 1); }
     .nav-btn.hidden { visibility: hidden; pointer-events: none; }
-    #counter {
-      position: absolute;
-      top: 10px;
-      right: 14px;
-      background: rgba(0,0,0,0.45);
-      color: #fff;
-      font-size: 13px;
-      font-weight: bold;
-      padding: 3px 9px;
-      border-radius: 10px;
-      font-family: Arial, sans-serif;
-      pointer-events: none;
-    }
   </style>
 </head>
 <body>
-  <p class="instructions">Use the arrows to browse photos chronologically.</p>
   <div class="photo-wrap">
-    <img id="photo" src="" alt="Focal length photo">
-    <div id="counter">1 / 20</div>
+    <canvas id="canvas"></canvas>
     <div class="nav-buttons">
       <button id="btn-left"  class="nav-btn hidden">&#8592;</button>
       <button id="btn-right" class="nav-btn">&#8594;</button>
@@ -85,29 +64,58 @@
 
   <script>
     const photos = [
-      'IMG_20260512_111556.jpg',
-      'IMG_20260512_111602.jpg',
-      'IMG_20260512_111608.jpg',
-      'IMG_20260512_111613.jpg',
-      'IMG_20260512_111619.jpg',
-      'IMG_20260512_111624.jpg',
-      'IMG_20260512_111630.jpg',
-      'IMG_20260512_111635.jpg',
-      'IMG_20260512_111641.jpg',
-      'IMG_20260512_111647.jpg',
-      'IMG_20260512_111652.jpg',
-      'IMG_20260512_111658.jpg',
-      'IMG_20260512_111703.jpg',
-      'IMG_20260512_111709.jpg',
-      'IMG_20260512_111715.jpg',
-      'IMG_20260512_111720.jpg',
-      'IMG_20260512_111726.jpg',
-      'IMG_20260512_111732.jpg',
-      'IMG_20260512_111737.jpg',
-      'IMG_20260512_111743.jpg',
+      'IMG_20260512_122806.jpg',
+      'IMG_20260512_122817.jpg',
+      'IMG_20260512_122827.jpg',
+      'IMG_20260512_122838.jpg',
+      'IMG_20260512_122849.jpg',
+      'IMG_20260512_122859.jpg',
+      'IMG_20260512_122910.jpg',
+      'IMG_20260512_122920.jpg',
+      'IMG_20260512_122931.jpg',
+      'IMG_20260512_122941.jpg',
+      'IMG_20260512_122952.jpg',
+      'IMG_20260512_123003.jpg',
+      'IMG_20260512_123013.jpg',
+      'IMG_20260512_123024.jpg',
+      'IMG_20260512_123034.jpg',
+      'IMG_20260512_123045.jpg',
+      'IMG_20260512_123055.jpg',
+      'IMG_20260512_123106.jpg',
+      'IMG_20260512_123116.jpg',
+      'IMG_20260512_123127.jpg',
+      'IMG_20260512_123138.jpg',
+      'IMG_20260512_123148.jpg',
+      'IMG_20260512_123159.jpg',
+      'IMG_20260512_123209.jpg',
+      'IMG_20260512_123220.jpg',
+      'IMG_20260512_123230.jpg',
+      'IMG_20260512_123241.jpg',
+      'IMG_20260512_123251.jpg',
+      'IMG_20260512_123302.jpg',
+      'IMG_20260512_123312.jpg',
+      'IMG_20260512_123323.jpg',
+      'IMG_20260512_123334.jpg',
+      'IMG_20260512_123344.jpg',
+      'IMG_20260512_123355.jpg',
+      'IMG_20260512_123405.jpg',
+      'IMG_20260512_123416.jpg',
+      'IMG_20260512_123426.jpg',
+      'IMG_20260512_123437.jpg',
+      'IMG_20260512_123447.jpg',
+      'IMG_20260512_123458.jpg',
     ];
 
-    // Preload all images so navigation is instant
+    const W = 600, H = 452;   // canvas intrinsic pixels (matches 4080×3072 aspect)
+    const ZOOM = 3;
+    const LENS_R = 88;         // lens radius in canvas pixels
+
+    const canvas = document.getElementById('canvas');
+    const ctx    = canvas.getContext('2d');
+    canvas.width  = W;
+    canvas.height = H;
+
+    // Preload all images for instant navigation
     const cache = photos.map(name => {
       const img = new Image();
       img.src = name;
@@ -115,24 +123,80 @@
     });
 
     let idx = 0;
+    let mouseX = -1, mouseY = -1, hovering = false;
 
-    const photoEl  = document.getElementById('photo');
-    const btnLeft  = document.getElementById('btn-left');
-    const btnRight = document.getElementById('btn-right');
-    const counter  = document.getElementById('counter');
+    function drawBase() {
+      ctx.drawImage(cache[idx], 0, 0, W, H);
+    }
+
+    function drawLens(mx, my) {
+      const img = cache[idx];
+      // Convert lens radius from canvas px to image px for the source crop
+      const scaleX = img.naturalWidth  / W;
+      const scaleY = img.naturalHeight / H;
+      const srcR_x = (LENS_R / ZOOM) * scaleX;
+      const srcR_y = (LENS_R / ZOOM) * scaleY;
+      const srcX   = mx * scaleX - srcR_x;
+      const srcY   = my * scaleY - srcR_y;
+      const srcW   = srcR_x * 2;
+      const srcH   = srcR_y * 2;
+
+      // Clip to circle, draw zoomed region, restore
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(mx, my, LENS_R, 0, Math.PI * 2);
+      ctx.clip();
+      ctx.drawImage(img, srcX, srcY, srcW, srcH,
+                        mx - LENS_R, my - LENS_R, LENS_R * 2, LENS_R * 2);
+      ctx.restore();
+
+      // Lens border
+      ctx.beginPath();
+      ctx.arc(mx, my, LENS_R, 0, Math.PI * 2);
+      ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+    }
+
+    function render() {
+      drawBase();
+      if (hovering && mouseX >= 0) drawLens(mouseX, mouseY);
+    }
 
     function show(i) {
       idx = i;
-      photoEl.src = photos[idx];
-      counter.textContent = (idx + 1) + ' / ' + photos.length;
+      const img = cache[idx];
+      if (img.complete && img.naturalWidth) {
+        render();
+      } else {
+        img.onload = render;
+      }
       btnLeft.classList.toggle('hidden',  idx === 0);
       btnRight.classList.toggle('hidden', idx === photos.length - 1);
     }
 
-    btnLeft.addEventListener('click',  () => { if (idx > 0)                   show(idx - 1); });
-    btnRight.addEventListener('click', () => { if (idx < photos.length - 1)   show(idx + 1); });
+    // Scale CSS mouse position to canvas intrinsic coordinates
+    function canvasPos(e) {
+      const r = canvas.getBoundingClientRect();
+      return {
+        x: (e.clientX - r.left) * (W / r.width),
+        y: (e.clientY - r.top)  * (H / r.height),
+      };
+    }
 
-    // Keyboard support
+    canvas.addEventListener('mousemove', e => {
+      const p = canvasPos(e);
+      mouseX = p.x; mouseY = p.y; hovering = true;
+      render();
+    });
+    canvas.addEventListener('mouseleave', () => { hovering = false; render(); });
+
+    const btnLeft  = document.getElementById('btn-left');
+    const btnRight = document.getElementById('btn-right');
+
+    btnLeft.addEventListener('click',  () => { if (idx > 0)                 show(idx - 1); });
+    btnRight.addEventListener('click', () => { if (idx < photos.length - 1) show(idx + 1); });
+
     document.addEventListener('keydown', e => {
       if (e.key === 'ArrowLeft')  btnLeft.click();
       if (e.key === 'ArrowRight') btnRight.click();
