@@ -1,0 +1,588 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Prism — Minimum Deviation</title>
+<style>
+* { box-sizing: border-box; }
+body {
+  font-family: sans-serif;
+  background: #f4f4f4;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+  margin: 0;
+}
+h1 { font-size: 1.35em; margin: 0 0 10px; color: #222; }
+canvas {
+  background: white;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+}
+.controls {
+  display: flex;
+  gap: 28px;
+  margin: 12px 0 6px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+.ctrl {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 190px;
+}
+.ctrl label { font-size: 13px; color: #444; margin-bottom: 3px; }
+.ctrl input[type=range] { width: 170px; cursor: pointer; }
+.checks {
+  display: flex;
+  gap: 22px;
+  margin: 4px 0 10px;
+  font-size: 13px;
+}
+.checks label { display: flex; align-items: center; gap: 5px; cursor: pointer; color: #333; }
+.info-row {
+  display: flex;
+  gap: 24px;
+  flex-wrap: wrap;
+  justify-content: center;
+  font-size: 13px;
+  background: white;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 8px 18px;
+  margin-top: 4px;
+}
+.info-row .cell { display: flex; gap: 5px; align-items: center; }
+.info-row .key { color: #666; }
+.info-row .val { font-weight: bold; color: #111; min-width: 52px; }
+.warn { color: #c00; font-weight: bold; }
+.good { color: #080; font-weight: bold; }
+</style>
+</head>
+<body>
+<h1>Prism Refraction &amp; Minimum Deviation</h1>
+<canvas id="cv" width="820" height="490"></canvas>
+
+<div class="controls">
+  <div class="ctrl">
+    <label>Apex angle A = <strong id="lA">60.0</strong>°</label>
+    <input type="range" id="sA" min="20" max="80" value="60" step="0.5">
+  </div>
+  <div class="ctrl">
+    <label>Refractive index n = <strong id="lN">1.500</strong></label>
+    <input type="range" id="sN" min="1.01" max="2.5" value="1.5" step="0.005">
+  </div>
+  <div class="ctrl">
+    <label>Incident angle θ₁ = <strong id="lT1">48.6</strong>°</label>
+    <input type="range" id="sT1" min="0" max="89.9" value="48.6" step="0.1">
+  </div>
+</div>
+
+<div class="checks">
+  <label><input type="checkbox" id="cbNorm"> Normals</label>
+  <label><input type="checkbox" id="cbExt" checked> Ray extensions (dashed)</label>
+  <label><input type="checkbox" id="cbDev" checked> Deviation angle</label>
+</div>
+
+<div class="info-row" id="infoRow"></div>
+
+<script>
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+
+const slA  = document.getElementById('sA');
+const slN  = document.getElementById('sN');
+const slT1 = document.getElementById('sT1');
+const lA   = document.getElementById('lA');
+const lN   = document.getElementById('lN');
+const lT1  = document.getElementById('lT1');
+
+const cbNorm = document.getElementById('cbNorm');
+const cbExt  = document.getElementById('cbExt');
+const cbDev  = document.getElementById('cbDev');
+const infoRow = document.getElementById('infoRow');
+
+const R   = Math.PI / 180;
+const DEG = 180 / Math.PI;
+
+// ── math helpers ──────────────────────────────────────────────────────────────
+
+function dot(a, b) { return a.x * b.x + a.y * b.y; }
+function sub(a, b) { return { x: a.x - b.x, y: a.y - b.y }; }
+
+// Intersect ray P+t*D with segment [A,B]. Returns {x,y,t,s} or null.
+function raySegIntersect(P, D, A, B) {
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const denom = D.x * dy - D.y * dx;
+  if (Math.abs(denom) < 1e-9) return null;
+  const ex = A.x - P.x, ey = A.y - P.y;
+  const t = (ex * dy - ey * dx) / denom;
+  const s = (ex * D.y - ey * D.x) / denom;
+  if (t < 1e-6 || s < -1e-6 || s > 1 + 1e-6) return null;
+  return { x: P.x + t * D.x, y: P.y + t * D.y, t, s };
+}
+
+// Intersect two infinite lines P1+t*D1 and P2+s*D2. Returns {x,y,t,s} or null.
+function lineLineIntersect(P1, D1, P2, D2) {
+  const denom = D1.x * D2.y - D1.y * D2.x;
+  if (Math.abs(denom) < 1e-9) return null;
+  const dx = P2.x - P1.x, dy = P2.y - P1.y;
+  const t = (dx * D2.y - dy * D2.x) / denom;
+  const s = (dx * D1.y - dy * D1.x) / denom;
+  return { x: P1.x + t * D1.x, y: P1.y + t * D1.y, t, s };
+}
+
+// Draw filled arrowhead at (x2,y2) coming from (x1,y1)
+function arrowHead(x1, y1, x2, y2, color, size) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  if (len < 1) return;
+  const ux = dx / len, uy = dy / len;
+  const hw = size * 0.4, hl = size;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x2, y2);
+  ctx.lineTo(x2 - ux * hl - uy * hw, y2 - uy * hl + ux * hw);
+  ctx.lineTo(x2 - ux * hl + uy * hw, y2 - uy * hl - ux * hw);
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// Draw a ray (line + arrowhead) from (x1,y1) to (x2,y2)
+function drawRay(x1, y1, x2, y2, color, lw) {
+  const dx = x2 - x1, dy = y2 - y1;
+  const len = Math.hypot(dx, dy);
+  const hl = 13;
+  const ex = x2 - (dx / len) * hl, ey = y2 - (dy / len) * hl;
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lw;
+  ctx.lineCap = 'round';
+  ctx.beginPath();
+  ctx.moveTo(x1, y1);
+  ctx.lineTo(ex, ey);
+  ctx.stroke();
+  ctx.restore();
+  arrowHead(x1, y1, x2, y2, color, 11);
+}
+
+// ── minimum deviation ─────────────────────────────────────────────────────────
+
+// Minimum deviation condition: sin(t1) = n * sin(A/2)
+// Returns D_min in radians, or null if impossible (n*sin(A/2) > 1).
+function minDeviation(A, n) {
+  const s = n * Math.sin(A / 2);
+  if (s > 1) return null;
+  const t1_min = Math.asin(s);
+  return 2 * t1_min - A;
+}
+
+// Minimum incident angle to avoid TIR at exit face.
+// TIR at exit: n * sin(r2) > 1, r2 = A - r1.
+// Critical: n * sin(A - r1) = 1 → r1 = A - arcsin(1/n)
+// sin(t1_lo) = n * sin(A - arcsin(1/n))
+// Returns t1_lo in radians, or 0 if no TIR possible for any t1.
+function minT1forNoTIR(A, n) {
+  const rc = Math.asin(1 / n);         // critical angle inside prism
+  const r1_thresh = A - rc;             // r1 above which no TIR
+  if (r1_thresh <= 0) return 0;         // even r1=0 is safe
+  const s = n * Math.sin(r1_thresh);
+  if (s > 1) return Math.PI / 2;        // no t1 avoids TIR (geometry impossible)
+  return Math.asin(s);
+}
+
+// ── main draw ─────────────────────────────────────────────────────────────────
+
+function draw() {
+  ctx.clearRect(0, 0, cv.width, cv.height);
+
+  const A_deg = parseFloat(slA.value);
+  const n     = parseFloat(slN.value);
+  let t1_deg  = parseFloat(slT1.value);
+
+  const A  = A_deg * R;
+  const t1 = t1_deg * R;
+
+  // ── physics ──────────────────────────────────────────────────────────────────
+
+  // Refraction at entry face (Snell: sin t1 = n * sin r1)
+  const r1 = Math.asin(Math.sin(t1) / n);   // angle inside at left face
+  const r2 = A - r1;                          // angle inside at right face
+
+  // Check TIR at exit face
+  const sinT4 = n * Math.sin(r2);
+  const hasTIR = sinT4 > 1;
+  const t4 = hasTIR ? null : Math.asin(sinT4);
+  const deviation = hasTIR ? null : (t1 + t4 - A);
+
+  const Dmin = minDeviation(A, n);
+  const t1Lo = minT1forNoTIR(A, n);   // minimum t1 for no TIR
+
+  // ── update labels & info ──────────────────────────────────────────────────────
+
+  lA.textContent  = A_deg.toFixed(1);
+  lN.textContent  = n.toFixed(3);
+  lT1.textContent = t1_deg.toFixed(1);
+
+  const fmt = v => (v !== null ? (v * DEG).toFixed(2) + '°' : '—');
+
+  let atMin = false;
+  if (!hasTIR && Dmin !== null && Math.abs(deviation - Dmin) < 0.005 * R) atMin = true;
+
+  let infoHtml = '';
+  if (hasTIR) {
+    infoHtml = `<div class="cell"><span class="warn">Total internal reflection at exit face. Try increasing θ₁ above ${(t1Lo * DEG).toFixed(1)}° or reducing A or n.</span></div>`;
+  } else {
+    const cells = [
+      ['θ₁', fmt(t1)],
+      ['r₁ (in)', fmt(r1)],
+      ['r₂ = A−r₁', fmt(r2)],
+      ['θ₄ (out)', fmt(t4)],
+      ['D', fmt(deviation)],
+      ['D_min', Dmin !== null ? fmt(Dmin) : 'n/a'],
+    ];
+    infoHtml = cells.map(([k, v]) =>
+      `<div class="cell"><span class="key">${k}:</span><span class="val">${v}</span></div>`
+    ).join('');
+    if (atMin) infoHtml += `<div class="cell"><span class="good">↑ At minimum deviation</span></div>`;
+    else if (Dmin !== null) {
+      const nearMin = Math.abs(deviation - Dmin) < 0.5 * R;
+      if (nearMin) infoHtml += `<div class="cell"><span class="good">↑ Near minimum deviation</span></div>`;
+    }
+  }
+  infoRow.innerHTML = infoHtml;
+
+  // ── prism geometry ────────────────────────────────────────────────────────────
+
+  // Fix the slant-side length for consistent visual size
+  const SIDE = 188;
+  const H    = SIDE * Math.cos(A / 2);   // vertical height
+  const BW   = SIDE * Math.sin(A / 2);   // horizontal half-width at base
+
+  const cx = 410, cy = 230;
+  const apex = { x: cx,      y: cy - H / 2 };
+  const lb   = { x: cx - BW, y: cy + H / 2 };
+  const rb   = { x: cx + BW, y: cy + H / 2 };
+
+  // Entry point P1 = midpoint of left face
+  const P1 = { x: (apex.x + lb.x) / 2, y: (apex.y + lb.y) / 2 };
+
+  // ── face normals (screen coords: y down) ──────────────────────────────────────
+  // Left face outward normal: (-cos(A/2), -sin(A/2))
+  // Right face outward normal: (cos(A/2), -sin(A/2))
+  const nL = { x: -Math.cos(A / 2), y: -Math.sin(A / 2) };
+  const nR = { x:  Math.cos(A / 2), y: -Math.sin(A / 2) };
+
+  // ── ray directions ────────────────────────────────────────────────────────────
+  //
+  // In screen coords (y down), angles measured CW from +x axis.
+  // Inward normal to left face is at angle +A/2 (right and downward).
+  //
+  // Incident ray: rotated A/2 - t1 from +x axis.
+  //   For t1 > A/2: ray goes right and upward (comes from lower-left). ✓
+  //   For t1 < A/2: ray goes right and downward (comes from upper-left).
+  //
+  // Snell check: d_inc · n_in_L = cos(A/2 - t1 - A/2 + ... ) = cos(t1) ✓
+  //
+  const incA  = A / 2 - t1;
+  const dInc  = { x: Math.cos(incA),        y: Math.sin(incA) };
+
+  // Refracted ray inside prism: angle A/2 - r1 from +x axis
+  const refrA = A / 2 - r1;
+  const dRefr = { x: Math.cos(refrA),       y: Math.sin(refrA) };
+
+  // Find P2: intersection of interior ray with right face
+  const hitR = raySegIntersect(P1, dRefr, apex, rb);
+  const P2   = hitR ? { x: hitR.x, y: hitR.y } : null;
+
+  // Exit ray direction: angle t4 - A/2 from +x axis
+  let dExit = null;
+  if (!hasTIR && P2 && t4 !== null) {
+    const exitA = t4 - A / 2;
+    dExit = { x: Math.cos(exitA), y: Math.sin(exitA) };
+  }
+
+  // Reflected ray inside prism for TIR (angle of reflection = A/2 - r2 reflected at right face)
+  // Normal to right face (inward from glass side) = -nR
+  let dRefl = null;
+  if (hasTIR && P2) {
+    // Reflect dRefr about the inward normal of the right face
+    // inward normal of right face (into prism) = -nR
+    const nRin = { x: -nR.x, y: -nR.y };
+    const dotDN = dot(dRefr, nRin);
+    dRefl = { x: dRefr.x - 2 * dotDN * nRin.x, y: dRefr.y - 2 * dotDN * nRin.y };
+  }
+
+  // ── draw prism ────────────────────────────────────────────────────────────────
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.moveTo(apex.x, apex.y);
+  ctx.lineTo(lb.x, lb.y);
+  ctx.lineTo(rb.x, rb.y);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(160, 210, 235, 0.40)';
+  ctx.fill();
+  ctx.strokeStyle = '#4477aa';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+  ctx.restore();
+
+  // Apex angle arc label
+  {
+    const aL = Math.atan2(lb.y - apex.y, lb.x - apex.x);
+    const aR = Math.atan2(rb.y - apex.y, rb.x - apex.x);
+    const aArc = 22;
+    ctx.save();
+    ctx.strokeStyle = '#4477aa';
+    ctx.lineWidth = 1.2;
+    ctx.beginPath();
+    ctx.arc(apex.x, apex.y, aArc, aL, aR);
+    ctx.stroke();
+    ctx.fillStyle = '#4477aa';
+    ctx.font = 'italic 12px serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    ctx.fillText('A', apex.x, apex.y + aArc + 4);
+    ctx.restore();
+  }
+
+  // ── normals ───────────────────────────────────────────────────────────────────
+
+  if (cbNorm.checked) {
+    const NL = 65;
+    ctx.save();
+    ctx.strokeStyle = '#999';
+    ctx.lineWidth = 1.2;
+    ctx.setLineDash([5, 4]);
+
+    ctx.beginPath();
+    ctx.moveTo(P1.x + nL.x * NL, P1.y + nL.y * NL);
+    ctx.lineTo(P1.x - nL.x * NL, P1.y - nL.y * NL);
+    ctx.stroke();
+
+    if (P2) {
+      ctx.beginPath();
+      ctx.moveTo(P2.x + nR.x * NL, P2.y + nR.y * NL);
+      ctx.lineTo(P2.x - nR.x * NL, P2.y - nR.y * NL);
+      ctx.stroke();
+    }
+    ctx.restore();
+
+    // Normal labels
+    ctx.save();
+    ctx.fillStyle = '#888';
+    ctx.font = '11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('normal', P1.x + nL.x * (NL + 8), P1.y + nL.y * (NL + 8));
+    if (P2) ctx.fillText('normal', P2.x + nR.x * (NL + 8), P2.y + nR.y * (NL + 8));
+    ctx.restore();
+  }
+
+  // ── incident ray (extends back from P1) ──────────────────────────────────────
+
+  const INC_BACK = 200;
+  const srcX = P1.x - dInc.x * INC_BACK;
+  const srcY = P1.y - dInc.y * INC_BACK;
+  drawRay(srcX, srcY, P1.x, P1.y, '#cc2200', 2.8);
+
+  // ── extension of incident ray forward (dashed) ───────────────────────────────
+
+  if (cbExt.checked && P2) {
+    const EXT = 280;
+    ctx.save();
+    ctx.strokeStyle = '#cc2200';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([8, 6]);
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.moveTo(P1.x, P1.y);
+    ctx.lineTo(P1.x + dInc.x * EXT, P1.y + dInc.y * EXT);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── ray inside prism P1 → P2 ─────────────────────────────────────────────────
+
+  if (P2) {
+    ctx.save();
+    ctx.strokeStyle = '#cc2200';
+    ctx.lineWidth = 2.8;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    ctx.moveTo(P1.x, P1.y);
+    ctx.lineTo(P2.x, P2.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // ── exit ray or TIR reflected ray ────────────────────────────────────────────
+
+  if (!hasTIR && P2 && dExit) {
+    const EXIT_LEN = 230;
+    const ex = P2.x + dExit.x * EXIT_LEN;
+    const ey = P2.y + dExit.y * EXIT_LEN;
+    drawRay(P2.x, P2.y, ex, ey, '#cc2200', 2.8);
+
+    // Extension of exit ray backward (dashed)
+    if (cbExt.checked) {
+      const BK = 240;
+      ctx.save();
+      ctx.strokeStyle = '#cc2200';
+      ctx.lineWidth = 1.6;
+      ctx.setLineDash([8, 6]);
+      ctx.globalAlpha = 0.5;
+      ctx.beginPath();
+      ctx.moveTo(P2.x, P2.y);
+      ctx.lineTo(P2.x - dExit.x * BK, P2.y - dExit.y * BK);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  if (hasTIR && P2 && dRefl) {
+    const TIR_LEN = 180;
+    const tx = P2.x + dRefl.x * TIR_LEN;
+    const ty = P2.y + dRefl.y * TIR_LEN;
+    drawRay(P2.x, P2.y, tx, ty, '#cc2200', 2.8);
+    // TIR label
+    ctx.save();
+    ctx.fillStyle = '#c00';
+    ctx.font = 'bold 13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('Total Internal Reflection', cx, cy + H / 2 + 36);
+    ctx.restore();
+  }
+
+  // ── deviation angle arc ───────────────────────────────────────────────────────
+
+  if (cbDev.checked && !hasTIR && P2 && dExit && deviation !== null) {
+    // The deviation is the angle between the incident and exit ray directions.
+    // We draw the arc at the intersection of:
+    //   - forward extension of incident ray (from P1 in direction dInc)
+    //   - backward extension of exit ray (from P2 in direction -dExit)
+    const neg_dExit = { x: -dExit.x, y: -dExit.y };
+    const intersect = lineLineIntersect(P1, dInc, P2, neg_dExit);
+
+    if (intersect && intersect.t > 0) {
+      const ix = intersect.x, iy = intersect.y;
+      const ARC_R = 38;
+
+      // Angle of incident ray direction from intersection point
+      const a1 = Math.atan2(dInc.y, dInc.x);
+      // Angle of exit ray direction from intersection point
+      const a2 = Math.atan2(dExit.y, dExit.x);
+
+      // Draw arc from a1 to a2 (the short way)
+      // In canvas: arc goes CCW by default; we want the smaller angle span
+      let startA = a1, endA = a2;
+      // Normalize difference into (-π, π]
+      let diff = endA - startA;
+      while (diff > Math.PI)  diff -= 2 * Math.PI;
+      while (diff < -Math.PI) diff += 2 * Math.PI;
+      endA = startA + diff;
+
+      ctx.save();
+      ctx.strokeStyle = '#333';
+      ctx.lineWidth = 1.8;
+      // ctx.arc goes clockwise if endA < startA (in screen coords y-down)
+      ctx.beginPath();
+      if (diff >= 0) {
+        ctx.arc(ix, iy, ARC_R, startA, endA, false);
+      } else {
+        ctx.arc(ix, iy, ARC_R, startA, endA, true);
+      }
+      ctx.stroke();
+
+      // Label at midpoint of arc
+      const midA = startA + diff / 2;
+      const lx = ix + (ARC_R + 16) * Math.cos(midA);
+      const ly = iy + (ARC_R + 16) * Math.sin(midA);
+      ctx.fillStyle = '#222';
+      ctx.font = 'bold 12px sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('D = ' + (deviation * DEG).toFixed(1) + '°', lx, ly);
+      ctx.restore();
+
+      // Dot at intersection
+      ctx.save();
+      ctx.fillStyle = '#555';
+      ctx.beginPath();
+      ctx.arc(ix, iy, 3.5, 0, 2 * Math.PI);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  // ── surface dots ──────────────────────────────────────────────────────────────
+
+  for (const pt of [P1, P2]) {
+    if (!pt) continue;
+    ctx.save();
+    ctx.fillStyle = '#cc2200';
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, 4, 0, 2 * Math.PI);
+    ctx.fill();
+    ctx.restore();
+  }
+
+  // ── min deviation info box ────────────────────────────────────────────────────
+
+  if (Dmin !== null) {
+    const t1_minDev = (Dmin + A) / 2;
+    ctx.save();
+    ctx.fillStyle = '#555';
+    ctx.font = '12px sans-serif';
+    ctx.textAlign = 'left';
+    ctx.fillText(
+      `Min deviation: D_min = ${(Dmin * DEG).toFixed(2)}° at θ₁ = ${(t1_minDev * DEG).toFixed(2)}°`,
+      10, cv.height - 12
+    );
+    ctx.restore();
+  }
+}
+
+// ── update slider constraints ─────────────────────────────────────────────────
+
+function updateConstraints() {
+  const A = parseFloat(slA.value) * R;
+  const n = parseFloat(slN.value);
+  const t1Lo = minT1forNoTIR(A, n);   // min t1 to avoid TIR at exit
+
+  // Don't force slider min — allow user to explore TIR regime.
+  // Just clamp to valid physics range (0 to 89.9).
+  const cur = parseFloat(slT1.value);
+  if (cur < 0) slT1.value = 0;
+  if (cur > 89.9) slT1.value = 89.9;
+}
+
+// ── event wiring ──────────────────────────────────────────────────────────────
+
+function onSliderChange() {
+  updateConstraints();
+  draw();
+}
+
+[slA, slN, slT1].forEach(s => s.addEventListener('input', onSliderChange));
+[cbNorm, cbExt, cbDev].forEach(cb => cb.addEventListener('change', draw));
+
+// Initialise at minimum deviation for defaults (A=60°, n=1.5)
+(function init() {
+  const A = parseFloat(slA.value) * R;
+  const n = parseFloat(slN.value);
+  const Dm = minDeviation(A, n);
+  if (Dm !== null) {
+    const t1m = (Dm + A) / 2 * DEG;
+    slT1.value = t1m.toFixed(1);
+  }
+  draw();
+})();
+</script>
+</body>
+</html>
