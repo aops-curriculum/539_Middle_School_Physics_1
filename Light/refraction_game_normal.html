@@ -609,6 +609,7 @@ function draw() {
         drawCandidates(problem);
     } else if (phase === 'feedback') {
         drawNormalAndAngles(problem);
+        drawUnrefracted(problem);
         drawFeedbackRays(problem);
     }
 
