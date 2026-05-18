@@ -239,34 +239,38 @@ function drawInterface(p) {
     ctx.lineCap = 'butt';
 
     // Labels: place "air" on +airSign side, "glass" on -airSign side.
-    // Anchor each label far enough from the interface centre.
-    const labelPos = (sign) => {
-        // Step from hit point along normal by 'sign*airSign' direction.
-        const dirSign = sign;
-        return {
-            x: p.hit.x + dirSign * p.airSign * 70 * p.normal.x
-                    - p.tangentSign * 18 * p.tangent.x, // nudge a bit along tangent
-            y: p.hit.y + dirSign * p.airSign * 70 * p.normal.y
-                    - p.tangentSign * 18 * p.tangent.y,
-        };
+    // Each label sits in the corner of its half-plane that is farthest from
+    // its own ray (incident on the source side, refracted on the other),
+    // so it overlaps the angle markers as little as possible.
+    const PERP = 68;   // perpendicular distance from the interface
+    const TANG = 88;   // offset along the interface (away from the rays)
+
+    // Tangent-side sign for the air label:
+    //   if lightFromAir → source is at −tangentSign on the air side,
+    //                     so put the label at +tangentSign
+    //   else            → refracted ray ends at +tangentSign on the air side,
+    //                     so put the label at −tangentSign
+    const airT = (p.lightFromAir ? +1 : -1) * p.tangentSign;
+
+    const airPos = {
+        x: p.hit.x + p.airSign * PERP * p.normal.x
+                + airT * TANG * p.tangent.x,
+        y: p.hit.y + p.airSign * PERP * p.normal.y
+                + airT * TANG * p.tangent.y,
+    };
+    const glassPos = {
+        x: p.hit.x - p.airSign * PERP * p.normal.x
+                - airT * TANG * p.tangent.x,
+        y: p.hit.y - p.airSign * PERP * p.normal.y
+                - airT * TANG * p.tangent.y,
     };
 
-    // "air" on +airSign side (sign = +1)
-    {
-        const pos = labelPos(+1);
-        ctx.fillStyle = 'rgba(180, 220, 255, 0.85)';
-        ctx.font = 'bold italic 18px Arial';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('air', pos.x, pos.y);
-    }
-    // "glass" on -airSign side (sign = -1)
-    {
-        const pos = labelPos(-1);
-        ctx.fillStyle = 'rgba(140, 190, 240, 0.95)';
-        ctx.font = 'bold italic 18px Arial';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('glass', pos.x, pos.y);
-    }
+    ctx.font = 'bold italic 18px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillStyle = 'rgba(180, 220, 255, 0.85)';
+    ctx.fillText('air', airPos.x, airPos.y);
+    ctx.fillStyle = 'rgba(140, 190, 240, 0.95)';
+    ctx.fillText('glass', glassPos.x, glassPos.y);
     ctx.textBaseline = 'alphabetic';
 }
 
@@ -415,48 +419,7 @@ function drawNormalAndAngles(p) {
     ctx.textBaseline = 'alphabetic';
 }
 
-// ── Streak panel ─────────────────────────────────────────────────────────
-// A small top-left panel showing "Streak: n/10" with a row of pips.
-function drawStreakPanel() {
-    const px = 8, py = 8, pw = 170, ph = 46;
-
-    ctx.save();
-    ctx.fillStyle = 'rgba(15, 20, 40, 0.72)';
-    ctx.strokeStyle = 'rgba(120, 150, 200, 0.40)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    if (ctx.roundRect) {
-        ctx.roundRect(px, py, pw, ph, 7);
-    } else {
-        ctx.rect(px, py, pw, ph);
-    }
-    ctx.fill();
-    ctx.stroke();
-
-    // streak text
-    ctx.fillStyle = '#cce0ff';
-    ctx.font = 'bold 13px Arial';
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Streak: ' + streak + '/10', px + pw / 2, py + 14);
-
-    // streak pip row
-    const pipR = 4, pipGap = 13, pipY = py + ph - 13;
-    const pip0X = px + pw / 2 - 4.5 * pipGap;
-    for (let i = 0; i < 10; i++) {
-        const cx = pip0X + i * pipGap;
-        ctx.beginPath();
-        ctx.arc(cx, pipY, pipR, 0, Math.PI * 2);
-        ctx.fillStyle = i < streak ? '#44ff88' : '#2a2a4e';
-        ctx.fill();
-        ctx.strokeStyle = i < streak ? '#44ff88' : '#445';
-        ctx.lineWidth = 1.2;
-        ctx.stroke();
-    }
-    ctx.textBaseline = 'alphabetic';
-    ctx.restore();
-}
-
-// ── Bottom action / feedback bar ─────────────────────────────────────────
+// ── Bottom action / feedback bar (with streak counter on the right) ──────
 function drawActionBar() {
     // Bar across the bottom of the canvas
     const by = H - 56;
@@ -468,31 +431,63 @@ function drawActionBar() {
     ctx.beginPath();
     ctx.moveTo(0, by); ctx.lineTo(W, by); ctx.stroke();
 
-    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    // ── Streak section (right side of the bar) ────────────────────────
+    const STREAK_W = 158;
+    const streakX  = W - STREAK_W;             // left edge of streak section
+    const streakCx = streakX + STREAK_W / 2;   // centre of streak section
 
+    // subtle divider between text and streak
+    ctx.strokeStyle = 'rgba(120, 150, 200, 0.22)';
+    ctx.beginPath();
+    ctx.moveTo(streakX, by + 8); ctx.lineTo(streakX, H - 8);
+    ctx.stroke();
+
+    ctx.fillStyle = '#cce0ff';
+    ctx.font = 'bold 13px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('Streak: ' + streak + '/10', streakCx, by + 16);
+
+    const pipR = 4, pipGap = 13, pipY = by + 40;
+    const pip0X = streakCx - 4.5 * pipGap;
+    for (let i = 0; i < 10; i++) {
+        const px = pip0X + i * pipGap;
+        ctx.beginPath();
+        ctx.arc(px, pipY, pipR, 0, Math.PI * 2);
+        ctx.fillStyle = i < streak ? '#44ff88' : '#2a2a4e';
+        ctx.fill();
+        ctx.strokeStyle = i < streak ? '#44ff88' : '#445';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+    }
+
+    // ── Instruction / feedback section (left of streak) ───────────────
+    const textCx = streakX / 2;   // centred in the space remaining
+
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     if (phase === 'guess') {
         ctx.fillStyle = '#cce0ff';
-        ctx.font = 'bold 14px Arial';
+        ctx.font = 'bold 13px Arial';
         ctx.fillText('Click the dashed ray showing how the light continues.',
-            W / 2, by + 18);
+            textCx, by + 18);
         ctx.fillStyle = '#9bb';
-        ctx.font = '12px Arial';
+        ctx.font = '11px Arial';
         ctx.fillText('Glass has refractive index n = 1.5 (air is n = 1).',
-            W / 2, by + 38);
+            textCx, by + 38);
     } else if (phase === 'feedback') {
         if (feedback.ok) {
             ctx.fillStyle = '#44ff88';
             ctx.font = 'bold 15px Arial';
-            ctx.fillText('Correct!', W / 2, by + 18);
+            ctx.fillText('Correct!', textCx, by + 18);
             ctx.fillStyle = '#9bb';
-            ctx.font = '12px Arial';
-            ctx.fillText('Click anywhere to continue.', W / 2, by + 40);
+            ctx.font = '11px Arial';
+            ctx.fillText('Click anywhere to continue.', textCx, by + 40);
         } else {
             ctx.fillStyle = '#ff7080';
-            ctx.font = 'bold 14px Arial';
-            ctx.fillText('Not quite — streak reset.', W / 2, by + 14);
+            ctx.font = 'bold 13px Arial';
+            ctx.fillText('Not quite — streak reset.', textCx, by + 14);
             // Law-of-refraction reminder (wrapped to fit)
-            wrapText(feedback.lawText, W / 2, by + 36, W - 20, 14, '#ffd2a0');
+            wrapText(feedback.lawText, textCx, by + 36,
+                streakX - 16, 13, '#ffd2a0');
         }
     }
     ctx.restore();
@@ -580,7 +575,6 @@ function draw() {
         drawFeedbackRays(problem);
     }
 
-    drawStreakPanel();
     drawActionBar();
 }
 
