@@ -52,7 +52,7 @@
 <div id="controls">
   <div class="ctrl">
     <label>Circles</label>
-    <input type="range" id="slN" min="1" max="10000" value="30">
+    <input type="range" id="slN" min="1" max="30000" value="30">
     <span class="val" id="valN">30</span>
   </div>
   <div class="ctrl">
@@ -464,7 +464,7 @@ function updateCircleCountDisplay() {
 function render() {
   W       = canvas.width;
   H       = canvas.height;
-  UPPER_Y = Math.round(H / 3);
+  UPPER_Y = Math.round(H / 6);
 
   // Dark background
   ctx.fillStyle = '#05050e';
@@ -578,7 +578,7 @@ function init() {
     canvas.height = canvas.clientHeight || (window.innerHeight - document.getElementById('controls').offsetHeight);
     W       = canvas.width;
     H       = canvas.height;
-    UPPER_Y = Math.round(H / 3);
+    UPPER_Y = Math.round(H / 6);
     generateCircles();
     render();
   };
