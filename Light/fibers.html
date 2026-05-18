@@ -94,6 +94,8 @@ let waterOn      = false;
 let numCircles   = 30;
 let circleRadius = 30;
 let raySpacing   = 4;
+let traceGrid    = null;   // spatial hash for O(1) ray–circle lookup
+let traceGridCS  = 1;      // cell size (px)
 
 // ── vector helpers ────────────────────────────────────────────────────────────
 function norm(a) {
@@ -150,13 +152,61 @@ function fresnelR(cosI, n1, n2) {
   return (Rs + Rp) * 0.5;
 }
 
+// ── spatial grid for fast ray–circle intersection ────────────────────────────
+// Each circle stored in its own cell (cell size = 2r+1, so circles fit within 1
+// cell).  nearestCircleHit uses an expanding-ring search that terminates as soon
+// as no outer ring can possibly produce a closer hit.
+function buildTraceGrid() {
+  const cs = Math.max(2 * circleRadius + 1, 2);
+  traceGridCS = cs;
+  traceGrid = new Map();
+  for (let i = 0; i < circles.length; i++) {
+    const c   = circles[i];
+    const key = Math.floor(c.x / cs) * 100003 + Math.floor(c.y / cs);
+    if (!traceGrid.has(key)) traceGrid.set(key, []);
+    traceGrid.get(key).push(i);
+  }
+}
+
+function nearestCircleHit(px, py, dx, dy, EPS) {
+  const cs  = traceGridCS;
+  const r   = circleRadius;
+  let minT  = Infinity, hitIdx = -1;
+  const gcol = Math.floor(px / cs);
+  const grow = Math.floor(py / cs);
+  const maxRing = Math.ceil((Math.max(W, H) + r) / cs) + 1;
+
+  for (let ring = 0; ring <= maxRing; ring++) {
+    // Visit only the border cells of the square at Chebyshev distance `ring`.
+    for (let dc = -ring; dc <= ring; dc++) {
+      for (let dr = -ring; dr <= ring; dr++) {
+        if (ring > 0 && Math.abs(dc) < ring && Math.abs(dr) < ring) continue;
+        const cell = traceGrid.get((gcol + dc) * 100003 + (grow + dr));
+        if (!cell) continue;
+        for (const ci of cell) {
+          const c  = circles[ci];
+          const ts = rayCircleTs(px, py, dx, dy, c.x, c.y, c.r);
+          if (!ts) continue;
+          const t = ts[0] > EPS ? ts[0] : (ts[1] > EPS ? ts[1] : null);
+          if (t !== null && t < minT) { minT = t; hitIdx = ci; }
+        }
+      }
+    }
+    // Min distance to a circle surface in ring+1 or beyond = ring*cs − r.
+    // If our best hit is already ≤ that, no outer ring can beat it.
+    if (ring * cs - r >= 0 && minT <= ring * cs - r) break;
+    if ((ring - 1) * cs > Math.max(W, H) + r) break;
+  }
+  return { minT, hitIdx };
+}
+
 // ── trace one ray downward from (startX, 0) ──────────────────────────────────
 // Segments carry a 'medium' field: 'air' | 'water' | 'glass'.
 // When water is on, the air-water boundary at y=UPPER_Y is a real optical surface.
 // Circle interactions use the current background medium (air or water) as n1/n2.
 function traceRay(startX) {
   const EPS         = 1e-4;
-  const MAX_STEPS   = 60;
+  const MAX_STEPS   = 2000;
   const MAX_BOUNCES = 20;
 
   const segments = [];
@@ -165,9 +215,10 @@ function traceRay(startX) {
 
   // Track whether ray is currently in water (always starts in air at y=0)
   let inWater = false;
+  let finalSegDone = false;
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    if (px < -W || px > 2*W || py < -H || py > 2*H) break;
+    if (px < -W || px > 2*W || py < -H || py > 2*H) { finalSegDone = true; break; }
 
     const n_bg = (waterOn && inWater) ? n_water : 1.0;
 
@@ -186,14 +237,9 @@ function traceRay(startX) {
       }
     }
 
-    // Circles
-    for (let i = 0; i < circles.length; i++) {
-      const c  = circles[i];
-      const ts = rayCircleTs(px, py, dx, dy, c.x, c.y, c.r);
-      if (!ts) continue;
-      const t = ts[0] > EPS ? ts[0] : (ts[1] > EPS ? ts[1] : null);
-      if (t !== null && t < minT) { minT = t; hitIdx = i; }
-    }
+    // Circles (spatial grid lookup)
+    const { minT: cT, hitIdx: cIdx } = nearestCircleHit(px, py, dx, dy, EPS);
+    if (cT < minT) { minT = cT; hitIdx = cIdx; }
 
     // Nothing hit at all
     if (t_wsurf === Infinity && hitIdx === -1) {
@@ -204,6 +250,7 @@ function traceRay(startX) {
       if (dy < 0) tEnd = Math.min(tEnd, (-py)      / dy);
       if (isFinite(tEnd) && tEnd > 0)
         segments.push({x1:px, y1:py, x2:px+dx*tEnd, y2:py+dy*tEnd, medium: inWater ? 'water' : 'air'});
+      finalSegDone = true;
       break;
     }
 
@@ -263,7 +310,7 @@ function traceRay(startX) {
 
     // Refract into glass
     const refEnter = refract({x:dx,y:dy}, {x:nex,y:ney}, n_bg, n_glass);
-    if (!refEnter) break;  // guard
+    if (!refEnter) { px = ex; py = ey; break; }
 
     px = ex + refEnter.x*EPS;  py = ey + refEnter.y*EPS;
     dx = refEnter.x;            dy = refEnter.y;
@@ -304,6 +351,17 @@ function traceRay(startX) {
         break;
       }
     }
+  }
+
+  // If the step limit was hit while still on canvas, extend the ray to the edge.
+  if (!finalSegDone && px >= 0 && px <= W && py >= 0 && py <= H) {
+    let tEnd = Infinity;
+    if (dx > 0) tEnd = Math.min(tEnd, (W  - px) / dx);
+    if (dx < 0) tEnd = Math.min(tEnd, (0  - px) / dx);
+    if (dy > 0) tEnd = Math.min(tEnd, (H  - py) / dy);
+    if (dy < 0) tEnd = Math.min(tEnd, (-py)      / dy);
+    if (isFinite(tEnd) && tEnd > 0)
+      segments.push({x1:px, y1:py, x2:px+dx*tEnd, y2:py+dy*tEnd, medium: inWater ? 'water' : 'air'});
   }
 
   return segments;
@@ -365,6 +423,7 @@ function generateCircles() {
     }
     if (!placed) break;
   }
+  buildTraceGrid();
   updateCircleCountDisplay();
 }
 
