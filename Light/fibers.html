@@ -227,7 +227,7 @@ function nearestCircleHit(px, py, dx, dy, EPS) {
 // Circle interactions use the current background medium (air or water) as n1/n2.
 function traceRay(startX) {
   const EPS         = 1e-4;
-  const MAX_STEPS   = 2000;
+  const MAX_STEPS   = 4000;
   const MAX_BOUNCES = 20;
 
   const segments = [];
