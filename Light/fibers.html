@@ -96,6 +96,8 @@ let circleRadius = 30;
 let raySpacing   = 4;
 let traceGrid    = null;   // spatial hash for O(1) ray–circle lookup
 let traceGridCS  = 1;      // cell size (px)
+let drySegs      = null;   // cached ray segments traced without water
+let wetSegs      = null;   // cached ray segments traced with water
 
 // ── vector helpers ────────────────────────────────────────────────────────────
 function norm(a) {
@@ -447,12 +449,25 @@ function updateCircleCountDisplay() {
   }
 }
 
-// ── render ────────────────────────────────────────────────────────────────────
-function render() {
-  W       = canvas.width;
-  H       = canvas.height;
-  UPPER_Y = Math.round(H / 6);
+// ── segment cache ─────────────────────────────────────────────────────────────
+// Traces all rays twice (dry and wet) and stores results so toggling water only
+// requires a redraw, not a retrace.
+function buildSegmentCache() {
+  const savedWater = waterOn;
 
+  waterOn = false;
+  drySegs = [];
+  for (let x = 0; x <= W; x += raySpacing) drySegs.push(traceRay(x));
+
+  waterOn = true;
+  wetSegs = [];
+  for (let x = 0; x <= W; x += raySpacing) wetSegs.push(traceRay(x));
+
+  waterOn = savedWater;
+}
+
+// ── draw scene from cache ─────────────────────────────────────────────────────
+function drawScene() {
   // Dark background
   ctx.fillStyle = '#05050e';
   ctx.fillRect(0, 0, W, H);
@@ -498,18 +513,29 @@ function render() {
     ctx.stroke();
   }
 
-  // Rays
-  for (let x = 0; x <= W; x += raySpacing) {
-    const segs = traceRay(x);
-    for (const s of segs) {
-      ctx.beginPath();
-      ctx.moveTo(s.x1, s.y1);
-      ctx.lineTo(s.x2, s.y2);
-      ctx.strokeStyle = 'rgba(255,210,60,0.85)';
-      ctx.lineWidth   = 1.6;
-      ctx.stroke();
+  // Rays from cache
+  const cache = waterOn ? wetSegs : drySegs;
+  if (cache) {
+    for (const segs of cache) {
+      for (const s of segs) {
+        ctx.beginPath();
+        ctx.moveTo(s.x1, s.y1);
+        ctx.lineTo(s.x2, s.y2);
+        ctx.strokeStyle = 'rgba(255,210,60,0.85)';
+        ctx.lineWidth   = 1.6;
+        ctx.stroke();
+      }
     }
   }
+}
+
+// ── render ────────────────────────────────────────────────────────────────────
+function render() {
+  W       = canvas.width;
+  H       = canvas.height;
+  UPPER_Y = Math.round(H / 6);
+  buildSegmentCache();
+  drawScene();
 }
 
 // ── controls ──────────────────────────────────────────────────────────────────
@@ -536,7 +562,7 @@ function initControls() {
   document.getElementById('slNw').addEventListener('input', function() {
     n_water = +this.value;
     document.getElementById('valNw').textContent = n_water.toFixed(2);
-    if (waterOn) render();
+    render();
   });
 
   document.getElementById('slSpacing').addEventListener('input', function() {
@@ -554,7 +580,7 @@ function initControls() {
     waterOn = !waterOn;
     this.textContent = waterOn ? 'Remove Water' : 'Add Water';
     this.classList.toggle('active', waterOn);
-    render();
+    drawScene();
   });
 }
 
