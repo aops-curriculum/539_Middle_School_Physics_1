@@ -49,22 +49,22 @@ let feedback = null;     // { correctWasA, chosenA, lawText, ok }
 let revealT0 = 0;
 let rafId    = null;
 
-// ── Refraction law statements (varied wordings) ──────────────────────────
+// ── Refraction law statements (varied wordings, shown only on misses) ───
 const LAW_TEXTS = [
     "Light bends toward the normal when entering a denser material " +
         "(like glass), and away from the normal when leaving it.",
     "Going from air into glass, light slows down and bends closer to " +
         "the normal. Going the other way, it speeds up and bends away.",
-    "Light bends toward the normal when it enters a slower (higher-n) " +
-        "material, and away from the normal when it enters a faster one.",
+    "Light bends toward the normal when it enters a slower material, " +
+        "and away from the normal when it enters a faster one.",
     "When a light ray enters a material where it travels slower, it " +
         "tilts closer to the normal line. When it enters a faster one, " +
         "it tilts farther from the normal.",
-    "Snell's law: n₁·sin θ₁ = n₂·sin θ₂. The side with the bigger n " +
-        "gets the smaller angle from the normal.",
     "The denser material (bigger index of refraction) always carries " +
         "the ray closer to the normal. Air-to-glass bends in; " +
         "glass-to-air bends out.",
+    "Bigger n means the light bends in toward the normal. Smaller n " +
+        "means it bends out away from the normal.",
 ];
 
 // ── Build a new problem ──────────────────────────────────────────────────
@@ -293,11 +293,12 @@ function drawIncident(p) {
     ctx.restore();
 }
 
-// ── Two dashed candidate rays ─────────────────────────────────────────────
+// ── Two dashed candidate rays (same colour — no A/B labels) ──────────────
 function drawCandidates(p) {
-    const drawOne = (ray, color) => {
+    const CAND_COLOR = 'rgba(220, 230, 255, 0.85)';
+    const drawOne = (ray) => {
         ctx.save();
-        ctx.strokeStyle = color;
+        ctx.strokeStyle = CAND_COLOR;
         ctx.lineWidth = 2.2;
         ctx.setLineDash([8, 6]);
         ctx.beginPath();
@@ -305,28 +306,11 @@ function drawCandidates(p) {
         ctx.lineTo(ray.end.x, ray.end.y);
         ctx.stroke();
         ctx.setLineDash([]);
-        arrowHead(p.hit.x, p.hit.y, ray.end.x, ray.end.y, color);
+        arrowHead(p.hit.x, p.hit.y, ray.end.x, ray.end.y, CAND_COLOR);
         ctx.restore();
     };
-    drawOne(p.rayA, 'rgba(255, 180, 180, 0.85)');
-    drawOne(p.rayB, 'rgba(180, 220, 255, 0.85)');
-
-    // Labels "A" and "B" near each ray's end
-    const labelRay = (ray, label, color) => {
-        const lx = p.hit.x + 0.78 * (ray.end.x - p.hit.x);
-        const ly = p.hit.y + 0.78 * (ray.end.y - p.hit.y);
-        // perpendicular offset
-        const dx = ray.end.x - p.hit.x, dy = ray.end.y - p.hit.y;
-        const len = Math.hypot(dx, dy) || 1;
-        const px = -dy / len, py = dx / len;
-        ctx.fillStyle = color;
-        ctx.font = 'bold 18px Arial';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText(label, lx + px * 18, ly + py * 18);
-        ctx.textBaseline = 'alphabetic';
-    };
-    labelRay(p.rayA, 'A', 'rgba(255, 180, 180, 0.95)');
-    labelRay(p.rayB, 'B', 'rgba(180, 220, 255, 0.95)');
+    drawOne(p.rayA);
+    drawOne(p.rayB);
 }
 
 // ── Normal + angle labels (shown during feedback) ────────────────────────
@@ -431,35 +415,29 @@ function drawNormalAndAngles(p) {
     ctx.textBaseline = 'alphabetic';
 }
 
-// ── Streak panel + Ibn Sahl diagram (filling in) ─────────────────────────
-// Panel is placed in the top-left corner of the canvas, with a translucent
-// background so it stays readable but doesn't fully block what's behind.
+// ── Streak panel ─────────────────────────────────────────────────────────
+// A small top-left panel showing "Streak: n/10" with a row of pips.
 function drawStreakPanel() {
-    const px = 8, py = 8, pw = 170, ph = 168;
+    const px = 8, py = 8, pw = 170, ph = 46;
 
     ctx.save();
-    // panel backdrop
-    ctx.fillStyle = 'rgba(15, 20, 40, 0.78)';
-    ctx.strokeStyle = 'rgba(120, 150, 200, 0.45)';
+    ctx.fillStyle = 'rgba(15, 20, 40, 0.72)';
+    ctx.strokeStyle = 'rgba(120, 150, 200, 0.40)';
     ctx.lineWidth = 1;
     ctx.beginPath();
     if (ctx.roundRect) {
-        ctx.roundRect(px, py, pw, ph, 8);
+        ctx.roundRect(px, py, pw, ph, 7);
     } else {
         ctx.rect(px, py, pw, ph);
     }
     ctx.fill();
     ctx.stroke();
 
-    // diagram region: top portion
-    const dx = px + 10, dy = py + 8, dw = pw - 20, dh = 110;
-    drawIbnSahlDiagram(dx, dy, dw, dh, streak);
-
     // streak text
     ctx.fillStyle = '#cce0ff';
-    ctx.font = 'bold 14px Arial';
+    ctx.font = 'bold 13px Arial';
     ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('Streak: ' + streak + '/10', px + pw / 2, py + ph - 32);
+    ctx.fillText('Streak: ' + streak + '/10', px + pw / 2, py + 14);
 
     // streak pip row
     const pipR = 4, pipGap = 13, pipY = py + ph - 13;
@@ -475,136 +453,6 @@ function drawStreakPanel() {
         ctx.stroke();
     }
     ctx.textBaseline = 'alphabetic';
-    ctx.restore();
-}
-
-// Ibn Sahl's geometric construction (simplified). Streak controls how much
-// of the diagram is rendered with full colour vs ghosted outline.
-//   t = streak/10
-//   Layers reveal at thresholds:
-//     1: interface line
-//     2: incident ray
-//     3: refracted ray
-//     4: normal at hit point
-//     5: circle
-//     6: construction perpendicular (incident-side chord projection)
-//     7: construction perpendicular (refracted-side chord projection)
-//     8: small angle ticks
-//     9: ratio label
-//    10: full colour everywhere
-function drawIbnSahlDiagram(x, y, w, h, str) {
-    ctx.save();
-    // Center diagram in box
-    const cx = x + w / 2;
-    const cy = y + h / 2 + 4;
-    const R = Math.min(w, h) * 0.32;
-
-    // Geometry (mimic a refraction at moderate angle): interface is vertical-ish
-    const intAngle = -Math.PI / 2; // interface direction (vertical line in display)
-    // Use horizontal interface for clarity: tangent = (1,0), normal = (0,-1)
-    const tg = { x: 1, y: 0 };
-    const nm = { x: 0, y: -1 };
-    // Incident from upper-left, refracted to lower-right
-    const thI = 38 * Math.PI / 180;
-    const thR = 24 * Math.PI / 180;
-    const iEnd = { x: cx - R * Math.sin(thI), y: cy - R * Math.cos(thI) };
-    const rEnd = { x: cx + R * Math.sin(thR), y: cy + R * Math.cos(thR) };
-
-    // Layer helper: ghosted vs solid based on whether layer is "unlocked"
-    function lc(layer, solidColor, ghostColor) {
-        return str >= layer ? solidColor : ghostColor;
-    }
-    const GHOST_STROKE = 'rgba(140, 160, 200, 0.22)';
-    const GHOST_FILL   = 'rgba(140, 160, 200, 0.18)';
-
-    // Background tints for the two sides (only visible at higher streaks)
-    if (str >= 1) {
-        const a1 = Math.min(1, str / 10) * 0.18;
-        ctx.fillStyle = `rgba(150, 200, 255, ${a1})`;
-        ctx.fillRect(x, y, w, (cy - y));
-        ctx.fillStyle = `rgba(80, 140, 220, ${a1 + 0.10})`;
-        ctx.fillRect(x, cy, w, (y + h) - cy);
-    }
-
-    // (1) Interface line
-    ctx.strokeStyle = lc(1, 'rgba(220, 230, 255, 0.95)', GHOST_STROKE);
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(x + 4, cy); ctx.lineTo(x + w - 4, cy);
-    ctx.stroke();
-
-    // (5) Circle around hit point
-    ctx.strokeStyle = lc(5, 'rgba(220, 200, 130, 0.85)', GHOST_STROKE);
-    ctx.lineWidth = 1.4;
-    ctx.beginPath();
-    ctx.arc(cx, cy, R, 0, Math.PI * 2);
-    ctx.stroke();
-
-    // (4) Normal at hit point
-    ctx.strokeStyle = lc(4, 'rgba(160, 200, 255, 0.85)', GHOST_STROKE);
-    ctx.lineWidth = 1.2;
-    ctx.setLineDash([4, 4]);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy - R - 6);
-    ctx.lineTo(cx, cy + R + 6);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // (6) Perpendicular from incident-circle point to the normal
-    if (str >= 1) {
-        ctx.strokeStyle = lc(6, 'rgba(255, 200, 100, 0.85)', GHOST_STROKE);
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.moveTo(iEnd.x, iEnd.y);
-        ctx.lineTo(cx, iEnd.y);
-        ctx.stroke();
-    }
-
-    // (7) Perpendicular from refracted-circle point to the normal
-    if (str >= 1) {
-        ctx.strokeStyle = lc(7, 'rgba(140, 230, 255, 0.85)', GHOST_STROKE);
-        ctx.lineWidth = 1.4;
-        ctx.beginPath();
-        ctx.moveTo(rEnd.x, rEnd.y);
-        ctx.lineTo(cx, rEnd.y);
-        ctx.stroke();
-    }
-
-    // (2) Incident ray (from iEnd to hit)
-    ctx.strokeStyle = lc(2, '#ffe566', GHOST_STROKE);
-    ctx.lineWidth = 2.2;
-    ctx.beginPath();
-    ctx.moveTo(iEnd.x, iEnd.y); ctx.lineTo(cx, cy);
-    ctx.stroke();
-
-    // (3) Refracted ray (from hit to rEnd)
-    ctx.strokeStyle = lc(3, '#ffe566', GHOST_STROKE);
-    ctx.beginPath();
-    ctx.moveTo(cx, cy); ctx.lineTo(rEnd.x, rEnd.y);
-    ctx.stroke();
-
-    // Hit point dot
-    if (str >= 1) {
-        ctx.fillStyle = lc(1, '#ffffff', GHOST_FILL);
-        ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // (8) Small ticks at chord intersection points
-    if (str >= 8) {
-        ctx.fillStyle = 'rgba(255, 200, 100, 0.95)';
-        ctx.beginPath(); ctx.arc(iEnd.x, iEnd.y, 2.5, 0, Math.PI * 2); ctx.fill();
-        ctx.fillStyle = 'rgba(140, 230, 255, 0.95)';
-        ctx.beginPath(); ctx.arc(rEnd.x, rEnd.y, 2.5, 0, Math.PI * 2); ctx.fill();
-    }
-
-    // (9) Ratio label
-    if (str >= 9) {
-        ctx.fillStyle = 'rgba(255, 230, 150, 0.9)';
-        ctx.font = 'italic 10px Arial';
-        ctx.textAlign = 'center';
-        ctx.fillText('sin θᵢ / sin θᵣ = n', cx, y + h - 2);
-    }
-
     ctx.restore();
 }
 
@@ -635,21 +483,16 @@ function drawActionBar() {
         if (feedback.ok) {
             ctx.fillStyle = '#44ff88';
             ctx.font = 'bold 15px Arial';
-            ctx.fillText('Correct! ' + feedback.lawText, W / 2, by + 18);
+            ctx.fillText('Correct!', W / 2, by + 18);
+            ctx.fillStyle = '#9bb';
+            ctx.font = '12px Arial';
+            ctx.fillText('Click anywhere to continue.', W / 2, by + 40);
         } else {
             ctx.fillStyle = '#ff7080';
             ctx.font = 'bold 14px Arial';
             ctx.fillText('Not quite — streak reset.', W / 2, by + 14);
-        }
-        // Subline: either law text (if wrong) or click-to-continue
-        ctx.fillStyle = '#cce0ff';
-        ctx.font = '12px Arial';
-        if (!feedback.ok) {
-            // Wrap the law text into two lines if needed
-            wrapText(feedback.lawText, W / 2, by + 32, W - 20, 14, '#ffd2a0');
-        } else {
-            ctx.fillStyle = '#9bb';
-            ctx.fillText('Click anywhere to continue.', W / 2, by + 40);
+            // Law-of-refraction reminder (wrapped to fit)
+            wrapText(feedback.lawText, W / 2, by + 36, W - 20, 14, '#ffd2a0');
         }
     }
     ctx.restore();
@@ -836,7 +679,7 @@ function startReveal() {
 function revealFrame(now) {
     const elapsed = (now - revealT0) / 1000;
     drawRevealOverlay(elapsed);
-    if (elapsed < 8.5) {
+    if (elapsed < 5.0) {
         rafId = requestAnimationFrame(revealFrame);
     } else {
         rafId = null;
@@ -877,63 +720,68 @@ function drawRevealOverlay(t) {
     }
 
     // Stage timings
-    const stage1 = 1.2;   // tiny password drawn (very small)
-    const stage2 = 2.5;   // magnifying glass enters
-    const stage3 = 5.0;   // magnifier hovers/zooms; password revealed large
-    const stage4 = 6.0;   // explanation appears
+    const stage1 = 0.9;   // tiny password appears
+    const stage2 = 1.6;   // magnifying glass enters and travels to text
+    // (text grows to large size the instant the magnifier arrives)
+    const stage4 = 3.6;   // explanation appears
 
-    // Tiny password position
-    const tpx = W / 2, tpy = 220;
+    // Tiny-password position
+    const tpx = W / 2, tpy = 230;
 
-    // Draw the tiny password (always, after stage1 begins)
+    // Font that clearly distinguishes capital I from lowercase l:
+    // Georgia is a serif font where I has serifs and l is a vertical stroke.
+    const PW_FONT_FAMILY = 'Georgia, "Times New Roman", serif';
+
+    // Show the tiny password starting at stage1.
     if (t > stage1) {
         const a = Math.min(1, (t - stage1) / 0.6);
         ctx.globalAlpha = a;
         ctx.fillStyle = 'rgba(220, 230, 255, 0.85)';
-        ctx.font = 'bold 6px Arial';
+        ctx.font = 'bold 8px ' + PW_FONT_FAMILY;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
         ctx.fillText('Ibn Sahl', tpx, tpy);
     }
 
-    // Magnifying glass: animates from off-canvas left to over the text,
-    // then "zooms" the text bigger.
+    // Magnifying glass: large enough that the eventual big text fits
+    // entirely inside the lens. "Ibn Sahl" at 32px bold serif is ~115px
+    // wide, so a 75px-radius lens gives comfortable margin.
+    const MAG_R = 78;
+    const TRAVEL_DUR = 1.4;
+
     if (t > stage2) {
-        const localT = Math.min(1, (t - stage2) / 1.2);
-        // ease in-out
+        const localT = Math.min(1, (t - stage2) / TRAVEL_DUR);
         const e = localT < 0.5
             ? 2 * localT * localT
             : 1 - Math.pow(-2 * localT + 2, 2) / 2;
-        const mx = -60 + (tpx - (-60)) * e;
-        const my = tpy + 20 - e * 20;
-        const mr = 36;
+        const startX = -MAG_R - 20;
+        const mx = startX + (tpx - startX) * e;
+        const my = tpy;
 
         ctx.globalAlpha = 1;
         // handle
         ctx.strokeStyle = '#a07040';
-        ctx.lineWidth = 7;
+        ctx.lineWidth = 9;
         ctx.lineCap = 'round';
         ctx.beginPath();
-        ctx.moveTo(mx + mr * 0.7, my + mr * 0.7);
-        ctx.lineTo(mx + mr * 1.7, my + mr * 1.7);
+        ctx.moveTo(mx + MAG_R * 0.7, my + MAG_R * 0.7);
+        ctx.lineTo(mx + MAG_R * 1.6, my + MAG_R * 1.6);
         ctx.stroke();
         ctx.lineCap = 'butt';
 
         // lens
         ctx.beginPath();
-        ctx.arc(mx, my, mr, 0, Math.PI * 2);
-        ctx.fillStyle = 'rgba(180, 220, 255, 0.18)';
+        ctx.arc(mx, my, MAG_R, 0, Math.PI * 2);
+        ctx.fillStyle = 'rgba(180, 220, 255, 0.16)';
         ctx.fill();
         ctx.strokeStyle = '#9aa8c0';
         ctx.lineWidth = 4;
         ctx.stroke();
 
-        // While magnifier is over the password (stage 3 onward), draw
-        // a "magnified" version of "Ibn Sahl" inside the lens.
-        if (t > stage3) {
-            const zT = Math.min(1, (t - stage3) / 0.6);
-            const fontPx = 6 + zT * 28;   // 6 → 34
+        // Once the magnifier has fully arrived over the password, the text
+        // is *immediately* shown at full large size (no slow zoom).
+        if (localT >= 1) {
             ctx.fillStyle = '#ffe566';
-            ctx.font = 'bold ' + fontPx.toFixed(1) + 'px Arial';
+            ctx.font = 'bold 32px ' + PW_FONT_FAMILY;
             ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
             ctx.fillText('Ibn Sahl', mx, my);
         }
@@ -944,10 +792,10 @@ function drawRevealOverlay(t) {
         const a = Math.min(1, (t - stage4) / 0.8);
         ctx.globalAlpha = a;
         const expl =
-            'Ibn Sahl was a 10th-century Persian mathematician who, in his ' +
-            'treatise on burning lenses (c. 984 CE), wrote down the exact ' +
-            'law of refraction more than 600 years before Snell.';
-        wrapText(expl, W / 2, 350, W - 80, 19, '#cce0ff');
+            'Ibn Sahl was a 10th-century Persian mathematician who was the ' +
+            'first to write down the exact mathematical law of refraction, ' +
+            'in his treatise on burning lenses around 984 CE.';
+        wrapText(expl, W / 2, 380, W - 80, 19, '#cce0ff');
 
         // Restart hint
         ctx.fillStyle = '#9bb';
