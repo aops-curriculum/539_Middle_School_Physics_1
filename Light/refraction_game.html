@@ -81,11 +81,19 @@ function newProblem() {
     // Interface center, pulled up a bit so the bottom action bar doesn't
     // cover ray endpoints.
     const cx = W / 2, cy = 218;
-    const halfLen = 280;
-    const pA = { x: cx - halfLen * tangent.x, y: cy - halfLen * tangent.y };
-    const pB = { x: cx + halfLen * tangent.x, y: cy + halfLen * tangent.y };
 
-    // Hit point: fraction 0.30..0.70 along the interface (a bit more central)
+    // Extend the interface all the way across the canvas (intersect the
+    // infinite line through (cx, cy) with direction tangent against the
+    // left/right canvas edges). Interface tilt is limited to ±25° so the
+    // intersections always fall within y∈[0, H].
+    const tA = -cx / tangent.x;          // parameter at x = 0
+    const tB = (W - cx) / tangent.x;     // parameter at x = W
+    const pA = { x: cx + tA * tangent.x, y: cy + tA * tangent.y };
+    const pB = { x: cx + tB * tangent.x, y: cy + tB * tangent.y };
+
+    // Hit point sits in the central portion of the interface, away from
+    // the canvas edges.
+    const halfLen = 280;
     const hitFrac = 0.30 + Math.random() * 0.40;
     const t = (hitFrac - 0.5) * 2 * halfLen;
     const hit = { x: cx + t * tangent.x, y: cy + t * tangent.y };
