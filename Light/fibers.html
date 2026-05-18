@@ -236,10 +236,9 @@ function traceRay(startX) {
 
   // Track whether ray is currently in water (always starts in air at y=0)
   let inWater = false;
-  let finalSegDone = false;
 
   for (let step = 0; step < MAX_STEPS; step++) {
-    if (px < -W || px > 2*W || py < -H || py > 2*H) { finalSegDone = true; break; }
+    if (px < -W || px > 2*W || py < -H || py > 2*H) break;
 
     const n_bg = (waterOn && inWater) ? n_water : 1.0;
 
@@ -271,7 +270,6 @@ function traceRay(startX) {
       if (dy < 0) tEnd = Math.min(tEnd, (-py)      / dy);
       if (isFinite(tEnd) && tEnd > 0)
         segments.push({x1:px, y1:py, x2:px+dx*tEnd, y2:py+dy*tEnd, medium: inWater ? 'water' : 'air'});
-      finalSegDone = true;
       break;
     }
 
@@ -372,17 +370,6 @@ function traceRay(startX) {
         break;
       }
     }
-  }
-
-  // If the step limit was hit while still on canvas, extend the ray to the edge.
-  if (!finalSegDone && px >= 0 && px <= W && py >= 0 && py <= H) {
-    let tEnd = Infinity;
-    if (dx > 0) tEnd = Math.min(tEnd, (W  - px) / dx);
-    if (dx < 0) tEnd = Math.min(tEnd, (0  - px) / dx);
-    if (dy > 0) tEnd = Math.min(tEnd, (H  - py) / dy);
-    if (dy < 0) tEnd = Math.min(tEnd, (-py)      / dy);
-    if (isFinite(tEnd) && tEnd > 0)
-      segments.push({x1:px, y1:py, x2:px+dx*tEnd, y2:py+dy*tEnd, medium: inWater ? 'water' : 'air'});
   }
 
   return segments;
