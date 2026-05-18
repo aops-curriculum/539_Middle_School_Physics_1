@@ -219,13 +219,19 @@ function drawBackground(p) {
     const FAR = 1200;
 
     function fillSide(sign, color) {
-        // Polygon: a strip on one side of the interface, extending far away.
+        // Polygon: a strip on one side of the interface, extended FAR along
+        // BOTH the tangent (well beyond the canvas edges) and the normal,
+        // so the parallelogram always covers the full canvas on its side.
+        // (Without the tangent extension, a tilted normal would clip the
+        // canvas corners.)
         ctx.fillStyle = color;
         ctx.beginPath();
-        ctx.moveTo(p.pA.x, p.pA.y);
-        ctx.lineTo(p.pA.x + sign * FAR * n.x, p.pA.y + sign * FAR * n.y);
-        ctx.lineTo(p.pB.x + sign * FAR * n.x, p.pB.y + sign * FAR * n.y);
-        ctx.lineTo(p.pB.x, p.pB.y);
+        const exA = { x: p.pA.x - FAR * t.x, y: p.pA.y - FAR * t.y };
+        const exB = { x: p.pB.x + FAR * t.x, y: p.pB.y + FAR * t.y };
+        ctx.moveTo(exA.x, exA.y);
+        ctx.lineTo(exA.x + sign * FAR * n.x, exA.y + sign * FAR * n.y);
+        ctx.lineTo(exB.x + sign * FAR * n.x, exB.y + sign * FAR * n.y);
+        ctx.lineTo(exB.x, exB.y);
         ctx.closePath();
         ctx.fill();
     }
