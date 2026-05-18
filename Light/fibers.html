@@ -169,18 +169,38 @@ function buildTraceGrid() {
 }
 
 function nearestCircleHit(px, py, dx, dy, EPS) {
-  const cs  = traceGridCS;
-  const r   = circleRadius;
-  let minT  = Infinity, hitIdx = -1;
-  const gcol = Math.floor(px / cs);
-  const grow = Math.floor(py / cs);
-  const maxRing = Math.ceil((Math.max(W, H) + r) / cs) + 1;
+  const cs = traceGridCS;
+  let minT = Infinity, hitIdx = -1;
 
-  for (let ring = 0; ring <= maxRing; ring++) {
-    // Visit only the border cells of the square at Chebyshev distance `ring`.
-    for (let dc = -ring; dc <= ring; dc++) {
-      for (let dr = -ring; dr <= ring; dr++) {
-        if (ring > 0 && Math.abs(dc) < ring && Math.abs(dr) < ring) continue;
+  // DDA: step through grid cells along the ray, checking a 3×3 neighbourhood at
+  // each cell.  Correctness guarantee: a circle that intersects the ray has its
+  // centre within r < cs/2 of the ray, so within 1 cell perpendicularly — it
+  // always falls inside the 3×3 of the cell the ray is currently in or the next
+  // one.  We stop as soon as the best hit found is ≤ the distance to the next
+  // cell boundary (no closer circle can exist in unvisited cells).
+  let gcol = Math.floor(px / cs);
+  let grow = Math.floor(py / cs);
+
+  const stepX = dx > 0 ? 1 : dx < 0 ? -1 : 0;
+  const stepY = dy > 0 ? 1 : dy < 0 ? -1 : 0;
+
+  let tMaxX, tDeltaX;
+  if (dx !== 0) {
+    tDeltaX = Math.abs(cs / dx);
+    tMaxX   = ((dx > 0 ? gcol + 1 : gcol) * cs - px) / dx;
+  } else { tDeltaX = Infinity; tMaxX = Infinity; }
+
+  let tMaxY, tDeltaY;
+  if (dy !== 0) {
+    tDeltaY = Math.abs(cs / dy);
+    tMaxY   = ((dy > 0 ? grow + 1 : grow) * cs - py) / dy;
+  } else { tDeltaY = Infinity; tMaxY = Infinity; }
+
+  const maxT = Math.sqrt(W * W + H * H) + cs;
+
+  while (true) {
+    for (let dc = -1; dc <= 1; dc++) {
+      for (let dr = -1; dr <= 1; dr++) {
         const cell = traceGrid.get((gcol + dc) * 100003 + (grow + dr));
         if (!cell) continue;
         for (const ci of cell) {
@@ -192,10 +212,11 @@ function nearestCircleHit(px, py, dx, dy, EPS) {
         }
       }
     }
-    // Min distance to a circle surface in ring+1 or beyond = ring*cs − r.
-    // If our best hit is already ≤ that, no outer ring can beat it.
-    if (ring * cs - r >= 0 && minT <= ring * cs - r) break;
-    if ((ring - 1) * cs > Math.max(W, H) + r) break;
+    const tNext = Math.min(tMaxX, tMaxY);
+    if (minT <= tNext) break;   // best hit is in this cell or earlier — done
+    if (tNext >= maxT)  break;  // past canvas diagonal — done
+    if (tMaxX <= tMaxY) { tMaxX += tDeltaX; gcol += stepX; }
+    else                { tMaxY += tDeltaY; grow += stepY; }
   }
   return { minT, hitIdx };
 }
