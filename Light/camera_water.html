@@ -23,6 +23,9 @@ canvas.grabbing { cursor: grabbing; }
 </head>
 <body>
 <canvas id="c" width="540" height="405"></canvas>
+<div style="margin-top:6px; font-size:14px; font-family:Arial,sans-serif;">
+  <label><input type="checkbox" id="normalCb"> normal</label>
+</div>
 <script>
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
@@ -69,6 +72,7 @@ const addDashedBtn = { x: 120 * S, y: 10 * S, w: 100 * S, h: 28 * S, label: 'Add
 const clearBtn = { x: 230 * S, y: 10 * S, w: 80 * S, h: 28 * S, label: 'Clear' };
 
 let dragging = null;
+let showNormal = false;
 
 const HANDLE_R = 4 * S; // half the original size
 
@@ -561,6 +565,7 @@ function drawMagnifier() {
   drawCamera();
   drawDashedLines();
   drawRays();
+  drawNormal();
 
   ctx.restore();
 
@@ -572,6 +577,34 @@ function drawMagnifier() {
   ctx.stroke();
 }
 
+function getFirstRayWaterIntersection() {
+  if (rays.length === 0) return null;
+  const r = rays[0];
+  const dy = r.y2 - r.y1;
+  if (Math.abs(dy) < 0.001) return null;
+  const t = (waterTopY - r.y1) / dy;
+  const x = r.x1 + t * (r.x2 - r.x1);
+  const wL = cupCenterX - waterHalfWidth;
+  const wR = cupCenterX + waterHalfWidth;
+  if (x < wL || x > wR) return null;
+  return { x, y: waterTopY };
+}
+
+function drawNormal() {
+  if (!showNormal) return;
+  const pt = getFirstRayWaterIntersection();
+  if (!pt) return;
+  const halfLen = cupHeight / 4;
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 2 * S;
+  ctx.setLineDash([6 * S, 4 * S]);
+  ctx.beginPath();
+  ctx.moveTo(pt.x, pt.y - halfLen);
+  ctx.lineTo(pt.x, pt.y + halfLen);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
 function draw() {
   ctx.fillStyle = '#f0f0f0';
   ctx.fillRect(0, 0, W, H);
@@ -581,6 +614,7 @@ function draw() {
   drawCamera();
   drawDashedLines();
   drawRays();
+  drawNormal();
 
   drawMagnifier();
 
@@ -590,6 +624,11 @@ function draw() {
 }
 
 draw();
+
+document.getElementById('normalCb').addEventListener('change', function() {
+  showNormal = this.checked;
+  draw();
+});
 
 function reportHeight() {
   window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
