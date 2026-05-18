@@ -15,9 +15,10 @@ body {
   text-align: center;
 }
 canvas {
-  cursor: grab;
+  cursor: default;
   display: inline-block;
 }
+canvas.grabbable { cursor: grab; }
 canvas.grabbing { cursor: grabbing; }
 </style>
 </head>
@@ -153,9 +154,12 @@ function onDown(e) {
 }
 
 function onMove(e) {
-  if (!dragging) return;
-  e.preventDefault();
   const p = getPos(e);
+  if (!dragging) {
+    canvas.classList.toggle('grabbable', !!hitTest(p));
+    return;
+  }
+  e.preventDefault();
   if (dragging.type === 'camera') {
     camY = Math.max(camMinY, Math.min(camMaxY, p.y));
   } else if (dragging.type === 'ray') {
@@ -182,6 +186,7 @@ function onUp(e) {
 canvas.addEventListener('mousedown', onDown);
 window.addEventListener('mousemove', onMove);
 window.addEventListener('mouseup', onUp);
+canvas.addEventListener('mouseleave', () => { if (!dragging) canvas.classList.remove('grabbable'); });
 canvas.addEventListener('touchstart', onDown, { passive: false });
 window.addEventListener('touchmove', onMove, { passive: false });
 window.addEventListener('touchend', onUp, { passive: false });
