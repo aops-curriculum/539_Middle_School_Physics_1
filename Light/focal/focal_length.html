@@ -204,5 +204,43 @@
 
     show(0);
   </script>
+<script>
+// EigenNode auto-height v2.1
+(function() {
+  // 4px buffer because: (1) browsers round subpixel layout up so scrollHeight
+  // often ends 1px over the body's set height, and (2) EigenNode's parent
+  // ignores postMessage diffs < 3px to suppress animation noise — so without
+  // a buffer the iframe can sit 1-2px below content and show a faint scroll.
+  var BUFFER = 4;
+  function measure() {
+    var b = document.body, h = document.documentElement;
+    if (!b) return 0;
+    var max = Math.max(b.scrollHeight||0, b.offsetHeight||0, (h&&h.scrollHeight)||0, (h&&h.offsetHeight)||0);
+    // If body is sized to viewport (height:100vh), scrollHeight just echoes
+    // the iframe's height. Recover real content extent from children's bbox.
+    var minTop = 0, maxBot = 0, br = b.getBoundingClientRect();
+    for (var i = 0; i < b.children.length; i++) {
+      var r = b.children[i].getBoundingClientRect();
+      var top = r.top - br.top, bot = top + r.height;
+      if (top < minTop) minTop = top;
+      if (bot > maxBot) maxBot = bot;
+    }
+    var span = maxBot - minTop;
+    if (span > max) max = span;
+    return Math.ceil(max) + BUFFER;
+  }
+  var last = 0;
+  function report() {
+    var h = measure();
+    if (h > 0 && Math.abs(h - last) >= 2) {
+      last = h;
+      window.parent.postMessage({ type: 'resize', height: h }, '*');
+    }
+  }
+  window.addEventListener('load', report);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(report);
+  if (window.ResizeObserver && document.body) new ResizeObserver(report).observe(document.body);
+})();
+</script>
 </body>
 </html>
