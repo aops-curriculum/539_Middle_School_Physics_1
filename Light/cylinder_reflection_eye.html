@@ -1742,8 +1742,10 @@ img{width:${imgW_cm.toFixed(2)}cm;height:${imgH_cm.toFixed(2)}cm;display:block}
 <div class="note">⚠ Print at exactly 100% scale — do NOT scale to fit page</div>
 <script>window.onload=function(){window.print()}<\/script>
 <script>
-// EigenNode auto-height v2
+// EigenNode auto-height v2.1
 (function() {
+  // 4px buffer to clear subpixel rounding and the parent's >=3px noise threshold.
+  var BUFFER = 4;
   function measure() {
     var b = document.body, h = document.documentElement;
     if (!b) return 0;
@@ -1759,7 +1761,7 @@ img{width:${imgW_cm.toFixed(2)}cm;height:${imgH_cm.toFixed(2)}cm;display:block}
     }
     var span = maxBot - minTop;
     if (span > max) max = span;
-    return Math.ceil(max);
+    return Math.ceil(max) + BUFFER;
   }
   var last = 0;
   function report() {

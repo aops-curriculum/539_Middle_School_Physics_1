@@ -1106,8 +1106,10 @@ resize();
 draw();
 </script>
 <script>
-// EigenNode auto-height v2
+// EigenNode auto-height v2.1
 (function() {
+  // 4px buffer to clear subpixel rounding and the parent's >=3px noise threshold.
+  var BUFFER = 4;
   function measure() {
     var b = document.body, h = document.documentElement;
     if (!b) return 0;
@@ -1123,7 +1125,7 @@ draw();
     }
     var span = maxBot - minTop;
     if (span > max) max = span;
-    return Math.ceil(max);
+    return Math.ceil(max) + BUFFER;
   }
   var last = 0;
   function report() {
