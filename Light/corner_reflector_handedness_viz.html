@@ -303,10 +303,13 @@
         draw();
     </script>
 <script>
-// EigenNode auto-height v2.1
+// EigenNode auto-height v2.3
 (function() {
-  // 4px buffer to clear subpixel rounding and the parent's >=3px noise threshold.
+  // 4px buffer for subpixel rounding + parent's >=3px noise threshold.
+  // 18px extra when horizontal overflow forces a scrollbar (eats vertical
+  // space — common in AoPS classroom where iframe column is < 600px content).
   var BUFFER = 4;
+  var H_SCROLLBAR = 18;
   function measure() {
     var b = document.body, h = document.documentElement;
     if (!b) return 0;
@@ -322,7 +325,11 @@
     }
     var span = maxBot - minTop;
     if (span > max) max = span;
-    return Math.ceil(max) + BUFFER;
+    // Check documentElement only — that's the element that owns the iframe's
+    // horizontal scrollbar. Body can be narrower than iframe and have its own
+    // 1-2px overflow that doesn't actually trigger a scrollbar.
+    var hOverflow = h && (h.scrollWidth - h.clientWidth) >= 4;
+    return Math.ceil(max) + BUFFER + (hOverflow ? H_SCROLLBAR : 0);
   }
   var last = 0;
   function report() {
