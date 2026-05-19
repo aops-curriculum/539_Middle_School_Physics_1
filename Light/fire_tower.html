@@ -228,5 +228,11 @@ const FireTowerSimulation = () => {
 
 ReactDOM.render(<FireTowerSimulation />, document.getElementById('root'));
 </script>
+<script>
+// Auto-height for EigenNode + AoPS iframe embedding.
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
 </body>
 </html>

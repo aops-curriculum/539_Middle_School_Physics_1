@@ -1741,6 +1741,12 @@ img{width:${imgW_cm.toFixed(2)}cm;height:${imgH_cm.toFixed(2)}cm;display:block}
 <img src="${dataUrl}" alt="anamorphic art">
 <div class="note">⚠ Print at exactly 100% scale — do NOT scale to fit page</div>
 <script>window.onload=function(){window.print()}<\/script>
+<script>
+// Auto-height for EigenNode + AoPS iframe embedding.
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
 </body></html>`);
   win.document.close();
 });

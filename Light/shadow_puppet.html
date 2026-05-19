@@ -356,5 +356,11 @@
         resize();
         draw();
     </script>
+<script>
+// Auto-height for EigenNode + AoPS iframe embedding.
+window.addEventListener('load', () => {
+  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
+});
+</script>
 </body>
 </html>
