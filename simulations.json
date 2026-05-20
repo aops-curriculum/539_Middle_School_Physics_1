@@ -830,13 +830,6 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
-    },
-    {
-      "path": "measure_spring.html",
-      "title": "Spring Measurement",
-      "description": "New simulation - description pending.",
-      "emoji": "🔬",
-      "category": "other"
     }
   ]
 }
