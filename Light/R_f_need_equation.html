@@ -14,71 +14,62 @@ body {
   user-select: none;
   -webkit-user-select: none;
   color: #fff;
-  padding: 12px 0 18px 0;
-}
-.text-block {
-  text-align: center;
-  font-size: 17px;
-  line-height: 1.7;
-  padding: 10px 16px 0 16px;
+  padding: 6px 0 8px 0;
 }
 .slider-row {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
-  margin: 8px 0 2px 0;
+  gap: 12px;
+  margin: 2px 0;
+}
+.slider-label {
+  font-size: 14px;
 }
 .slider-row input[type=range] {
-  width: 180px;
+  width: 220px;
   accent-color: #3498db;
   cursor: pointer;
 }
-.math { font-style: italic; }
-.unit { font-style: normal; }
 .val-box {
   display: inline-block;
   border: 2px solid #fff;
   border-radius: 4px;
   padding: 1px 7px;
-  margin: 0 1px;
+  margin: 0 2px;
+}
+.caption-line {
+  text-align: center;
+  font-size: 15px;
+  margin: 4px 0 2px 0;
+  white-space: nowrap;
 }
 canvas {
   display: block;
-  margin: 10px auto 0 auto;
+  margin: 6px auto 0 auto;
   border: 1px solid #333;
   border-radius: 6px;
   cursor: default;
-}
-.instructions {
-  text-align: center;
-  font-size: 14px;
-  color: #aaa;
-  margin: 8px 0 2px 0;
 }
 </style>
 </head>
 <body>
 
-<div class="instructions">Drag the slider to change the radius of curvature.</div>
-
-<div class="text-block">
-  <div class="slider-row">
-    <input type="range" id="rSlider" min="20" max="120" value="60" step="1">
-  </div>
-  <div id="caption"></div>
+<div class="slider-row">
+  <span class="slider-label">Drag to change <i>R</i></span>
+  <input type="range" id="rSlider" min="20" max="120" value="60" step="1">
 </div>
+<div id="caption" class="caption-line"></div>
 
-<canvas id="canvas" width="600" height="420"></canvas>
+<canvas id="canvas" width="600" height="370"></canvas>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = 600, H = 420;
+const W = 600, H = 370;
 const slider = document.getElementById('rSlider');
 const captionEl = document.getElementById('caption');
 
-// Scale: 1 cm = 2.8 px  (so R=120cm ≈ 336px which fits)
 const SCALE = 2.8;
 const SCALE_BAR_CM = 10;
 
@@ -89,8 +80,8 @@ function updateCaption() {
   const f = (R / 2).toFixed(0);
   const Rstr = R.toFixed(0);
   captionEl.innerHTML =
-    'A spherical concave mirror has radius of curvature <span class="val-box"><i>R</i>&nbsp;=&nbsp;' + Rstr + '&nbsp;cm</span>. ' +
-    'The focal length is <span class="val-box"><i>f</i>&nbsp;=&nbsp;' + f + '&nbsp;cm</span>.';
+    'Radius of Curvature: <span class="val-box"><i>R</i>&nbsp;=&nbsp;' + Rstr + '&nbsp;cm</span>' +
+    '&nbsp;&nbsp;&nbsp;&nbsp;Focal Length: <span class="val-box"><i>f</i>&nbsp;=&nbsp;' + f + '&nbsp;cm</span>';
 }
 
 function drawArrowhead(ctx, x, y, angle, len) {
@@ -114,12 +105,10 @@ function draw() {
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, W, H);
 
-  // Mirror center of curvature position (C)
-  // Mirror vertex on the right, center of curvature to the left
-  const mirrorVx = W - 80;          // vertex of mirror (rightmost point)
-  const axisY = H / 2 - 20;         // optical axis y
-  const Cx = mirrorVx - R_px;       // center of curvature x
-  const Fx = mirrorVx - f_px;       // focal point x
+  const mirrorVx = W - 80;
+  const axisY = H / 2 - 10;
+  const Cx = mirrorVx - R_px;
+  const Fx = mirrorVx - f_px;
 
   // --- Optical axis ---
   ctx.strokeStyle = 'rgba(255,255,255,0.18)';
@@ -141,9 +130,7 @@ function draw() {
   ctx.setLineDash([]);
 
   // --- Draw concave mirror arc (40 degrees) ---
-  const halfAngle = (40 / 2) * Math.PI / 180; // 20 deg each side
-  // Arc is part of circle centered at Cx,axisY with radius R_px
-  // The mirror is on the right side of the center, so angle 0 (pointing right)
+  const halfAngle = (40 / 2) * Math.PI / 180;
   const arcStart = -halfAngle;
   const arcEnd = halfAngle;
   ctx.strokeStyle = '#ccc';
@@ -152,7 +139,6 @@ function draw() {
   ctx.arc(Cx, axisY, R_px, arcStart, arcEnd);
   ctx.stroke();
 
-  // Add a slight reflective sheen
   ctx.strokeStyle = 'rgba(255,255,255,0.25)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -163,26 +149,19 @@ function draw() {
   const numRays = 5;
   const maxY = R_px * Math.sin(halfAngle);
   for (let i = 0; i < numRays; i++) {
-    // evenly spaced rays (skip center for clarity, or include it)
-    const t = (i / (numRays - 1)) * 2 - 1; // -1 to 1
+    const t = (i / (numRays - 1)) * 2 - 1;
     const rayY_offset = t * maxY * 0.9;
     const rayY = axisY + rayY_offset;
 
-    // Incoming ray: horizontal from the left to the mirror surface
-    // Find intersection with the mirror arc (circle centered Cx, axisY, radius R_px)
-    // For horizontal ray at y = rayY:
-    // (x - Cx)^2 + (rayY - axisY)^2 = R_px^2
     const dy = rayY - axisY;
     const dxSq = R_px * R_px - dy * dy;
     if (dxSq < 0) continue;
-    const hitX = Cx + Math.sqrt(dxSq); // rightmost intersection
+    const hitX = Cx + Math.sqrt(dxSq);
     const hitY = rayY;
 
-    // Check that this point is within the arc
     const angleAtHit = Math.atan2(hitY - axisY, hitX - Cx);
     if (Math.abs(angleAtHit) > halfAngle) continue;
 
-    // Draw incoming ray
     ctx.strokeStyle = 'rgba(231,76,60,0.8)';
     ctx.lineWidth = 1.8;
     ctx.beginPath();
@@ -190,25 +169,19 @@ function draw() {
     ctx.lineTo(hitX, hitY);
     ctx.stroke();
 
-    // Draw arrowhead on incoming ray near mirror
     const arrX = hitX - 30;
     drawArrowhead(ctx, arrX, rayY, 0, 10);
 
-    // Reflected ray: from hit point to focal point, and extend a bit beyond
-    // Normal at hit point points from hit toward center: direction (Cx - hitX, axisY - hitY)
     const nx = Cx - hitX;
     const ny = axisY - hitY;
     const nLen = Math.sqrt(nx * nx + ny * ny);
     const nnx = nx / nLen;
     const nny = ny / nLen;
 
-    // Incoming direction: (1, 0) — horizontal to the right
-    // Reflect: r = d - 2(d·n)n
     const dot = 1 * nnx + 0 * nny;
     const rx = 1 - 2 * dot * nnx;
     const ry = 0 - 2 * dot * nny;
 
-    // Draw reflected ray from hit to well past focal point
     const reflectLen = R_px * 1.2;
     ctx.strokeStyle = 'rgba(231,76,60,0.55)';
     ctx.lineWidth = 1.5;
@@ -248,12 +221,10 @@ function draw() {
   const labelY_f = axisY + 36;
   ctx.strokeStyle = '#e74c3c';
   ctx.lineWidth = 2;
-  // Horizontal line
   ctx.beginPath();
   ctx.moveTo(Fx, labelY_f);
   ctx.lineTo(mirrorVx, labelY_f);
   ctx.stroke();
-  // Tick marks
   ctx.beginPath();
   ctx.moveTo(Fx, labelY_f - 4);
   ctx.lineTo(Fx, labelY_f + 4);
@@ -262,7 +233,6 @@ function draw() {
   ctx.moveTo(mirrorVx, labelY_f - 4);
   ctx.lineTo(mirrorVx, labelY_f + 4);
   ctx.stroke();
-  // Label
   ctx.fillStyle = '#e74c3c';
   const fLabel = 'f = ' + f_cm.toFixed(0) + ' cm';
   const fLabelSize = Math.min(14, Math.max(10, f_px * 0.09));
@@ -303,10 +273,10 @@ function draw() {
     ctx.fillText(rLabel, rMidX, labelY_R + 18);
   }
 
-  // --- Scale bar (fixed, does not change) ---
+  // --- Scale bar ---
   const scaleLen = SCALE_BAR_CM * SCALE;
   const scaleX = 30;
-  const scaleY = H - 22;
+  const scaleY = H - 8;
   ctx.strokeStyle = 'rgba(255,255,255,0.6)';
   ctx.lineWidth = 2;
   ctx.beginPath();
@@ -342,17 +312,12 @@ window.addEventListener('load', () => {
 <script>
 // EigenNode auto-height v2.3
 (function() {
-  // 4px buffer for subpixel rounding + parent's >=3px noise threshold.
-  // 18px extra when horizontal overflow forces a scrollbar (eats vertical
-  // space — common in AoPS classroom where iframe column is < 600px content).
   var BUFFER = 4;
   var H_SCROLLBAR = 18;
   function measure() {
     var b = document.body, h = document.documentElement;
     if (!b) return 0;
     var max = Math.max(b.scrollHeight||0, b.offsetHeight||0, (h&&h.scrollHeight)||0, (h&&h.offsetHeight)||0);
-    // If body is sized to viewport (height:100vh), scrollHeight just echoes
-    // the iframe's height. Recover real content extent from children's bbox.
     var minTop = 0, maxBot = 0, br = b.getBoundingClientRect();
     for (var i = 0; i < b.children.length; i++) {
       var r = b.children[i].getBoundingClientRect();
@@ -362,9 +327,6 @@ window.addEventListener('load', () => {
     }
     var span = maxBot - minTop;
     if (span > max) max = span;
-    // Check documentElement only — that's the element that owns the iframe's
-    // horizontal scrollbar. Body can be narrower than iframe and have its own
-    // 1-2px overflow that doesn't actually trigger a scrollbar.
     var hOverflow = h && (h.scrollWidth - h.clientWidth) >= 4;
     return Math.ceil(max) + BUFFER + (hOverflow ? H_SCROLLBAR : 0);
   }
