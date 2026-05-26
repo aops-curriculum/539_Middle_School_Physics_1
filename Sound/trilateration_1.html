@@ -1,0 +1,645 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Globe Trilateration</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { width:600px; height:500px; overflow:hidden; background:#060e18; font-family:system-ui,sans-serif; }
+#wrap { position:relative; width:600px; height:500px; }
+canvas { display:block; }
+
+#labels {
+  position:absolute; top:0; left:0; width:100%; height:100%;
+  pointer-events:none; overflow:hidden;
+}
+.radius-label {
+  position:absolute;
+  font:bold 11px system-ui;
+  text-shadow:0 0 6px rgba(0,0,0,1), 0 0 3px rgba(0,0,0,1);
+  white-space:nowrap; pointer-events:none;
+  transform:translate(-50%, 14px);
+  background:rgba(0,0,0,.55); padding:2px 5px; border-radius:3px;
+}
+.trilat-label {
+  position:absolute;
+  font:bold 9px system-ui; letter-spacing:.7px;
+  color:#ff5078;
+  text-shadow:0 0 8px rgba(255,80,120,.7), 0 0 4px rgba(0,0,0,1);
+  white-space:nowrap; pointer-events:none;
+  transform:translate(-50%, 16px);
+}
+
+#controls {
+  position:absolute; top:8px; right:8px;
+  display:flex; flex-direction:column; gap:5px; align-items:flex-end;
+}
+.btn {
+  padding:5px 12px;
+  background:rgba(6,14,24,.88); border:1px solid rgba(255,255,255,.22);
+  color:rgba(255,255,255,.85); border-radius:5px; cursor:pointer;
+  font:600 11px system-ui; letter-spacing:.3px;
+  backdrop-filter:blur(8px); transition:all .15s;
+}
+.btn:hover  { background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.38); }
+.btn.active { background:rgba(79,195,247,.18); border-color:#4fc3f7; color:#4fc3f7; }
+#hint {
+  color:rgba(255,255,255,.32); font:10px system-ui;
+  text-align:right; line-height:1.65;
+}
+
+#legend {
+  position:absolute; bottom:8px; left:8px;
+  display:flex; flex-direction:column; gap:4px; pointer-events:none;
+}
+.li { display:flex; align-items:center; gap:6px; color:rgba(255,255,255,.45); font:10px system-ui; }
+.ld { width:10px; height:10px; border-radius:50%; flex-shrink:0; }
+
+#loading {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  color:rgba(255,255,255,.4); font:14px system-ui; pointer-events:none;
+}
+#live-radius {
+  position:absolute; display:none;
+  background:rgba(0,0,0,.65); color:#fff;
+  font:bold 12px system-ui; padding:3px 8px;
+  border-radius:4px; pointer-events:none; white-space:nowrap;
+  transform:translate(14px, -28px);
+}
+.site-label {
+  position:absolute;
+  font:bold 11px system-ui;
+  color:#fff;
+  text-shadow:0 0 6px rgba(0,0,0,1), 0 0 3px rgba(0,0,0,1);
+  white-space:nowrap; pointer-events:none;
+  transform:translate(-50%, -160%);
+}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="labels"></div>
+  <div id="loading">Loading globe…</div>
+  <div id="live-radius"></div>
+
+  <div id="controls">
+    <button class="btn" id="clear-btn">✕ Clear</button>
+    <div id="hint">
+      Drag on globe to draw circle<br>
+      Click center dot to move<br>
+      Right-drag to rotate · Scroll to zoom
+    </div>
+  </div>
+
+</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.162.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.162.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+const W = 600, H = 500, GLOBE_R = 5, R_EARTH = 6371, DEG2RAD = Math.PI / 180;
+const LIFT = 1.004;          // circles float just above globe surface
+const MIN_RADIUS_KM = 1;
+const COLORS = ['#4fc3f7','#81c784','#ffb74d','#f06292','#ce93d8','#80deea','#fff176','#ff8a65'];
+
+// ─── Fixed site locations ──────────────────────────────────────────────────────
+const SITES = [
+  { name: 'Standing Stone, PA',  lat:  41.67, lon:  -76.55 },
+  { name: 'Tepich, Mexico',      lat:  20.23, lon:  -88.38 },
+  { name: 'Isla Socorro, Mexico',lat:  18.72, lon: -110.95 },
+];
+
+// ─── Three.js core ────────────────────────────────────────────────────────────
+const wrap      = document.getElementById('wrap');
+const labelsDiv = document.getElementById('labels');
+const scene     = new THREE.Scene();
+const camera    = new THREE.PerspectiveCamera(45, W/H, 0.1, 1000);
+// Aim camera at southern Texas (lat 26°N, lon −98°W), distance 13
+// Uses the same latLonToVec3 convention: phi=(lon+180)°, theta=(90−lat)°
+camera.position.set(-1.63, 5.70, 11.58);
+
+const renderer = new THREE.WebGLRenderer({ antialias:true, alpha:true });
+renderer.setSize(W, H);
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+wrap.insertBefore(renderer.domElement, labelsDiv);
+
+// OrbitControls — in draw mode left-click is reserved for drawing; right-drag rotates
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping  = true;
+controls.dampingFactor  = 0.08;
+controls.minDistance    = 7;
+controls.maxDistance    = 25;
+controls.enablePan      = false;
+controls.mouseButtons   = { LEFT: THREE.MOUSE.NONE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+
+renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
+
+// Lighting
+scene.add(new THREE.AmbientLight(0xbbbbcc, 1.8));
+const sun = new THREE.DirectionalLight(0xffffff, 1.0);
+sun.position.set(5, 3, 8); scene.add(sun);
+const fill = new THREE.DirectionalLight(0x8899bb, 0.7);
+fill.position.set(-5, -2, -8); scene.add(fill);
+
+// Stars
+const sv = new Float32Array(3000);
+for (let i = 0; i < 3000; i++) sv[i] = (Math.random()-.5)*400;
+const sg = new THREE.BufferGeometry();
+sg.setAttribute('position', new THREE.BufferAttribute(sv, 3));
+scene.add(new THREE.Points(sg, new THREE.PointsMaterial({ color:0xffffff, size:0.3 })));
+
+// ─── Globe ────────────────────────────────────────────────────────────────────
+const globeGroup = new THREE.Group();
+scene.add(globeGroup);
+const sphereGeo = new THREE.SphereGeometry(GLOBE_R, 64, 64);
+let globeMesh = null;
+
+function makeFallbackTexture() {
+  const cv = document.createElement('canvas');
+  cv.width = 1024; cv.height = 512;
+  const c = cv.getContext('2d');
+  const g = c.createLinearGradient(0,0,0,512);
+  g.addColorStop(0,'#1a3a5c'); g.addColorStop(.5,'#1a6e8e'); g.addColorStop(1,'#1a3a5c');
+  c.fillStyle = g; c.fillRect(0,0,1024,512);
+  c.fillStyle = '#2d6a2e';
+  [[220,160,80,50,-.3],[280,310,40,70,.2],[510,150,40,30,0],
+   [520,260,45,65,0],[650,160,100,50,0],[720,250,30,20,0],[780,340,40,25,0]
+  ].forEach(([x,y,rx,ry,r]) => { c.beginPath(); c.ellipse(x,y,rx,ry,r,0,Math.PI*2); c.fill(); });
+  c.strokeStyle='rgba(255,255,255,.07)'; c.lineWidth=1;
+  for (let i=0; i<512; i+=28.4) { c.beginPath(); c.moveTo(0,i); c.lineTo(1024,i); c.stroke(); }
+  for (let i=0; i<1024; i+=28.4) { c.beginPath(); c.moveTo(i,0); c.lineTo(i,512); c.stroke(); }
+  const tex = new THREE.CanvasTexture(cv);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  return tex;
+}
+
+function buildGlobe(texture) {
+  globeMesh = new THREE.Mesh(sphereGeo, new THREE.MeshPhongMaterial({
+    map: texture, bumpScale:.02, specular: new THREE.Color(0x222244), shininess:15
+  }));
+  globeGroup.add(globeMesh);
+
+  // Atmosphere rim
+  globeGroup.add(new THREE.Mesh(
+    new THREE.SphereGeometry(GLOBE_R*1.06, 48, 48),
+    new THREE.ShaderMaterial({
+      vertexShader:`varying vec3 vN,vV;
+        void main(){ vN=normalize(normalMatrix*normal); vV=(modelViewMatrix*vec4(position,1)).xyz;
+          gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1); }`,
+      fragmentShader:`varying vec3 vN,vV;
+        void main(){ float r=1.-abs(dot(vN,normalize(-vV)));
+          gl_FragColor=vec4(.3,.6,1.,pow(r,3.)*.7); }`,
+      blending:THREE.AdditiveBlending, side:THREE.BackSide, transparent:true, depthWrite:false
+    })
+  ));
+  document.getElementById('loading').style.display = 'none';
+  buildSiteMarkers();
+}
+
+// Try CDN textures, fall back to procedural after timeout
+let texDone = false;
+function tryTex(urls, i=0) {
+  if (i >= urls.length) { if (!texDone){ texDone=true; buildGlobe(makeFallbackTexture()); } return; }
+  new THREE.TextureLoader().load(urls[i],
+    tex => { if (!texDone){ texDone=true; tex.colorSpace=THREE.SRGBColorSpace; buildGlobe(tex); }},
+    null, () => tryTex(urls, i+1));
+}
+tryTex([
+  'https://unpkg.com/three-globe@2.33.0/example/img/earth-blue-marble.jpg',
+  'https://cdn.jsdelivr.net/npm/three-globe@2.33.0/example/img/earth-blue-marble.jpg'
+]);
+setTimeout(() => { if (!texDone){ texDone=true; buildGlobe(makeFallbackTexture()); }}, 5000);
+
+// ─── Geo math ─────────────────────────────────────────────────────────────────
+
+// Three.js y-up geographic convention (matches OrbitControls orientation)
+function latLonToVec3(lat, lon, r) {
+  const phi = (lon+180)*DEG2RAD, theta = (90-lat)*DEG2RAD;
+  return new THREE.Vector3(-r*Math.cos(phi)*Math.sin(theta), r*Math.cos(theta), r*Math.sin(phi)*Math.sin(theta));
+}
+function vec3ToLatLon(v) {
+  const r = v.length();
+  const lat = 90 - Math.acos(Math.max(-1,Math.min(1,v.y/r)))/DEG2RAD;
+  const lon = Math.atan2(v.z,-v.x)/DEG2RAD - 180;
+  return { lat, lon:((lon+540)%360)-180 };
+}
+function haversineKm(lat1,lon1,lat2,lon2) {
+  const dLa=(lat2-lat1)*DEG2RAD, dLo=(lon2-lon1)*DEG2RAD;
+  const a=Math.sin(dLa/2)**2+Math.cos(lat1*DEG2RAD)*Math.cos(lat2*DEG2RAD)*Math.sin(dLo/2)**2;
+  return 2*R_EARTH*Math.asin(Math.sqrt(a));
+}
+
+// Generate N+1 points of a geographic circle on the sphere surface
+function sphereCirclePts(lat, lon, radiusKm, n=128) {
+  const ar  = radiusKm/R_EARTH;                    // angular radius (radians)
+  const C   = latLonToVec3(lat,lon,1).normalize();
+  let u = new THREE.Vector3(0,1,0);
+  if (Math.abs(C.dot(u)) > 0.99) u.set(1,0,0);
+  const e1 = new THREE.Vector3().crossVectors(C,u).normalize();
+  const e2 = new THREE.Vector3().crossVectors(C,e1).normalize();
+  const cosR = Math.cos(ar), sinR = Math.sin(ar);
+  const pts = [];
+  for (let i=0; i<=n; i++) {
+    const a = (i/n)*2*Math.PI;
+    pts.push(new THREE.Vector3()
+      .addScaledVector(C, cosR)
+      .addScaledVector(e1, sinR*Math.cos(a))
+      .addScaledVector(e2, sinR*Math.sin(a))
+      .multiplyScalar(GLOBE_R*LIFT));
+  }
+  return pts;
+}
+
+// ─── Spherical circle-circle intersection (exact) ─────────────────────────────
+// Uses the same y-up convention as latLonToVec3/vec3ToLatLon
+
+function _v(lat,lon)   { const v=latLonToVec3(lat,lon,1); return [v.x,v.y,v.z]; }
+function _dot(a,b)     { return a[0]*b[0]+a[1]*b[1]+a[2]*b[2]; }
+function _cross(a,b)   { return [a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]]; }
+function _scale(a,s)   { return [a[0]*s,a[1]*s,a[2]*s]; }
+function _add(a,b)     { return [a[0]+b[0],a[1]+b[1],a[2]+b[2]]; }
+function _len(a)       { return Math.sqrt(_dot(a,a)); }
+function _p3(arr)      { return vec3ToLatLon(new THREE.Vector3(arr[0],arr[1],arr[2])); }
+
+// Returns [{lat,lon},{lat,lon}] or null if circles don't cross their perimeters
+function crossings(ci, cj) {
+  const C1=_v(ci.lat,ci.lon), C2=_v(cj.lat,cj.lon);
+  const k=_dot(C1,C2), denom=1-k*k;
+  if (denom < 1e-12) return null;
+  const c1=Math.cos(ci.radiusKm/R_EARTH), c2=Math.cos(cj.radiusKm/R_EARTH);
+  const a=(c1-k*c2)/denom, b=(c2-k*c1)/denom;
+  const P0=_add(_scale(C1,a),_scale(C2,b));
+  const disc=1-_dot(P0,P0);
+  if (disc < 0) return null;
+  const d=_cross(C1,C2), dlen=_len(d);
+  if (dlen < 1e-12) return null;
+  const t=Math.sqrt(disc)/dlen;
+  return [_p3(_add(P0,_scale(d, t))), _p3(_add(P0,_scale(d,-t)))];
+}
+
+// ─── App state ────────────────────────────────────────────────────────────────
+let circles     = [];  // {id,lat,lon,radiusKm,color,line,dot,hitSphere,labelDiv}
+let nextId      = 0;
+let istate      = 'idle';  // 'idle' | 'drawing' | 'moving'
+let drawCenter  = null;    // {lat,lon}
+let drawRadius  = 0;
+let movingCircle = null;
+
+let previewLine = null, previewDot = null;
+let isectMeshes = [];
+let isectLabels = [];    // [{div, pos: THREE.Vector3}]
+
+// ─── Reusable geometry / material for markers ─────────────────────────────────
+const GEO_CENTER   = new THREE.SphereGeometry(0.075, 14, 14);
+const GEO_HIT      = new THREE.SphereGeometry(0.24,  8,  8);
+const GEO_CROSS    = new THREE.SphereGeometry(0.075, 14, 14);
+const GEO_TRILAT   = new THREE.SphereGeometry(0.115, 14, 14);
+const GEO_GLOW_S   = new THREE.SphereGeometry(0.15,  10, 10);
+const GEO_GLOW_M   = new THREE.SphereGeometry(0.22,  10, 10);
+const GEO_GLOW_L   = new THREE.SphereGeometry(0.32,  10, 10);
+const MAT_HIT      = new THREE.MeshBasicMaterial({ visible:false });
+
+function glowMat(color, opacity) {
+  return new THREE.MeshBasicMaterial({
+    color:new THREE.Color(color), transparent:true, opacity,
+    blending:THREE.AdditiveBlending, depthWrite:false
+  });
+}
+
+// ─── Circle management ────────────────────────────────────────────────────────
+
+function buildLine(lat, lon, radiusKm, color) {
+  const pts = sphereCirclePts(lat, lon, radiusKm);
+  const geo = new THREE.BufferGeometry().setFromPoints(pts);
+  const mat = new THREE.LineBasicMaterial({ color: new THREE.Color(color) });
+  return new THREE.Line(geo, mat);
+}
+
+function addCircle(lat, lon, radiusKm) {
+  const color = COLORS[circles.length % COLORS.length];
+  const line  = buildLine(lat, lon, radiusKm, color);
+  scene.add(line);
+
+  const dot = new THREE.Mesh(GEO_CENTER, new THREE.MeshBasicMaterial({ color: new THREE.Color(color) }));
+  dot.position.copy(latLonToVec3(lat, lon, GLOBE_R*LIFT));
+  scene.add(dot);
+
+  const hitSphere = new THREE.Mesh(GEO_HIT, MAT_HIT);
+  hitSphere.position.copy(dot.position);
+  scene.add(hitSphere);
+
+  const labelDiv = document.createElement('div');
+  labelDiv.className = 'radius-label';
+  labelDiv.style.color = color;
+  labelsDiv.appendChild(labelDiv);
+
+  const circle = { id:nextId++, lat, lon, radiusKm, color, line, dot, hitSphere, labelDiv };
+  circles.push(circle);
+  rebuildIntersections();
+  return circle;
+}
+
+function refreshCircle(c) {
+  const pts = sphereCirclePts(c.lat, c.lon, c.radiusKm);
+  c.line.geometry.setFromPoints(pts);
+  const pos = latLonToVec3(c.lat, c.lon, GLOBE_R*LIFT);
+  c.dot.position.copy(pos);
+  c.hitSphere.position.copy(pos);
+  c.labelDiv.textContent = Math.round(c.radiusKm).toLocaleString() + ' km';
+}
+
+function clearAllCircles() {
+  circles.forEach(c => {
+    scene.remove(c.line); c.line.geometry.dispose();
+    scene.remove(c.dot);  scene.remove(c.hitSphere);
+    c.labelDiv.remove();
+  });
+  circles = [];
+  rebuildIntersections();
+}
+
+// ─── Intersection & trilateration rendering ───────────────────────────────────
+
+function addMesh(geo, mat, pos) {
+  const m = new THREE.Mesh(geo, mat);
+  m.position.copy(pos);
+  scene.add(m);
+  isectMeshes.push(m);
+}
+
+function addCrossingDot(pos) {
+  addMesh(GEO_CROSS,  new THREE.MeshBasicMaterial({ color:0xFFD728 }), pos);
+  addMesh(GEO_GLOW_S, glowMat('#FFD728', 0.32), pos);
+}
+
+function addTrilatMarker(pos) {
+  addMesh(GEO_TRILAT, new THREE.MeshBasicMaterial({ color:0xff5078 }), pos);
+  addMesh(GEO_GLOW_M, glowMat('#ff5078', 0.28), pos);
+  addMesh(GEO_GLOW_L, glowMat('#ff5078', 0.12), pos);
+
+  const div = document.createElement('div');
+  div.className = 'trilat-label';
+  div.textContent = 'TRILATERATION';
+  labelsDiv.appendChild(div);
+  isectLabels.push({ div, pos: pos.clone() });
+}
+
+function rebuildIntersections() {
+  isectMeshes.forEach(m => { scene.remove(m); m.material.dispose(); });
+  isectMeshes = [];
+  isectLabels.forEach(({div}) => div.remove());
+  isectLabels = [];
+
+  const n = circles.length;
+  const placedTrilat = []; // {lat,lon} — deduplicate nearby trilateration markers
+
+  for (let i=0; i<n; i++) {
+    for (let j=i+1; j<n; j++) {
+      const pts = crossings(circles[i], circles[j]);
+      if (!pts) continue;
+      pts.forEach(({lat,lon}) => {
+        // Trilateration only when the crossing point also lies ON a third circle's
+        // perimeter (not merely inside it). Tolerance = 4% of that circle's radius.
+        const onThird = circles.some((c,k) => {
+          if (k===i || k===j) return false;
+          const dist = haversineKm(lat, lon, c.lat, c.lon);
+          return Math.abs(dist - c.radiusKm) < c.radiusKm * 0.04;
+        });
+        const pos = latLonToVec3(lat, lon, GLOBE_R*LIFT*1.004);
+        if (onThird) {
+          // Skip if we've already placed a trilateration marker within 200 km
+          const duplicate = placedTrilat.some(p => haversineKm(lat,lon,p.lat,p.lon) < 200);
+          if (!duplicate) {
+            placedTrilat.push({lat,lon});
+            addTrilatMarker(pos);
+          }
+        } else {
+          addCrossingDot(pos);
+        }
+      });
+    }
+  }
+}
+
+// ─── Live preview during drawing ──────────────────────────────────────────────
+
+function clearPreview() {
+  if (previewLine) { scene.remove(previewLine); previewLine.geometry.dispose(); previewLine=null; }
+  if (previewDot)  { scene.remove(previewDot);  previewDot=null; }
+}
+
+function updatePreview() {
+  clearPreview();
+  if (!drawCenter || drawRadius < MIN_RADIUS_KM) return;
+  const color = new THREE.Color(COLORS[circles.length % COLORS.length]);
+  const pts   = sphereCirclePts(drawCenter.lat, drawCenter.lon, drawRadius);
+  previewLine = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints(pts),
+    new THREE.LineBasicMaterial({ color, transparent:true, opacity:.75 })
+  );
+  scene.add(previewLine);
+  previewDot = new THREE.Mesh(GEO_CENTER, new THREE.MeshBasicMaterial({ color }));
+  previewDot.position.copy(latLonToVec3(drawCenter.lat, drawCenter.lon, GLOBE_R*LIFT));
+  scene.add(previewDot);
+}
+
+// ─── Raycasting helpers ───────────────────────────────────────────────────────
+
+const rc  = new THREE.Raycaster();
+const grc = new THREE.Raycaster();
+
+function ndc(e) {
+  const r = renderer.domElement.getBoundingClientRect();
+  return new THREE.Vector2(((e.clientX-r.left)/r.width)*2-1, -((e.clientY-r.top)/r.height)*2+1);
+}
+
+function globeHit(e) {
+  if (!globeMesh) return null;
+  grc.setFromCamera(ndc(e), camera);
+  const hits = grc.intersectObject(globeMesh);
+  return hits.length ? vec3ToLatLon(hits[0].point) : null;
+}
+
+function circleHit(e) {
+  if (!circles.length) return null;
+  rc.setFromCamera(ndc(e), camera);
+  const hits = rc.intersectObjects(circles.map(c => c.hitSphere));
+  if (!hits.length) return null;
+  return circles.find(c => c.hitSphere === hits[0].object) || null;
+}
+
+// ─── Mouse interaction ────────────────────────────────────────────────────────
+
+renderer.domElement.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+
+  const hitC = circleHit(e);
+  if (hitC) {
+    controls.enabled = false;
+    istate = 'moving'; movingCircle = hitC;
+    renderer.domElement.style.cursor = 'grabbing';
+    return;
+  }
+  const hit = globeHit(e);
+  if (hit) {
+    controls.enabled = false;
+    istate = 'drawing';
+    drawCenter = { lat:hit.lat, lon:hit.lon };
+    drawRadius = 0;
+  }
+  // If no hit → OrbitControls is NONE for left button in draw mode, so nothing happens
+});
+
+const liveRadiusDiv = document.getElementById('live-radius');
+
+renderer.domElement.addEventListener('mousemove', e => {
+  if (istate === 'drawing') {
+    const hit = globeHit(e);
+    if (hit) {
+      const raw = haversineKm(drawCenter.lat,drawCenter.lon,hit.lat,hit.lon);
+      const snap = raw < 200 ? 5 : 10;
+      drawRadius = Math.round(raw / snap) * snap;
+      updatePreview();
+      liveRadiusDiv.textContent = Math.round(drawRadius).toLocaleString() + ' km';
+      liveRadiusDiv.style.display = 'block';
+      liveRadiusDiv.style.left = e.offsetX + 'px';
+      liveRadiusDiv.style.top  = e.offsetY + 'px';
+    }
+    return;
+  }
+  if (istate === 'moving' && movingCircle) {
+    const hit = globeHit(e);
+    if (hit) {
+      movingCircle.lat = hit.lat; movingCircle.lon = hit.lon;
+      refreshCircle(movingCircle);
+      rebuildIntersections();
+    }
+    return;
+  }
+  // Cursor feedback in idle state
+  renderer.domElement.style.cursor = circleHit(e) ? 'grab' : 'crosshair';
+});
+
+window.addEventListener('mouseup', () => {
+  if (istate === 'drawing' && drawRadius >= MIN_RADIUS_KM && drawCenter) {
+    addCircle(drawCenter.lat, drawCenter.lon, drawRadius);
+  }
+  clearPreview();
+  liveRadiusDiv.style.display = 'none';
+  if (istate !== 'idle') controls.enabled = true;
+  istate = 'idle'; movingCircle = null; drawCenter = null; drawRadius = 0;
+  renderer.domElement.style.cursor = 'crosshair';
+});
+
+// ─── UI ───────────────────────────────────────────────────────────────────────
+
+document.getElementById('clear-btn').addEventListener('click', clearAllCircles);
+
+// ─── Fixed site markers ───────────────────────────────────────────────────────
+const GEO_SITE = new THREE.SphereGeometry(0.055, 12, 12);
+const GEO_SITE_GLOW = new THREE.SphereGeometry(0.11, 10, 10);
+const siteMarkers = []; // {mesh, glowMesh, labelDiv, pos}
+
+function buildSiteMarkers() {
+  SITES.forEach(site => {
+    const pos = latLonToVec3(site.lat, site.lon, GLOBE_R * LIFT);
+
+    const mesh = new THREE.Mesh(GEO_SITE,
+      new THREE.MeshBasicMaterial({ color: 0xffffff }));
+    mesh.position.copy(pos);
+    scene.add(mesh);
+
+    const glow = new THREE.Mesh(GEO_SITE_GLOW,
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff, transparent: true, opacity: 0.22,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+    glow.position.copy(pos);
+    scene.add(glow);
+
+    const div = document.createElement('div');
+    div.className = 'site-label';
+    div.textContent = site.name;
+    labelsDiv.appendChild(div);
+
+    siteMarkers.push({ mesh, glow, labelDiv: div, pos: pos.clone() });
+  });
+}
+
+// ─── Animation loop ───────────────────────────────────────────────────────────
+
+function screenXY(worldPos) {
+  const p = worldPos.clone().project(camera);
+  return { x:(p.x*.5+.5)*W, y:(-p.y*.5+.5)*H };
+}
+
+function isFacing(worldPos) {
+  // Returns dot product of surface normal vs camera direction (>0 = visible side)
+  return worldPos.clone().normalize()
+    .dot(camera.position.clone().sub(worldPos).normalize());
+}
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+
+  // Radius labels on circle centers
+  circles.forEach(c => {
+    c.labelDiv.textContent = Math.round(c.radiusKm).toLocaleString() + ' km';
+    const pos = c.dot.position;
+    const f   = isFacing(pos);
+    if (f > 0) {
+      const {x,y} = screenXY(pos);
+      c.labelDiv.style.display = '';
+      c.labelDiv.style.left    = x + 'px';
+      c.labelDiv.style.top     = y + 'px';
+      c.labelDiv.style.opacity = Math.min(1, f*3);
+    } else {
+      c.labelDiv.style.display = 'none';
+    }
+  });
+
+  // Trilateration labels
+  isectLabels.forEach(({div, pos}) => {
+    const f = isFacing(pos);
+    if (f > 0.05) {
+      const {x,y} = screenXY(pos);
+      div.style.display = '';
+      div.style.left    = x + 'px';
+      div.style.top     = y + 'px';
+      div.style.opacity = Math.min(1, f*4);
+    } else {
+      div.style.display = 'none';
+    }
+  });
+
+  // Site location labels
+  siteMarkers.forEach(({labelDiv, pos}) => {
+    const f = isFacing(pos);
+    if (f > 0) {
+      const {x,y} = screenXY(pos);
+      labelDiv.style.display  = '';
+      labelDiv.style.left     = x + 'px';
+      labelDiv.style.top      = y + 'px';
+      labelDiv.style.opacity  = Math.min(1, f * 3);
+    } else {
+      labelDiv.style.display = 'none';
+    }
+  });
+
+  renderer.render(scene, camera);
+}
+animate();
+</script>
+</body>
+</html>
