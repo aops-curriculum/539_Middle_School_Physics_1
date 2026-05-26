@@ -1,0 +1,394 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Wave Speed Comparison</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { width: 600px; height: 500px; background: #0f0f23; overflow: hidden; }
+    canvas { display: block; }
+  </style>
+</head>
+<body>
+<canvas id="c" width="600" height="500"></canvas>
+<script>
+(function () {
+'use strict';
+
+const cvs = document.getElementById('c');
+const ctx  = cvs.getContext('2d');
+const W = 600, H = 500;
+
+// ── Particle grid ─────────────────────────────────────────────────────────
+const COLS     = 28, ROWS = 7;
+const SP_X     = 15, SP_Y = 15;
+const GRID_LEFT = 148;
+const GRID_W    = (COLS - 1) * SP_X;                    // 405 px
+const GRID_CY   = 155;
+const GRID_TOP  = GRID_CY - ((ROWS - 1) / 2) * SP_Y;   // 110
+const GRID_BOT  = GRID_CY + ((ROWS - 1) / 2) * SP_Y;   // 200
+
+// ── Wave physics ──────────────────────────────────────────────────────────
+const COMP_SPEED  = 300;   // px / s
+const TRANS_SPEED = 120;   // px / s  (slower — educational)
+const WAVELENGTH  = 55;
+const K           = 2 * Math.PI / WAVELENGTH;
+const COMP_AMP    = 11;    // px  (larger → horizontal shift is clearly visible)
+const TRANS_AMP   = 12;    // px
+const SIGMA       = 48;    // Gaussian half-width
+
+function gaussian(d) { return Math.exp(-(d * d) / (2 * SIGMA * SIGMA)); }
+
+// Phase-offset by -λ/4 so col=0 starts at maximum displacement on impact,
+// matching the direction of the hammer strike (right for comp, down for trans).
+const PHASE_OFFSET = WAVELENGTH / 4;
+
+function compDisp(xRel) {
+  const center = COMP_SPEED * waveT - PHASE_OFFSET;
+  const d = xRel - center;
+  // Cutoff aligned to 2.25 wavelengths ahead of centre: sin(K × 2.25λ) = sin(4.5π) = 1,
+  // so the leading edge lands exactly at a compression maximum instead of a rarefaction.
+  const CUT = 2.25 * WAVELENGTH;
+  if (center > GRID_W + CUT && xRel < center - CUT) return 0;
+  if (xRel > center + CUT) return 0;
+  return COMP_AMP * Math.sin(K * d) * gaussian(d);
+}
+
+function transDisp(xRel) {
+  const center = TRANS_SPEED * waveT - PHASE_OFFSET;
+  const d = xRel - center;
+  if (center > GRID_W + 1.8 * SIGMA && xRel < center - 1.8 * SIGMA) return 0;
+  if (xRel > center + 1.8 * SIGMA) return 0;
+  return TRANS_AMP * Math.sin(K * d) * gaussian(d);
+}
+
+
+// ── Colors ────────────────────────────────────────────────────────────────
+const C = {
+  bg:       '#0f0f23',
+  dotRest:  'rgba(200,214,229,0.45)',
+  compress: '#ff6b6b',
+  stretch:  '#48dbfb',
+  transDot: '#48dbfb',
+};
+
+// ── Color lerp (from v2) ──────────────────────────────────────────────────
+function parseCol(c) {
+  if (c[0] === '#') {
+    const h = c.slice(1);
+    return { r: parseInt(h.substr(0,2),16), g: parseInt(h.substr(2,2),16),
+             b: parseInt(h.substr(4,2),16), a: 1 };
+  }
+  const m = c.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/);
+  return m ? { r:+m[1], g:+m[2], b:+m[3], a: m[4]!==undefined ? +m[4] : 1 }
+           : { r:200, g:200, b:200, a:1 };
+}
+function lerp(a, b, t) { return a + (b - a) * t; }
+function lerpCol(c1, c2, t) {
+  const a = parseCol(c1), b = parseCol(c2);
+  return `rgba(${Math.round(lerp(a.r,b.r,t))},${Math.round(lerp(a.g,b.g,t))},`
+       + `${Math.round(lerp(a.b,b.b,t))},${lerp(a.a,b.a,t).toFixed(3)})`;
+}
+
+// ── Buttons ───────────────────────────────────────────────────────────────
+// Hit A — to the left of the grid, vertically centred on the left-face strike point.
+// Hit B — above the left-end strike point (THX = 148).
+const BTNS = [
+  { id: 'comp',  x: 6,   y: 137, w: 122, h: 36, label: 'Hit A', col0: '#7b241c', col1: '#e74c3c' },
+  { id: 'trans', x: 89,  y: 46,  w: 118, h: 36, label: 'Hit B', col0: '#154360', col1: '#2980b9' },
+];
+
+// ── State ─────────────────────────────────────────────────────────────────
+let mode  = null;    // 'comp' | 'trans'
+let phase = 'idle';  // idle | swing | impact | wave | retract
+let pP    = 0;       // phase progress [0,1] for timed phases
+let waveT = 0;       // seconds elapsed since wave launched
+let hovId = null;
+let lastTs = null, raf = null;
+
+const DUR = { swing: 0.42, impact: 0.08, retract: 0.38 };
+
+// ── Trigger ───────────────────────────────────────────────────────────────
+function trigger(m) {
+  if (phase !== 'idle') return;
+  mode = m; phase = 'swing'; pP = 0; waveT = 0;
+  lastTs = null;
+  if (!raf) raf = requestAnimationFrame(loop);
+}
+
+// ── Main loop ─────────────────────────────────────────────────────────────
+function loop(ts) {
+  if (!lastTs) lastTs = ts;
+  const dt = Math.min((ts - lastTs) / 1000, 0.05);
+  lastTs = ts;
+
+  if (phase === 'swing') {
+    pP += dt / DUR.swing;
+    if (pP >= 1) { pP = 0; phase = 'impact'; waveT = 0; }
+
+  } else if (phase === 'impact') {
+    pP += dt / DUR.impact;
+    waveT += dt;   // wave begins the moment the hammer touches
+    if (pP >= 1)   { pP = 0; phase = 'wave'; }
+
+  } else if (phase === 'wave') {
+    waveT += dt;
+    const speed = mode === 'comp' ? COMP_SPEED : TRANS_SPEED;
+    if (speed * waveT - PHASE_OFFSET > GRID_W + 2.2 * SIGMA) {
+      phase = 'retract'; pP = 0;
+    }
+
+  } else if (phase === 'retract') {
+    pP += dt / DUR.retract;
+    if (pP >= 1) { phase = 'idle'; raf = null; draw(); return; }
+  }
+
+  draw();
+  raf = requestAnimationFrame(loop);
+}
+
+// ── Easing ────────────────────────────────────────────────────────────────
+const easeIn  = t => t * t * t;
+const easeOut = t => 1 - (1 - t) ** 3;
+
+// ── Hammer interpolation (0 = rest, 1 = at impact) ───────────────────────
+const HAMMER_HOLD    = 0.18;  // seconds at contact before lifting
+const HAMMER_LIFT    = 0.34;  // seconds to fully retract
+
+function hAlpha() {
+  if (phase === 'swing')   return easeIn(pP);
+  if (phase === 'impact')  return 1;
+  if (phase === 'wave') {
+    // Hammer lifts off shortly after the wave is launched
+    const t = Math.max(0, (waveT - HAMMER_HOLD) / HAMMER_LIFT);
+    return Math.max(0, 1 - easeOut(Math.min(1, t)));
+  }
+  if (phase === 'retract') return 0;  // fully lifted by now
+  return 0;
+}
+
+// ── Background + subtle panel ─────────────────────────────────────────────
+function drawBg() {
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, W, H);
+
+  // Faint panel behind the grid
+  ctx.beginPath();
+  ctx.roundRect(GRID_LEFT - 20, GRID_TOP - 28,
+                GRID_W + 40, (GRID_BOT - GRID_TOP) + 56, 8);
+  ctx.fillStyle   = 'rgba(255,255,255,0.03)';
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(255,255,255,0.06)';
+  ctx.lineWidth   = 1;
+  ctx.stroke();
+}
+
+// ── Particle grid (wave-speed-v2 method) ──────────────────────────────────
+function drawGrid() {
+  const waveActive = phase === 'impact' || phase === 'wave';
+
+  for (let row = 0; row < ROWS; row++) {
+    for (let col = 0; col < COLS; col++) {
+      const xRest = GRID_LEFT + col * SP_X;
+      const yRest = GRID_CY + (row - (ROWS - 1) / 2) * SP_Y;
+      let dx = 0, dy = 0;
+
+      if (waveActive) {
+        const xRel = col * SP_X;
+        if (mode === 'comp') dx = compDisp(xRel);
+        else                 dy = transDisp(xRel);
+      }
+
+      // Intensity-based cyan coloring for both wave modes
+      let color = C.dotRest;
+      if (waveActive && mode === 'trans' && Math.abs(dy) > 0.3) {
+        const intensity = Math.min(1, Math.abs(dy) / TRANS_AMP);
+        color = lerpCol(C.dotRest, C.transDot, intensity);
+      }
+      if (waveActive && mode === 'comp' && Math.abs(dx) > 0.3) {
+        const intensity = Math.min(1, Math.abs(dx) / COMP_AMP);
+        color = lerpCol(C.dotRest, C.transDot, intensity);
+      }
+
+      ctx.beginPath();
+      ctx.arc(xRest + dx, yRest + dy, 3.5, 0, Math.PI * 2);
+      ctx.fillStyle = color;
+      ctx.fill();
+    }
+  }
+}
+
+// ── Compressive hammer (slides right → hits left face of grid) ────────────
+function drawCompHammer() {
+  const a   = hAlpha();
+  // Head rotated 90°: was 26 wide × 46 tall (portrait), now 46 wide × 26 tall (landscape).
+  // Handle was horizontal-left; now vertical-up from head top centre — same transform as trans.
+  const hdW = 46, hdH = 26, hlLen = 42;
+  const restX = 44, hitX = 102;    // hitX+hdW=148 → right face lands on GRID_LEFT
+  const hx  = restX + (hitX - restX) * a;
+  const hy  = GRID_CY - hdH / 2;   // head vertically centred on grid
+  const handleCX = hx + hdW / 2;   // handle centre-x tracks the head
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 7;
+
+  // Handle — vertical, going UP from the head's top centre
+  ctx.fillStyle = '#6b3811';
+  ctx.fillRect(handleCX - 5, hy - hlLen, 10, hlLen + 1);
+
+  // Grip knob (top of handle — moves right with head)
+  ctx.fillStyle = '#3e2007';
+  ctx.beginPath(); ctx.arc(handleCX, hy - hlLen, 12, 0, Math.PI * 2); ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // Head — gradient left-to-right, brighter toward the striking (right) face
+  const hg = ctx.createLinearGradient(hx, 0, hx + hdW, 0);
+  hg.addColorStop(0, '#888'); hg.addColorStop(0.55, '#bbb'); hg.addColorStop(1, '#ddd');
+  ctx.fillStyle = hg;
+  ctx.fillRect(hx, hy, hdW, hdH);
+
+  // Strike-face highlight (right narrow edge, 26 px tall)
+  ctx.fillStyle = 'rgba(255,255,255,0.28)';
+  ctx.fillRect(hx + hdW - 6, hy, 6, hdH);
+
+  // Vertical texture lines across the wide head
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(hx + (i / 4) * hdW, hy); ctx.lineTo(hx + (i / 4) * hdW, hy + hdH);
+    ctx.stroke();
+  }
+
+  // Impact flash
+  if (phase === 'impact') {
+    ctx.globalAlpha = (1 - pP) * 0.9;
+    const rg = ctx.createRadialGradient(GRID_LEFT, GRID_CY, 2, GRID_LEFT, GRID_CY, 22);
+    rg.addColorStop(0, '#fff8c0'); rg.addColorStop(1, 'rgba(255,190,0,0)');
+    ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.arc(GRID_LEFT, GRID_CY, 22, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+// ── Side hammer — slides down and hits the top face of the grid ───────────
+const THX = GRID_LEFT;   // Hit B: directly above the leftmost column (x=148)
+
+function drawSideHammer(thx) {
+  const a   = hAlpha();
+  // Head: 24 px wide × 44 px tall — narrow bottom face strikes the top of the grid.
+  const hdW = 24, hdH = 44, hlLen = 52;
+  const restY = 10;
+  const hitY  = GRID_TOP - hdH;   // head-bottom lands exactly on GRID_TOP
+  const hy  = restY + (hitY - restY) * a;
+  const hx  = thx - hdW / 2;      // head left edge
+  const handleY = hy + hdH / 2;   // vertical centre of head = handle attachment y
+
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.5)'; ctx.shadowBlur = 7;
+
+  // Handle — horizontal, extending left from the head's vertical centre
+  ctx.fillStyle = '#6b3811';
+  ctx.fillRect(hx - hlLen, handleY - 5, hlLen, 10);
+
+  // Grip knob (far left end of the handle)
+  ctx.fillStyle = '#3e2007';
+  ctx.beginPath(); ctx.arc(hx - hlLen, handleY, 12, 0, Math.PI * 2); ctx.fill();
+
+  ctx.shadowBlur = 0;
+
+  // Head — gradient top-to-bottom, darker toward the striking face
+  const hg = ctx.createLinearGradient(0, hy, 0, hy + hdH);
+  hg.addColorStop(0, '#ddd'); hg.addColorStop(0.6, '#aaa'); hg.addColorStop(1, '#888');
+  ctx.fillStyle = hg;
+  ctx.fillRect(hx, hy, hdW, hdH);
+
+  // Strike-face highlight (bottom narrow edge)
+  ctx.fillStyle = 'rgba(255,255,255,0.22)';
+  ctx.fillRect(hx, hy + hdH - 5, hdW, 5);
+
+  // Horizontal texture lines across the narrow head
+  ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 1;
+  for (let i = 1; i < 4; i++) {
+    ctx.beginPath();
+    ctx.moveTo(hx, hy + (i / 4) * hdH); ctx.lineTo(hx + hdW, hy + (i / 4) * hdH);
+    ctx.stroke();
+  }
+
+  // Impact flash
+  if (phase === 'impact') {
+    ctx.globalAlpha = (1 - pP) * 0.9;
+    const rg = ctx.createRadialGradient(thx, GRID_TOP, 2, thx, GRID_TOP, 22);
+    rg.addColorStop(0, '#fff8c0'); rg.addColorStop(1, 'rgba(255,190,0,0)');
+    ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.arc(thx, GRID_TOP, 22, 0, Math.PI * 2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+  ctx.restore();
+}
+
+function drawTransHammer() { drawSideHammer(THX); }
+
+function drawHammer() {
+  if (phase === 'idle' || !mode) return;
+  if (mode === 'comp')  drawCompHammer();
+  if (mode === 'trans') drawTransHammer();
+}
+
+// ── Buttons ───────────────────────────────────────────────────────────────
+function drawBtns() {
+  for (const b of BTNS) {
+    const on = hovId === b.id || (mode === b.id && phase !== 'idle');
+    ctx.shadowColor = b.col1;
+    ctx.shadowBlur  = on ? 14 : 0;
+    ctx.fillStyle   = on ? b.col1 : b.col0;
+    ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 9); ctx.fill();
+    ctx.shadowBlur = 0;
+
+    ctx.textAlign    = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 14px Segoe UI, Arial';
+    ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2);
+  }
+}
+
+// ── Main draw ─────────────────────────────────────────────────────────────
+function draw() {
+  drawBg();
+  drawBtns();
+  drawGrid();
+  drawHammer();
+}
+
+// ── Input ─────────────────────────────────────────────────────────────────
+function hitBtn(mx, my) {
+  return BTNS.find(b => mx >= b.x && mx <= b.x + b.w &&
+                        my >= b.y && my <= b.y + b.h) || null;
+}
+
+cvs.addEventListener('mousemove', e => {
+  const r = cvs.getBoundingClientRect();
+  const b = hitBtn(e.clientX - r.left, e.clientY - r.top);
+  hovId = b ? b.id : null;
+  cvs.style.cursor = b ? 'pointer' : 'default';
+  if (phase === 'idle') draw();
+});
+
+cvs.addEventListener('mouseleave', () => {
+  hovId = null;
+  if (phase === 'idle') draw();
+});
+
+cvs.addEventListener('click', e => {
+  const r = cvs.getBoundingClientRect();
+  const b = hitBtn(e.clientX - r.left, e.clientY - r.top);
+  if (b) trigger(b.id);
+});
+
+draw();
+})();
+</script>
+</body>
+</html>
