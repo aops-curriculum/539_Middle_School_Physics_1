@@ -1,0 +1,378 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>S-Wave Shadow Zone</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 600px; height: 440px; overflow: hidden;
+    background: #fff;
+    font-family: 'Segoe UI', Tahoma, sans-serif;
+    position: relative;
+  }
+  canvas { display: block; position: absolute; top: 0; left: 0; }
+  #sliderCol {
+    position: absolute; left: 0; top: 0; bottom: 0; width: 38px;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 8px; z-index: 2;
+  }
+  #sliderCol label {
+    writing-mode: vertical-rl; transform: rotate(180deg);
+    color: #444; font-size: 10px; font-weight: 600; letter-spacing: 0.04em;
+  }
+  #sldCore {
+    width: 28px; height: 220px;
+    writing-mode: vertical-lr; direction: rtl;
+    accent-color: #e07020;
+  }
+  #radiusBlock {
+    position: absolute; top: 10px; left: 44px;
+    z-index: 2; pointer-events: none; text-align: left;
+  }
+  #radiusBlock label {
+    display: block; color: #666; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  #readout {
+    color: #222; font-size: 24px; font-weight: 700; line-height: 1.1;
+    white-space: nowrap;
+  }
+  #shadowBlock {
+    position: absolute; top: 10px; right: 12px;
+    z-index: 2; pointer-events: none; text-align: right;
+  }
+  #shadowBlock label {
+    display: block; color: #666; font-size: 10px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  #shadowVal { color: #8b4513; font-weight: 700; font-size: 18px; line-height: 1.2; }
+</style>
+</head>
+<body>
+<canvas id="cv" width="600" height="440"></canvas>
+<div id="sliderCol">
+  <label for="sldCore">core size</label>
+  <input type="range" id="sldCore" min="2500" max="4500" step="10" value="3500">
+</div>
+<div id="radiusBlock">
+  <label>Radius</label>
+  <span id="readout">3500 km</span>
+</div>
+<div id="shadowBlock">
+    <label>S-wave shadow</label>
+    <span id="shadowVal">154°</span>
+</div>
+
+<script>
+const cv  = document.getElementById('cv');
+const ctx = cv.getContext('2d');
+const W = 600, H = 440;
+
+const RE_KM = 6371;
+const REF_CORE_KM = 3500;          // anchor: 3500 km → 103° critical → 154° shadow
+const REF_FRAC = REF_CORE_KM / RE_KM;
+const REF_CRIT = 103.0;
+
+const CX = 300, CY = 218, ER = 188;
+const EX = CX, EY = CY - ER;
+
+let coreKm = 3500;
+
+const COL = {
+  mantle: '#ffe566',
+  shadow: '#b8b8b8',
+  core:   '#ff9933',
+  ray:    'rgb(48, 133, 230)',
+  earth:  '#111',
+  cmb:    '#111',
+  angle:  '#8b4513',
+};
+
+document.getElementById('sldCore').addEventListener('input', e => {
+  coreKm = +e.target.value;
+  document.getElementById('readout').textContent = coreKm + ' km';
+  draw();
+});
+
+function coreFrac() { return coreKm / RE_KM; }
+function corePx()  { return coreFrac() * ER; }
+
+// Critical takeoff angle (°) for a given core radius, calibrated so 3500 km → 103°.
+function criticalDeg() {
+  const f = coreFrac();
+  const t = (1 - f) / (1 - REF_FRAC);
+  return REF_CRIT * Math.pow(Math.max(0, t), 2 / 3);
+}
+
+function shadowDeg() {
+  return 360 - 2 * criticalDeg();
+}
+
+function rTurn(deg) {
+  const crit = criticalDeg();
+  const t = crit > 0 ? deg / crit : 0;
+  return ER * (1 - (1 - coreFrac()) * Math.pow(Math.max(0, t), 1.5));
+}
+
+function surfPt(deg, r) {
+  const th = deg * Math.PI / 180;
+  return { x: CX + r * Math.sin(th), y: CY - r * Math.cos(th) };
+}
+
+function ang(p) { return Math.atan2(p.y - CY, p.x - CX); }
+
+function bezPt(p0, p1, p2, p3, t) {
+  const u = 1 - t;
+  return {
+    x: u*u*u*p0.x + 3*u*u*t*p1.x + 3*u*t*t*p2.x + t*t*t*p3.x,
+    y: u*u*u*p0.y + 3*u*u*t*p1.y + 3*u*t*t*p2.y + t*t*t*p3.y,
+  };
+}
+
+function firstCmbCross(p0, p1, p2, p3, rc) {
+  let lo = 0, hi = 1;
+  for (let i = 0; i <= 80; i++) {
+    const t = i / 80;
+    const p = bezPt(p0, p1, p2, p3, t);
+    const d = Math.hypot(p.x - CX, p.y - CY);
+    if (d <= rc + 0.3) return t;
+  }
+  for (let k = 0; k < 28; k++) {
+    const mid = (lo + hi) / 2;
+    const p = bezPt(p0, p1, p2, p3, mid);
+    if (Math.hypot(p.x - CX, p.y - CY) < rc) hi = mid;
+    else lo = mid;
+  }
+  return (lo + hi) / 2;
+}
+
+function rayPath(deg, side) {
+  const s = side === 'left' ? -1 : 1;
+  const th = deg * Math.PI / 180;
+  const rt = rTurn(deg);
+  const S  = { x: EX, y: EY };
+  const A  = { x: CX + s * ER * Math.sin(th), y: CY - ER * Math.cos(th) };
+  const T  = { x: CX + s * rt * Math.sin(th / 2), y: CY - rt * Math.cos(th / 2) };
+  const c1 = { x: (4 * T.x - A.x) / 3, y: (4 * T.y - A.y) / 3 };
+  const c2 = { x: (4 * T.x - S.x) / 3, y: (4 * T.y - S.y) / 3 };
+  return { S, A, c1, c2, rt };
+}
+
+function drawBezier(p0, p1, p2, p3, tEnd) {
+  ctx.moveTo(p0.x, p0.y);
+  if (tEnd >= 1) {
+    ctx.bezierCurveTo(p1.x, p1.y, p2.x, p2.y, p3.x, p3.y);
+  } else {
+    const steps = Math.max(8, Math.round(tEnd * 40));
+    for (let i = 1; i <= steps; i++) {
+      const p = bezPt(p0, p1, p2, p3, tEnd * i / steps);
+      ctx.lineTo(p.x, p.y);
+    }
+  }
+}
+
+function drawEarthLayers(crit) {
+  const rc = corePx();
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX, CY, ER, 0, Math.PI * 2);
+  ctx.fillStyle = COL.mantle;
+  ctx.fill();
+  ctx.restore();
+
+  const A103  = surfPt(crit, ER);
+  const AL103 = surfPt(-crit, ER);
+  const TR103 = surfPt(crit / 2, rc);
+  const TL103 = surfPt(-crit / 2, rc);
+  const S     = { x: EX, y: EY };
+
+  const c1R = { x: (4 * TR103.x - A103.x) / 3,  y: (4 * TR103.y - A103.y) / 3 };
+  const c2R = { x: (4 * TR103.x - S.x) / 3,      y: (4 * TR103.y - S.y) / 3 };
+  const c1L = { x: (4 * TL103.x - AL103.x) / 3, y: (4 * TL103.y - AL103.y) / 3 };
+  const c2L = { x: (4 * TL103.x - S.x) / 3,     y: (4 * TL103.y - S.y) / 3 };
+
+  const aSurfR = ang(A103);
+  const aSurfL = ang(AL103);
+  const aCmbR  = ang(TR103);
+  const aCmbL  = ang(TL103);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX, CY, ER, aSurfR, aSurfL, false);
+  const rightSteps = 24;
+  for (let i = rightSteps; i >= Math.round(rightSteps / 2); i--) {
+    const p = bezPt(S, c1R, c2R, A103, i / rightSteps);
+    ctx.lineTo(p.x, p.y);
+  }
+  ctx.arc(CX, CY, rc, aCmbL, aCmbR, true);
+  for (let i = Math.round(rightSteps / 2); i <= rightSteps; i++) {
+    const p = bezPt(S, c1L, c2L, AL103, i / rightSteps);
+    ctx.lineTo(p.x, p.y);
+  }
+  ctx.closePath();
+  ctx.fillStyle = COL.shadow;
+  ctx.fill();
+  ctx.restore();
+
+  ctx.beginPath();
+  ctx.arc(CX, CY, rc, 0, Math.PI * 2);
+  ctx.fillStyle = COL.core;
+  ctx.fill();
+}
+
+function rayAngles(crit) {
+  const REF_SURF = [17, 22, 28, 34, 41, 49, 58, 67, 76, 86, 95, REF_CRIT];
+  const REF_CORE = [107, 113, 119, 125, 131, 137, 143, 149, 155, 161, 167, 173];
+  const scale = crit / REF_CRIT;
+
+  const surfAngles = REF_SURF.map(a =>
+    a >= REF_CRIT ? crit : a * scale
+  );
+
+  const coreTail = 173 - REF_CRIT;
+  const coreAngles = REF_CORE.map(a =>
+    crit + (a - REF_CRIT) * (173 - crit) / coreTail
+  ).filter(a => a <= 173);
+
+  return { surfAngles, coreAngles };
+}
+
+function drawRays(crit) {
+  const rc = corePx();
+  const { surfAngles, coreAngles } = rayAngles(crit);
+
+  ctx.save();
+  ctx.strokeStyle = COL.ray;
+  ctx.lineWidth = 1.1;
+  ctx.lineCap = 'round';
+
+  function strokeRay(deg, clipCore) {
+    ['right', 'left'].forEach(side => {
+      const { S, A, c1, c2 } = rayPath(deg, side);
+      ctx.beginPath();
+      if (clipCore) {
+        const tEnd = firstCmbCross(S, c1, c2, A, rc);
+        drawBezier(S, c1, c2, A, tEnd);
+      } else {
+        drawBezier(S, c1, c2, A, 1);
+      }
+      ctx.stroke();
+    });
+  }
+
+  surfAngles.forEach(a => strokeRay(a, false));
+  coreAngles.forEach(a => strokeRay(a, true));
+  ctx.restore();
+}
+
+function drawOutlines() {
+  const rc = corePx();
+  ctx.beginPath();
+  ctx.arc(CX, CY, ER, 0, Math.PI * 2);
+  ctx.strokeStyle = COL.earth;
+  ctx.lineWidth = 2.2;
+  ctx.stroke();
+
+  ctx.beginPath();
+  ctx.arc(CX, CY, rc, 0, Math.PI * 2);
+  ctx.strokeStyle = COL.cmb;
+  ctx.lineWidth = 1.1;
+  ctx.stroke();
+}
+
+function drawAngleArc(crit, shadow) {
+  const rArc = ER + 8;
+  const aR = ang(surfPt(crit, ER));
+  const aL = ang(surfPt(-crit, ER));
+  const inset = 0.11;
+  const arcStart = aR + inset;
+  const arcEnd = aL - inset;
+
+  ctx.save();
+  ctx.setLineDash([4, 4]);
+  ctx.lineCap = 'butt';
+  ctx.strokeStyle = COL.angle;
+  ctx.lineWidth = 1.4;
+  ctx.beginPath();
+  ctx.arc(CX, CY, rArc, arcStart, arcEnd, false);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  function arrowAt(angle, dir) {
+    const px = CX + rArc * Math.cos(angle);
+    const py = CY + rArc * Math.sin(angle);
+    const tx = -Math.sin(angle) * dir;
+    const ty =  Math.cos(angle) * dir;
+    const sz = 6;
+    ctx.beginPath();
+    ctx.moveTo(px + tx * sz, py + ty * sz);
+    ctx.lineTo(px - tx * sz * 0.55 - ty * sz * 0.55, py - ty * sz * 0.55 + tx * sz * 0.55);
+    ctx.lineTo(px - tx * sz * 0.55 + ty * sz * 0.55, py - ty * sz * 0.55 - tx * sz * 0.55);
+    ctx.closePath();
+    ctx.fillStyle = COL.angle;
+    ctx.fill();
+  }
+  arrowAt(arcStart, -1);
+  arrowAt(arcEnd, 1);
+
+  const midA = (aR + aL) / 2 + (aL < aR ? Math.PI : 0);
+  const ax = CX + (rArc + 14) * Math.cos(midA);
+  const ay = CY + (rArc + 14) * Math.sin(midA);
+  ctx.font = 'bold 15px Segoe UI';
+  ctx.fillStyle = COL.angle;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(shadow.toFixed(0) + '°', ax, ay);
+  ctx.restore();
+}
+
+function drawEpicenter() {
+  const r = ER * 0.035;
+  ctx.beginPath();
+  ctx.arc(EX, EY, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#fff';
+  ctx.fill();
+  ctx.strokeStyle = COL.earth;
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+
+  const lx = EX;
+  const ly = EY - 16;
+  ctx.font = '11px Segoe UI';
+  ctx.fillStyle = '#111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('Epicenter', lx, ly);
+}
+
+function drawLabels() {
+  ctx.font = '12px Segoe UI';
+  ctx.fillStyle = '#111';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText('Liquid Core', CX, CY + 4);
+}
+
+function draw() {
+  const crit = criticalDeg();
+  const shadow = shadowDeg();
+  document.getElementById('shadowVal').textContent = shadow.toFixed(0) + '°';
+
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  drawEarthLayers(crit);
+  drawRays(crit);
+  drawOutlines();
+  drawAngleArc(crit, shadow);
+  drawEpicenter();
+  drawLabels();
+}
+
+draw();
+</script>
+</body>
+</html>
