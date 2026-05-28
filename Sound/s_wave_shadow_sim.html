@@ -53,15 +53,15 @@
 <canvas id="cv" width="600" height="440"></canvas>
 <div id="sliderCol">
   <label for="sldCore">core size</label>
-  <input type="range" id="sldCore" min="2500" max="4500" step="10" value="3500">
+  <input type="range" id="sldCore" min="2500" max="4500" step="10" value="2760">
 </div>
 <div id="radiusBlock">
   <label>Radius</label>
-  <span id="readout">3500 km</span>
+  <span id="readout">2760 km</span>
 </div>
 <div id="shadowBlock">
     <label>S-wave shadow</label>
-    <span id="shadowVal">154°</span>
+    <span id="shadowVal">120°</span>
 </div>
 
 <script>
@@ -77,7 +77,7 @@ const REF_CRIT = 103.0;
 const CX = 300, CY = 218, ER = 188;
 const EX = CX, EY = CY - ER;
 
-let coreKm = 3500;
+let coreKm = 3760;
 
 const COL = {
   mantle: '#ffe566',
