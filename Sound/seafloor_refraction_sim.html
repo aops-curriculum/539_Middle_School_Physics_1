@@ -1,0 +1,419 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Seafloor Sound Refraction</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 600px; height: 500px; overflow: hidden;
+    font-family: 'Segoe UI', sans-serif;
+    background: #0a1628;
+    position: relative;
+  }
+  canvas { display: block; }
+  #overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 72px;
+    display: flex; flex-direction: column; justify-content: center;
+    padding: 6px 12px 8px;
+    gap: 5px;
+    background: linear-gradient(transparent, rgba(8, 14, 28, 0.92));
+    pointer-events: none;
+  }
+  #overlay > * { pointer-events: auto; }
+  .row {
+    display: flex; align-items: center; gap: 8px;
+  }
+  .row label {
+    color: #b8cce8; font-size: 10px; white-space: nowrap;
+    width: 118px; flex-shrink: 0;
+  }
+  .row input[type="range"] {
+    flex: 1; accent-color: #5eb8ff; min-width: 0;
+  }
+  .row .val {
+    color: #eef4ff; font-size: 10px; font-weight: 600;
+    width: 52px; text-align: right; flex-shrink: 0;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas" width="600" height="500"></canvas>
+<div id="overlay">
+  <div class="row">
+    <label for="wlSlider">Wavelength (water)</label>
+    <input type="range" id="wlSlider" min="28" max="110" value="58" step="1">
+    <span class="val" id="wlVal">58 px</span>
+  </div>
+  <div class="row">
+    <label for="angleSlider">Angle of incidence</label>
+    <input type="range" id="angleSlider" min="5" max="88" value="35" step="1">
+    <span class="val" id="angleVal">35°</span>
+  </div>
+  <div class="row">
+    <label for="speedSlider">Sound speed (seafloor)</label>
+    <input type="range" id="speedSlider" min="900" max="3200" value="2400" step="50">
+    <span class="val" id="speedVal">2400 m/s</span>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+const C_WATER = 1500;
+const CTRL_H = 72;
+const BOUNDARY_Y = Math.floor((H - CTRL_H) / 2);
+
+let wavelength = 58;
+let theta1Deg = 35;
+let cSeafloor = 2400;
+
+const wlSlider = document.getElementById('wlSlider');
+const angleSlider = document.getElementById('angleSlider');
+const speedSlider = document.getElementById('speedSlider');
+const wlVal = document.getElementById('wlVal');
+const angleVal = document.getElementById('angleVal');
+const speedVal = document.getElementById('speedVal');
+
+function bindControls() {
+  wlSlider.addEventListener('input', () => {
+    wavelength = +wlSlider.value;
+    wlVal.textContent = wavelength + ' px';
+    draw();
+  });
+  angleSlider.addEventListener('input', () => {
+    theta1Deg = +angleSlider.value;
+    angleVal.textContent = theta1Deg + '°';
+    draw();
+  });
+  speedSlider.addEventListener('input', () => {
+    cSeafloor = +speedSlider.value;
+    speedVal.textContent = cSeafloor + ' m/s';
+    draw();
+  });
+}
+
+function clipLineToRect(x1, y1, x2, y2, xmin, ymin, xmax, ymax) {
+  let dx = x2 - x1, dy = y2 - y1;
+  let t0 = 0, t1 = 1;
+  const edges = [
+    [-dx, x1 - xmin], [dx, xmax - x1], [-dy, y1 - ymin], [dy, ymax - y1]
+  ];
+  for (const [p, q] of edges) {
+    if (Math.abs(p) < 1e-9) {
+      if (q < 0) return null;
+    } else {
+      const t = q / p;
+      if (p < 0) {
+        if (t > t1) return null;
+        if (t > t0) t0 = t;
+      } else {
+        if (t < t0) return null;
+        if (t < t1) t1 = t;
+      }
+    }
+  }
+  return {
+    x1: x1 + dx * t0, y1: y1 + dy * t0,
+    x2: x1 + dx * t1, y2: y1 + dy * t1
+  };
+}
+
+function drawLineClipped(x1, y1, x2, y2, xmin, ymin, xmax, ymax, style) {
+  const seg = clipLineToRect(x1, y1, x2, y2, xmin, ymin, xmax, ymax);
+  if (!seg) return;
+  ctx.beginPath();
+  ctx.moveTo(seg.x1, seg.y1);
+  ctx.lineTo(seg.x2, seg.y2);
+  ctx.strokeStyle = style.color;
+  ctx.lineWidth = style.width || 1.5;
+  ctx.setLineDash(style.dash || []);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// Wavefront tangent for propagation angle θ (from normal, downward into medium).
+function wfTangent(theta) {
+  return { wx: -Math.cos(theta), wy: Math.sin(theta) };
+}
+
+// One continuous wavefront: same boundary point, different tilt in each medium.
+function drawBentWavefront(xb, theta1, theta2, styleWater, styleFloor, drawFloor) {
+  const lenWater = Math.hypot(W, H) * 1.85;
+  const lenFloor = Math.hypot(W, H) * 1.25;
+  const t1 = wfTangent(theta1);
+
+  const wx1 = t1.wx, wy1 = t1.wy;
+  drawLineClipped(
+    xb - wx1 * lenWater, BOUNDARY_Y - wy1 * lenWater,
+    xb, BOUNDARY_Y,
+    0, 0, W, BOUNDARY_Y, styleWater
+  );
+
+  if (drawFloor && theta2 !== null) {
+    const t2 = wfTangent(theta2);
+    drawLineClipped(
+      xb, BOUNDARY_Y,
+      xb + t2.wx * lenFloor, BOUNDARY_Y + t2.wy * lenFloor,
+      0, BOUNDARY_Y, W, H - CTRL_H, styleFloor
+    );
+  }
+}
+
+function drawReflectedLeg(xb, theta1, style) {
+  const len = Math.hypot(W, H) * 1.0;
+  const t1 = wfTangent(theta1);
+  drawLineClipped(
+    xb, BOUNDARY_Y,
+    xb + t1.wx * len, BOUNDARY_Y - t1.wy * len,
+    0, 0, W, BOUNDARY_Y, style
+  );
+}
+
+function drawGhostVerticalSet(xCenter, lambda2, count, style) {
+  const dx = lambda2;
+  const len = H - CTRL_H - BOUNDARY_Y;
+  for (let n = -count; n <= count; n++) {
+    const xb = xCenter + n * dx + dx * 0.5;
+    if (xb < 0 || xb > W) continue;
+    drawLineClipped(xb, BOUNDARY_Y, xb, BOUNDARY_Y + len, 0, BOUNDARY_Y, W, H - CTRL_H, style);
+  }
+}
+
+function drawWavefrontSet(xCenter, theta1, theta2, lambda1, count, opts) {
+  const sin1 = Math.sin(theta1);
+  if (Math.abs(sin1) < 1e-6) return;
+  const dx = lambda1 / sin1;
+
+  for (let n = -count; n <= count; n++) {
+    const xb = xCenter + n * dx;
+    if (xb < -120 || xb > W + 40) continue;
+
+    if (opts.mode === 'refract') {
+      drawBentWavefront(xb, theta1, theta2, opts.waterStyle, opts.floorStyle, true);
+    } else if (opts.mode === 'critical') {
+      drawBentWavefront(xb, theta1, Math.PI / 2, opts.waterStyle, opts.floorStyle, true);
+    } else if (opts.mode === 'tir') {
+      drawBentWavefront(xb, theta1, null, opts.waterStyle, null, false);
+      drawReflectedLeg(xb, theta1, opts.reflectStyle);
+    }
+  }
+}
+
+function drawBackground() {
+  const waterGrad = ctx.createLinearGradient(0, 0, 0, BOUNDARY_Y);
+  waterGrad.addColorStop(0, '#0c3d6e');
+  waterGrad.addColorStop(1, '#1a5f8a');
+  ctx.fillStyle = waterGrad;
+  ctx.fillRect(0, 0, W, BOUNDARY_Y);
+
+  const floorGrad = ctx.createLinearGradient(0, BOUNDARY_Y, 0, H - CTRL_H);
+  floorGrad.addColorStop(0, '#6b4f2a');
+  floorGrad.addColorStop(0.35, '#5a4020');
+  floorGrad.addColorStop(1, '#3d2a14');
+  ctx.fillStyle = floorGrad;
+  ctx.fillRect(0, BOUNDARY_Y, W, H - CTRL_H - BOUNDARY_Y);
+
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fillRect(0, H - CTRL_H, W, CTRL_H);
+
+  ctx.strokeStyle = 'rgba(255,255,255,0.85)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(0, BOUNDARY_Y);
+  ctx.lineTo(W, BOUNDARY_Y);
+  ctx.stroke();
+
+  ctx.font = '600 11px Segoe UI';
+  ctx.fillStyle = 'rgba(200,230,255,0.55)';
+  ctx.fillText('water', 12, 24);
+  ctx.fillStyle = 'rgba(230,200,150,0.55)';
+  ctx.fillText('seafloor', 12, BOUNDARY_Y + 22);
+}
+
+function drawNormalAndAngles(x0, theta1, theta2, isTIR, isCritical) {
+  const rayLen = 72;
+  const arcR = 30;
+
+  ctx.setLineDash([5, 5]);
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(x0, BOUNDARY_Y - rayLen);
+  ctx.lineTo(x0, BOUNDARY_Y + rayLen);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = 'rgba(255,255,255,0.45)';
+  ctx.font = '10px Segoe UI';
+  ctx.fillText('normal', x0 + 5, BOUNDARY_Y - rayLen + 12);
+
+  const t1 = theta1 * Math.PI / 180;
+
+  // θ₁: arc in water between upward normal and incident ray (from upper left)
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, W, BOUNDARY_Y);
+  ctx.clip();
+  ctx.strokeStyle = 'rgba(120,210,255,0.85)';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.arc(x0, BOUNDARY_Y, arcR, -Math.PI / 2 - t1, -Math.PI / 2, false);
+  ctx.stroke();
+  ctx.fillStyle = '#a8dcff';
+  ctx.fillText('θ₁', x0 - 22, BOUNDARY_Y - arcR * 0.55);
+  ctx.restore();
+
+  if (!isTIR && theta2 !== null) {
+    const t2 = isCritical ? Math.PI / 2 : theta2 * Math.PI / 180;
+
+    // θ₂: arc in seafloor between downward normal and refracted ray (down-right)
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, BOUNDARY_Y, W, H - CTRL_H - BOUNDARY_Y);
+    ctx.clip();
+    ctx.strokeStyle = 'rgba(255,190,110,0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.arc(x0, BOUNDARY_Y, arcR, Math.PI / 2 - t2, Math.PI / 2, false);
+    ctx.stroke();
+    ctx.fillStyle = '#ffd08a';
+    ctx.fillText(isCritical ? 'θ₂ = 90°' : 'θ₂', x0 + 10, BOUNDARY_Y + arcR * 0.75);
+    ctx.restore();
+  }
+}
+
+function drawRayHints(x0, theta1, theta2, isTIR) {
+  const len = 88;
+  const t1 = theta1 * Math.PI / 180;
+  const sin1 = Math.sin(t1), cos1 = Math.cos(t1);
+
+  ctx.setLineDash([4, 6]);
+  ctx.lineWidth = 1.2;
+
+  ctx.strokeStyle = 'rgba(120,210,255,0.35)';
+  ctx.beginPath();
+  ctx.moveTo(x0 - sin1 * len, BOUNDARY_Y - cos1 * len);
+  ctx.lineTo(x0, BOUNDARY_Y);
+  ctx.stroke();
+
+  if (isTIR) {
+    ctx.strokeStyle = 'rgba(120,210,255,0.45)';
+    ctx.beginPath();
+    ctx.moveTo(x0, BOUNDARY_Y);
+    ctx.lineTo(x0 + sin1 * len, BOUNDARY_Y - cos1 * len);
+    ctx.stroke();
+  } else {
+    const t2 = theta2 * Math.PI / 180;
+    ctx.strokeStyle = 'rgba(255,190,110,0.45)';
+    ctx.beginPath();
+    ctx.moveTo(x0, BOUNDARY_Y);
+    ctx.lineTo(x0 + Math.sin(t2) * len, BOUNDARY_Y + Math.cos(t2) * len);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+}
+
+function drawBoundaryMismatch(x0, spacingIncident, spacingAttempt) {
+  const count = 5;
+
+  ctx.strokeStyle = 'rgba(255,90,90,0.9)';
+  ctx.lineWidth = 2;
+  for (let k = -count; k <= count; k++) {
+    const x = x0 + k * spacingIncident;
+    if (x < 20 || x > W - 20) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, BOUNDARY_Y - 9);
+    ctx.lineTo(x, BOUNDARY_Y + 9);
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = 'rgba(255,90,90,0.45)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([3, 4]);
+  for (let k = -count; k <= count; k++) {
+    const x = x0 + spacingAttempt / 2 + k * spacingAttempt;
+    if (x < 20 || x > W - 20) continue;
+    ctx.beginPath();
+    ctx.moveTo(x, BOUNDARY_Y - 6);
+    ctx.lineTo(x, BOUNDARY_Y + 6);
+    ctx.stroke();
+  }
+  ctx.setLineDash([]);
+
+  ctx.fillStyle = 'rgba(255,120,120,0.92)';
+  ctx.font = 'bold 10px Segoe UI';
+  ctx.fillText('wavefront spacing along boundary cannot match', 90, BOUNDARY_Y + 58);
+}
+
+function draw() {
+  const theta1 = theta1Deg * Math.PI / 180;
+  const sin1 = Math.sin(theta1);
+
+  const ratio = cSeafloor / C_WATER;
+  const sin2 = ratio * sin1;
+  const sinCrit = C_WATER / cSeafloor;
+  const hasCritical = cSeafloor > C_WATER;
+  const thetaCritDeg = hasCritical ? Math.asin(sinCrit) * 180 / Math.PI : null;
+  const isTIR = hasCritical && sin1 > sinCrit + 1e-6;
+  const isCritical = hasCritical && !isTIR && Math.abs(sin1 - sinCrit) < 0.012;
+  const theta2Rad = isTIR ? null : Math.asin(Math.min(1, sin2));
+  const theta2Deg = theta2Rad !== null ? theta2Rad * 180 / Math.PI : null;
+
+  const lambda1 = wavelength;
+  const lambda2 = lambda1 * ratio;
+
+  const x0 = W / 2;
+  const wfCount = 14;
+
+  drawBackground();
+
+  const waterStyle  = { color: 'rgba(110,210,255,0.92)', width: 2 };
+  const floorStyle  = { color: 'rgba(255,185,80,0.95)', width: 2 };
+  const reflectStyle = { color: 'rgba(160,235,255,0.55)', width: 1.5, dash: [6, 5] };
+  const ghostStyle  = { color: 'rgba(255,100,90,0.35)', width: 1.5, dash: [5, 7] };
+
+  if (isTIR) {
+    drawWavefrontSet(x0, theta1, null, lambda1, wfCount, {
+      mode: 'tir', waterStyle, floorStyle, reflectStyle
+    });
+    drawRayHints(x0, theta1Deg, null, true);
+    const spacingAlongBoundary = lambda1 / sin1;
+    drawBoundaryMismatch(x0, spacingAlongBoundary, lambda2);
+    drawGhostVerticalSet(x0, lambda2, 6, ghostStyle);
+  } else if (isCritical) {
+    drawWavefrontSet(x0, theta1, Math.PI / 2, lambda1, wfCount, {
+      mode: 'critical', waterStyle, floorStyle
+    });
+    drawRayHints(x0, theta1Deg, 90, false);
+  } else {
+    drawWavefrontSet(x0, theta1, theta2Rad, lambda1, wfCount, {
+      mode: 'refract', waterStyle, floorStyle
+    });
+    drawRayHints(x0, theta1Deg, theta2Deg, false);
+  }
+
+  drawNormalAndAngles(x0, theta1Deg, theta2Deg, isTIR, isCritical);
+
+  ctx.font = '9px Segoe UI';
+  ctx.textAlign = 'left';
+  ctx.fillStyle = 'rgba(255,255,255,0.35)';
+  ctx.fillText('incident wavefronts', 12, 38);
+  ctx.fillStyle = 'rgba(255,185,80,0.55)';
+  ctx.fillText('refracted wavefronts', 12, BOUNDARY_Y + 36);
+  if (isTIR) {
+    ctx.fillStyle = 'rgba(255,120,120,0.65)';
+    ctx.fillText('cannot match at boundary', 268, H - CTRL_H - 10);
+  }
+}
+
+bindControls();
+draw();
+</script>
+</body>
+</html>
