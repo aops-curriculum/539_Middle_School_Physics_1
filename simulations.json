@@ -865,6 +865,13 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Sound/seafloor_refraction_sim.html",
+      "title": "Seafloor Sound Refraction",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
