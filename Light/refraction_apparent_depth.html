@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Refraction: Apparent Depth</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #f0f0f0;
+            font-family: Arial, sans-serif;
+            user-select: none;
+            max-width: 600px;
+            margin: 0 auto;
+            padding: 12px;
+        }
+        canvas {
+            display: block;
+            border: 1px solid #333;
+            border-radius: 6px;
+            cursor: grab;
+        }
+        p.instructions {
+            font-size: 14px;
+            color: #666;
+            text-align: center;
+            margin-bottom: 8px;
+        }
+    </style>
+</head>
+<body>
+    <p class="instructions">Drag the eyes to explore refraction. Black circle = tangential image (where the two red rays converge). Green circle = sagittal image (paraxial astigmatic focus, rays perpendicular to screen).</p>
+    <canvas id="canvas" width="600" height="500"></canvas>
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const W = 600, H = 500;
+        const SURFACE = H / 2; // y = 250, water surface halfway up
+        const N1 = 1.33, N2 = 1.0; // water, air
+        const EYE_R = 20;
+
+        const dot = { x: 300, y: 390 };
+        // Offset midpoint from dot.x to show astigmatism at startup
+        const eyes = [
+            { x: 100, y: 105 },
+            { x: 380, y: 120 }
+        ];
+        let dragging = null;
+
+        // Correct Snell's law for flat horizontal surface:
+        //   N1 * (xs - xd) / r1  =  N2 * (xe - xs) / r2
+        // Note the sign: dxA = eyePos.x - xs  (xe minus xs, NOT xs minus xe)
+        // The function f is strictly increasing, goes from -(N1+N2) to +(N1+N2),
+        // so bisection always finds a unique root.
+        function findSurfacePoint(dotPos, eyePos) {
+            const dw = dotPos.y - SURFACE; // depth of dot below surface
+            const ha = SURFACE - eyePos.y; // height of eye above surface
+            if (dw <= 0 || ha <= 0) return null;
+
+            const f = xs => {
+                const dxW = xs - dotPos.x;
+                const dxA = eyePos.x - xs;
+                return N1 * dxW / Math.sqrt(dxW * dxW + dw * dw)
+                     - N2 * dxA / Math.sqrt(dxA * dxA + ha * ha);
+            };
+
+            let lo = -1000, hi = 1600;
+            for (let i = 0; i < 80; i++) {
+                const mid = (lo + hi) / 2;
+                (f(lo) * f(mid) <= 0) ? (hi = mid) : (lo = mid);
+            }
+            return { x: (lo + hi) / 2, y: SURFACE };
+        }
+
+        // Tangential image: intersection of backward-extended refracted rays in the
+        // meridional plane.  Line i: sp_i + t*(sp_i - eye_i).  Since sp1.y = sp2.y:
+        //   t*(dx1*dy2 - dy1*dx2) = (sp2.x - sp1.x)*dy2
+        function findTangentialImage(sp1, e1, sp2, e2) {
+            const dx1 = sp1.x - e1.x, dy1 = sp1.y - e1.y; // dy > 0 (going into water)
+            const dx2 = sp2.x - e2.x, dy2 = sp2.y - e2.y;
+            const denom = dx1 * dy2 - dy1 * dx2;
+            if (Math.abs(denom) < 1e-6) return null;
+            const t = (sp2.x - sp1.x) * dy2 / denom;
+            if (t < 0) return null;
+            return { x: sp1.x + t * dx1, y: sp1.y + t * dy1 };
+        }
+
+        // Sagittal image: paraxial formula for rays diverging perpendicular to the
+        // meridional plane, as seen by an observer at the midpoint M of the two eyes.
+        //
+        //   x_sag = dot.x  (always directly above the source)
+        //   y_sag = SURFACE + (N2/N1) * cos(theta2) * r0
+        //         = SURFACE + (N2/N1) * (cos(theta2)/cos(theta1)) * dw
+        //
+        // where theta1, theta2 are the angles of the central ray (dot -> M via sm).
+        function computeSagittalImage(dotPos, e1, e2) {
+            const M = { x: (e1.x + e2.x) / 2, y: (e1.y + e2.y) / 2 };
+            const sm = findSurfacePoint(dotPos, M);
+            if (!sm) return null;
+
+            const dw = dotPos.y - SURFACE;
+            const dx = sm.x - dotPos.x;
+            const r0 = Math.sqrt(dx * dx + dw * dw);
+            const sinTheta2 = (N1 / N2) * (dx / r0);
+            if (Math.abs(sinTheta2) > 1) return null; // total internal reflection
+            const cosTheta2 = Math.sqrt(1 - sinTheta2 * sinTheta2);
+
+            return {
+                x: dotPos.x,
+                y: SURFACE + (N2 / N1) * cosTheta2 * r0
+            };
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, W, H);
+
+            // Backgrounds
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, W, SURFACE);
+            ctx.fillStyle = '#1565C0';
+            ctx.fillRect(0, SURFACE, W, H - SURFACE);
+
+            // Water surface
+            ctx.strokeStyle = '#90CAF9';
+            ctx.lineWidth = 3;
+            ctx.setLineDash([]);
+            ctx.beginPath();
+            ctx.moveTo(0, SURFACE);
+            ctx.lineTo(W, SURFACE);
+            ctx.stroke();
+
+            // Refractive index labels
+            ctx.font = 'bold 14px Arial';
+            ctx.fillStyle = 'rgba(0,0,0,0.6)';
+            ctx.fillText('n = 1.00', 10, 22);
+            ctx.fillStyle = 'rgba(255,255,255,0.75)';
+            ctx.fillText('n = 1.33', 10, SURFACE + 22);
+
+            const sp1 = findSurfacePoint(dot, eyes[0]);
+            const sp2 = findSurfacePoint(dot, eyes[1]);
+
+            if (sp1 && sp2) {
+                // --- Tangential image and black dashed backward extensions ---
+                const tan = findTangentialImage(sp1, eyes[0], sp2, eyes[1]);
+                if (tan) {
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 1.5;
+                    ctx.setLineDash([5, 5]);
+                    ctx.beginPath(); ctx.moveTo(sp1.x, sp1.y); ctx.lineTo(tan.x, tan.y); ctx.stroke();
+                    ctx.beginPath(); ctx.moveTo(sp2.x, sp2.y); ctx.lineTo(tan.x, tan.y); ctx.stroke();
+                    ctx.setLineDash([]);
+
+                    // Tangential image: black outline circle (no fill, see water through it)
+                    ctx.strokeStyle = '#000';
+                    ctx.lineWidth = 2.5;
+                    ctx.beginPath();
+                    ctx.arc(tan.x, tan.y, 7, 0, Math.PI * 2);
+                    ctx.stroke();
+                }
+
+                // --- Red solid rays: actual light paths ---
+                ctx.strokeStyle = '#FF3333';
+                ctx.lineWidth = 2.5;
+                ctx.setLineDash([]);
+                ctx.beginPath(); ctx.moveTo(dot.x, dot.y); ctx.lineTo(sp1.x, sp1.y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sp1.x, sp1.y); ctx.lineTo(eyes[0].x, eyes[0].y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(dot.x, dot.y); ctx.lineTo(sp2.x, sp2.y); ctx.stroke();
+                ctx.beginPath(); ctx.moveTo(sp2.x, sp2.y); ctx.lineTo(eyes[1].x, eyes[1].y); ctx.stroke();
+            }
+
+            // --- Sagittal image: green outline circle ---
+            // x = dot.x (always directly above the source); y from paraxial sagittal formula
+            const sag = computeSagittalImage(dot, eyes[0], eyes[1]);
+            if (sag) {
+                ctx.strokeStyle = '#00CC44';
+                ctx.lineWidth = 2.5;
+                ctx.setLineDash([]);
+                ctx.beginPath();
+                ctx.arc(sag.x, sag.y, 7, 0, Math.PI * 2);
+                ctx.stroke();
+            }
+
+            // --- Real dot: solid red circle ---
+            ctx.fillStyle = '#FF3333';
+            ctx.beginPath();
+            ctx.arc(dot.x, dot.y, 8, 0, Math.PI * 2);
+            ctx.fill();
+
+            // --- Eyes: white circles with black outlines ---
+            for (const eye of eyes) {
+                ctx.fillStyle = 'white';
+                ctx.strokeStyle = '#000';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(eye.x, eye.y, EYE_R, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.stroke();
+            }
+        }
+
+        function canvasPos(e) {
+            const rect = canvas.getBoundingClientRect();
+            const pt = e.touches ? e.touches[0] : e;
+            return { x: pt.clientX - rect.left, y: pt.clientY - rect.top };
+        }
+
+        function nearEye(pos) {
+            for (let i = 0; i < eyes.length; i++) {
+                const dx = pos.x - eyes[i].x, dy = pos.y - eyes[i].y;
+                if (Math.sqrt(dx * dx + dy * dy) < EYE_R + 8) return i;
+            }
+            return null;
+        }
+
+        function moveEye(i, pos) {
+            eyes[i].x = Math.max(EYE_R, Math.min(W - EYE_R, pos.x));
+            eyes[i].y = Math.max(EYE_R, Math.min(SURFACE - EYE_R - 2, pos.y));
+        }
+
+        canvas.addEventListener('mousedown', e => {
+            const hit = nearEye(canvasPos(e));
+            if (hit !== null) { dragging = hit; canvas.style.cursor = 'grabbing'; }
+        });
+        canvas.addEventListener('mousemove', e => {
+            if (dragging === null) return;
+            moveEye(dragging, canvasPos(e));
+            draw();
+        });
+        canvas.addEventListener('mouseup', () => { dragging = null; canvas.style.cursor = 'grab'; });
+        canvas.addEventListener('mouseleave', () => { dragging = null; });
+
+        canvas.addEventListener('touchstart', e => {
+            e.preventDefault();
+            dragging = nearEye(canvasPos(e));
+        }, { passive: false });
+        canvas.addEventListener('touchmove', e => {
+            e.preventDefault();
+            if (dragging !== null) { moveEye(dragging, canvasPos(e)); draw(); }
+        }, { passive: false });
+        canvas.addEventListener('touchend', e => {
+            e.preventDefault();
+            dragging = null;
+        }, { passive: false });
+
+        draw();
+    </script>
+</body>
+</html>
