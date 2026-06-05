@@ -1,0 +1,388 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Sound Refraction Simulation</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    width: 600px; height: 500px; overflow: hidden;
+    font-family: 'Segoe UI', sans-serif;
+    background: #1a1a2e;
+    position: relative;
+  }
+  #canvas { display: block; }
+  #overlay {
+    position: absolute;
+    bottom: 0; left: 0; right: 0;
+    height: 60px;
+    display: flex; align-items: center;
+    padding: 0 14px;
+    gap: 10px;
+    pointer-events: none;
+  }
+  #overlay > * { pointer-events: auto; }
+  #overlay label { color: #cce; font-size: 11px; white-space: nowrap; }
+  #overlay select {
+    background: rgba(20,20,50,0.75); color: #eef;
+    border: 1px solid rgba(120,140,200,0.4); border-radius: 4px;
+    padding: 2px 5px; font-size: 11px; cursor: pointer;
+  }
+  .grad-group {
+    display: flex; align-items: center; gap: 5px; flex: 1;
+  }
+  .end-label { color: #99b; font-size: 10px; white-space: nowrap; }
+  #gradientSlider {
+    flex: 1; accent-color: #7ad;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas" width="600" height="500"></canvas>
+<div id="overlay">
+  <label>Display:</label>
+  <select id="displayMode">
+    <option value="rays">Rays</option>
+    <option value="waves">Wave Fronts</option>
+  </select>
+  <div class="grad-group">
+    <span class="end-label">Warmer near ground</span>
+    <input type="range" id="gradientSlider" min="-100" max="100" value="0" step="1">
+    <span class="end-label">Warmer aloft</span>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = canvas.width;
+const H = canvas.height;
+
+// Layout constants — ground strip is 60px tall, controls float over it
+const GROUND_Y = H - 60;
+const SKY_TOP = 0;
+const ATM_HEIGHT = GROUND_Y - SKY_TOP; // atmosphere height in pixels
+
+// Source position (roadway center, slightly above ground)
+const SOURCE_X = 300;
+const SOURCE_Y = GROUND_Y - 22;
+
+let displayMode = 'rays';
+// gradient: -1 = warm ground (upward refraction), 0 = uniform, +1 = warm aloft (inversion)
+let gradient = 0;
+let time = 0;
+
+document.getElementById('displayMode').addEventListener('change', e => {
+  displayMode = e.target.value;
+});
+document.getElementById('gradientSlider').addEventListener('input', e => {
+  gradient = e.target.value / 100;
+  time = 0;
+})
+
+// Speed of sound as a function of height.
+// gradient < 0: ground is warmer → speed decreases with altitude → rays curve upward
+// gradient > 0: aloft is warmer → speed increases with altitude → rays curve downward
+// h = 0 at ground, 1 at top of atmosphere
+function speedAt(yPixel) {
+  const h = Math.max(0, Math.min(1, yPixel / ATM_HEIGHT));
+  // Clamp to a positive minimum so the ray tracer never divides by zero or inverts
+  return Math.max(0.12, 1.0 + gradient * 0.88 * h);
+}
+
+// dSpeed/dy at yPixel (numerical gradient)
+function dSpeedDy(yPixel) {
+  const dy = 2;
+  return (speedAt(yPixel + dy) - speedAt(yPixel - dy)) / (2 * dy);
+}
+
+// Trace a ray using Snell's law (continuous form via ODE)
+// angle: initial angle from horizontal (radians), positive = upward
+// Returns array of {x,y} points
+function traceRay(startX, startY, angleDeg, maxSteps = 2400) {
+  const angle = angleDeg * Math.PI / 180;
+  let x = startX;
+  let y = startY; // in canvas coords, 0=top
+  // Convert to physical coords where yPhys=0 is ground
+  let yPhys = GROUND_Y - y;
+
+  let dx = Math.cos(angle);
+  let dy = Math.sin(angle); // positive = upward in physical
+  const step = 2; // pixels per step
+
+  const pts = [{x, y}];
+
+  for (let i = 0; i < maxSteps; i++) {
+    // Snell's law in continuous form: d(sin θ / c)/ds = 0 in homogeneous layers
+    // Gradient of c only in vertical direction
+    // Refraction: d(ux/c)/dt = 0 => ux/c = const (horizontal slowness conserved)
+    // We use numerical integration of ray equations:
+    // dx/ds = c * px, dy/ds = c * py
+    // dpx/ds = -dc/dx = 0, dpy/ds = -dc/dy
+    const c = speedAt(yPhys);
+    const dCdY = dSpeedDy(yPhys); // positive means speed increases with altitude
+
+    // Ray equations (slowness vector p normalized)
+    const speed = Math.sqrt(dx * dx + dy * dy);
+    const ux = dx / speed;
+    const uy = dy / speed;
+
+    // Update direction via duy/ds = dCdY (bends toward lower speed)
+    // Actually the ray curves toward lower speed region
+    const curvature = -dCdY / c; // if speed increases upward, ray bends down
+    const newUy = uy + curvature * step;
+    const newUx = ux; // horizontal component conserved
+    const newSpeed = Math.sqrt(newUx * newUx + newUy * newUy);
+    dx = newUx / newSpeed;
+    dy = newUy / newSpeed;
+
+    x += dx * step;
+    yPhys += dy * step;
+    y = GROUND_Y - yPhys;
+
+    // Stop only when the ray exits the canvas viewport
+    if (x > W + 40) break;
+    if (x < -40) break;
+    if (y < -40) break; // above canvas
+    if (yPhys < 0) { // hit ground
+      pts.push({x, y: GROUND_Y});
+      break;
+    }
+
+    pts.push({x, y});
+  }
+  return pts;
+}
+
+// Draw sky — flat uniform blue base
+function drawSky() {
+  ctx.fillStyle = '#6aaee0';
+  ctx.fillRect(0, 0, W, GROUND_Y);
+}
+
+// Draw temperature gradient overlay — colors shift strongly with slider
+function drawTempOverlay() {
+  if (Math.abs(gradient) < 0.02) return;
+  const s = Math.abs(gradient);
+  const grad = ctx.createLinearGradient(0, GROUND_Y, 0, 0);
+  if (gradient < 0) {
+    // Warm ground: vivid orange/red near ground fading to cool blue-purple aloft
+    grad.addColorStop(0,   `rgba(255,100,20,${0.55 * s})`);
+    grad.addColorStop(0.3, `rgba(255,160,60,${0.35 * s})`);
+    grad.addColorStop(0.7, `rgba(100,160,255,${0.15 * s})`);
+    grad.addColorStop(1,   `rgba(60,100,220,${0.25 * s})`);
+  } else {
+    // Warm aloft: cool near ground, vivid orange/red up top
+    grad.addColorStop(0,   `rgba(60,100,220,${0.25 * s})`);
+    grad.addColorStop(0.3, `rgba(100,160,255,${0.15 * s})`);
+    grad.addColorStop(0.7, `rgba(255,160,60,${0.35 * s})`);
+    grad.addColorStop(1,   `rgba(255,80,10,${0.55 * s})`);
+  }
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, GROUND_Y);
+}
+
+// Draw ground
+function drawGround() {
+  // Green ground fill
+  const grad = ctx.createLinearGradient(0, GROUND_Y, 0, H);
+  grad.addColorStop(0, '#5a7a3a');
+  grad.addColorStop(0.3, '#4a6a2a');
+  grad.addColorStop(1, '#3a5a1a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, GROUND_Y, W, H - GROUND_Y);
+
+  // Road: gray section directly under/around the cars, top flush with horizon
+  const roadX = 246, roadW = 108;
+  const roadY = GROUND_Y;
+  const roadH = H - roadY;
+  ctx.fillStyle = '#666';
+  ctx.fillRect(roadX, roadY, roadW, roadH);
+
+  // Vertical dashed center line dividing the two lanes
+  ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+  ctx.lineWidth = 2;
+  ctx.setLineDash([10, 8]);
+  ctx.beginPath();
+  const midX = roadX + roadW / 2;
+  ctx.moveTo(midX, roadY);
+  ctx.lineTo(midX, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+// Draw vehicles (simple stylized front view) — two cars only
+function drawVehicles() {
+  const vehicles = [
+    { x: 265, scale: 0.85, color: '#2980b9', roofColor: '#1a6090' },
+    { x: 335, scale: 1.0,  color: '#c0392b', roofColor: '#a93226' },
+  ];
+
+  vehicles.forEach(v => {
+    const x = v.x;
+    const s = v.scale;
+    const baseY = GROUND_Y + 2;
+
+    // Body
+    ctx.fillStyle = v.color;
+    const bw = 28 * s, bh = 16 * s;
+    const bx = x - bw / 2, by = baseY - bh - 4 * s;
+    ctx.beginPath();
+    ctx.roundRect(bx, by, bw, bh, 3 * s);
+    ctx.fill();
+
+    // Roof/cab
+    ctx.fillStyle = v.roofColor;
+    const rw = 18 * s, rh = 10 * s;
+    ctx.beginPath();
+    ctx.roundRect(x - rw / 2, by - rh, rw, rh, 3 * s);
+    ctx.fill();
+
+    // Windshield
+    ctx.fillStyle = 'rgba(160,220,255,0.7)';
+    ctx.beginPath();
+    ctx.roundRect(x - 7 * s, by - rh + 1.5 * s, 14 * s, 6 * s, 2 * s);
+    ctx.fill();
+
+    // Wheels
+    ctx.fillStyle = '#222';
+    [-10 * s, 10 * s].forEach(ox => {
+      ctx.beginPath();
+      ctx.ellipse(x + ox, baseY, 4.5 * s, 3 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = '#888';
+      ctx.lineWidth = 1;
+      ctx.stroke();
+    });
+
+    // Headlights
+    ctx.fillStyle = '#fffaaa';
+    [-9 * s, 9 * s].forEach(ox => {
+      ctx.beginPath();
+      ctx.ellipse(x + ox, by + bh - 4 * s, 2.5 * s, 2 * s, 0, 0, Math.PI * 2);
+      ctx.fill();
+    });
+  });
+}
+
+// Get ray launch angles — ordered left (180°) to right (0°) for correct wavefront ordering
+function getRayAngles() {
+  return [180, 165, 150, 135, 120, 105, 90, 75, 60, 45, 30, 15, 0];
+}
+
+// Draw rays mode
+function drawRays() {
+  const angles = getRayAngles();
+  const allRayPts = angles.map(a => traceRay(SOURCE_X, SOURCE_Y, a));
+
+  allRayPts.forEach((pts, i) => {
+    if (pts.length < 2) return;
+    ctx.beginPath();
+    ctx.moveTo(pts[0].x, pts[0].y);
+    for (let j = 1; j < pts.length; j++) {
+      ctx.lineTo(pts[j].x, pts[j].y);
+    }
+    ctx.strokeStyle = 'rgba(255, 220, 80, 0.75)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  });
+}
+
+// Draw wave fronts mode
+function drawWaves() {
+  const angles = getRayAngles();
+  const allRayPts = angles.map(a => traceRay(SOURCE_X, SOURCE_Y, a));
+
+  // Wave fronts: at each time step t, draw the wavefront connecting equal-time points on each ray
+  const waveCount = 5;
+  const c0 = 100; // baseline pixels per time unit
+  
+  for (let w = 0; w < waveCount; w++) {
+    const tFrac = ((time * 0.4 + w * (1 / waveCount)) % 1.0);
+    const dist = tFrac * c0 * 3.5; // distance along ray
+
+    const wavePts = [];
+    allRayPts.forEach(pts => {
+      // Find point at approximately 'dist' along this ray
+      let accumulated = 0;
+      for (let j = 1; j < pts.length; j++) {
+        const dx = pts[j].x - pts[j-1].x;
+        const dy = pts[j].y - pts[j-1].y;
+        const seg = Math.sqrt(dx*dx + dy*dy);
+        if (accumulated + seg >= dist) {
+          const frac = (dist - accumulated) / seg;
+          wavePts.push({
+            x: pts[j-1].x + dx * frac,
+            y: pts[j-1].y + dy * frac
+          });
+          break;
+        }
+        accumulated += seg;
+      }
+    });
+
+    if (wavePts.length >= 2) {
+      const alpha = 0.15 + tFrac * 0.55;
+      ctx.beginPath();
+      ctx.moveTo(wavePts[0].x, wavePts[0].y);
+      for (let i = 1; i < wavePts.length; i++) {
+        ctx.lineTo(wavePts[i].x, wavePts[i].y);
+      }
+      ctx.strokeStyle = `rgba(255,230,80,${alpha})`;
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // Small dots at wavefront points
+      ctx.fillStyle = `rgba(255,240,120,${alpha * 0.7})`;
+      wavePts.forEach(p => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 2, 0, Math.PI * 2);
+        ctx.fill();
+      });
+    }
+  }
+}
+
+function drawConditionLabel() {
+  const deadband = 0.06;
+  let text;
+  if (Math.abs(gradient) < deadband) {
+    text = 'Uniform air';
+  } else if (gradient < 0) {
+    text = 'Cooler with altitude';
+  } else {
+    text = 'Temperature inversion';
+  }
+  ctx.font = 'bold 11px Segoe UI';
+  const tw = ctx.measureText(text).width;
+  const lx = W - tw - 12;
+  const ly = 22;
+  ctx.fillStyle = 'rgba(0,0,0,0.45)';
+  ctx.fillRect(lx - 4, ly - 13, tw + 8, 16);
+  ctx.fillStyle = '#ddeeff';
+  ctx.fillText(text, lx, ly);
+}
+
+function render() {
+  ctx.clearRect(0, 0, W, H);
+  drawSky();
+  drawTempOverlay();
+  drawGround();
+
+  if (displayMode === 'rays') {
+    drawRays();
+  } else {
+    drawWaves();
+  }
+
+  drawVehicles();
+  drawConditionLabel();
+
+  time += 0.016;
+  animId = requestAnimationFrame(render);
+}
+
+render();
+</script>
+</body>
+</html>
