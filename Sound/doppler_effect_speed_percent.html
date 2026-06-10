@@ -1,0 +1,526 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Doppler Effect – Speed %</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 600px;
+  height: 500px;
+  overflow: hidden;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #ffffff;
+  color: #333333;
+  display: flex;
+  flex-direction: column;
+}
+
+#controls {
+  padding: 8px 10px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.row {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+}
+
+button {
+  padding: 5px 9px;
+  border: 1px solid #b0b8c4;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+  background: #f0f2f5;
+  color: #444;
+  transition: all 0.15s;
+}
+button:hover { background: #dce1e8; border-color: #8894a2; }
+button.action {
+  background: #2a9d8f;
+  border-color: #2a9d8f;
+  color: white;
+  font-weight: bold;
+  padding: 5px 14px;
+}
+button.action:hover { background: #38b2a3; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.slider-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+}
+.slider-row label {
+  font-size: 13px;
+  color: #666;
+  white-space: nowrap;
+}
+input[type="range"] {
+  width: 160px;
+  accent-color: #2563eb;
+}
+.slider-lbl {
+  font-size: 11px;
+  color: #aaa;
+}
+.slider-val {
+  font-size: 12px;
+  color: #555;
+  min-width: 100px;
+  font-weight: 600;
+}
+
+#info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 2px 8px;
+}
+#freq-display {
+  font-size: 18px;
+  font-weight: bold;
+  color: #d97706;
+  transition: color 0.15s;
+  min-width: 190px;
+}
+
+canvas { display: block; }
+</style>
+</head>
+<body>
+
+<div id="controls">
+  <!-- Row 1: Speed slider (% of speed of sound) -->
+  <div class="slider-row">
+    <label>Source speed:</label>
+    <span class="slider-lbl">0%</span>
+    <input type="range" id="speedSlider" min="0" max="100" value="50" step="5">
+    <span class="slider-lbl">100%</span>
+    <span class="slider-val" id="speedVal">50% (172 m/s)</span>
+  </div>
+
+  <!-- Row 2: Frequency readout + action buttons -->
+  <div id="info-row">
+    <span id="freq-display">Observed f&#x2080; = 622 Hz</span>
+    <div class="row">
+      <button class="action" id="startBtn">&#9654; Start</button>
+      <button class="action" id="resetBtn">&#x21BA; Reset</button>
+    </div>
+  </div>
+</div>
+
+<canvas id="sim"></canvas>
+
+<script>
+// ============================================================
+// PHYSICS CONSTANTS
+// ============================================================
+const WAVE_SPEED      = 120;   // px/s — also the visual "speed of sound"
+const SOURCE_FREQ     = 2;
+const SOURCE_PERIOD   = 1 / SOURCE_FREQ;
+const MAX_WAVE_RADIUS = 900;
+
+const DISPLAY_SOURCE_FREQ = 622.25;  // Hz
+const V_SOUND             = 343;     // m/s (real-world)
+
+const SOURCE_Y       = 30;
+const SOURCE_START_X = -140;
+const SOURCE_END_X   = 660;
+// Draw icon left of emission point so Mach-1 stacked fronts sit to the right of the horn.
+const SPEAKER_DRAW_OFFSET = 26;
+
+// ============================================================
+// DOM REFERENCES
+// ============================================================
+const canvas      = document.getElementById('sim');
+const ctx         = canvas.getContext('2d');
+const freqEl      = document.getElementById('freq-display');
+const startBtn    = document.getElementById('startBtn');
+const resetBtn    = document.getElementById('resetBtn');
+const speedSlider = document.getElementById('speedSlider');
+const speedVal    = document.getElementById('speedVal');
+
+// ============================================================
+// CANVAS SIZING
+// ============================================================
+function resizeCanvas() {
+  const ctrlH = document.getElementById('controls').offsetHeight;
+  canvas.width  = 600;
+  canvas.height = 500 - ctrlH;
+}
+resizeCanvas();
+
+// ============================================================
+// SIMULATION STATE
+// ============================================================
+let simTime        = 0;
+let running        = false;
+let finished       = false;
+let lastTimestamp  = null;
+let machPercent    = 50;                         // slider value: 0–100
+let sourceVx       = (machPercent / 100) * WAVE_SPEED;  // px/s
+let sourceX        = SOURCE_START_X;
+let nextEmitTime   = 0;
+let emitFlashTimer = 0;
+let waves          = [];
+
+// Observer – vertical strip (x fixed, y draggable)
+const SMILEY_R   = 22;
+const OBSERVER_X = 300;
+const OBS_MIN_Y  = SOURCE_Y;
+function obsMaxY() { return canvas.height - 50; }
+
+let observerY  = canvas.height * 0.60;
+let isDragging = false;
+let hasDragged = false;
+
+// ============================================================
+// SPEED DISPLAY HELPER
+// ============================================================
+function speedLabel(pct) {
+  const vReal = (pct / 100) * V_SOUND;
+  return `${pct}% (${vReal.toFixed(0)} m/s)`;
+}
+
+// ============================================================
+// OBSERVER ZONE HELPERS
+// ============================================================
+function clampObserver(y) {
+  return Math.max(OBS_MIN_Y, Math.min(obsMaxY(), y));
+}
+
+// ============================================================
+// SPEED SLIDER
+// ============================================================
+speedSlider.addEventListener('input', () => {
+  machPercent = parseFloat(speedSlider.value);
+  sourceVx    = (machPercent / 100) * WAVE_SPEED;
+  speedVal.textContent = speedLabel(machPercent);
+  if (!running && !finished) {
+    prePopulateWaves();
+    updateFreqDisplay();
+    draw();
+  }
+});
+
+// ============================================================
+// OBSERVER DRAG (mouse)
+// ============================================================
+function hitTestObserver(mx, my) {
+  const dx = mx - OBSERVER_X;
+  const dy = my - observerY;
+  return Math.sqrt(dx * dx + dy * dy) < SMILEY_R + 8;
+}
+
+canvas.addEventListener('mousedown', e => {
+  if (running) return;
+  const r = canvas.getBoundingClientRect();
+  if (hitTestObserver(e.clientX - r.left, e.clientY - r.top)) {
+    isDragging = hasDragged = true;
+    e.preventDefault();
+  }
+});
+
+canvas.addEventListener('mousemove', e => {
+  const r  = canvas.getBoundingClientRect();
+  const mx = e.clientX - r.left;
+  const my = e.clientY - r.top;
+  canvas.style.cursor = (!running && hitTestObserver(mx, my)) ? 'grab' : 'default';
+  if (isDragging) canvas.style.cursor = 'grabbing';
+  if (!isDragging) return;
+  observerY = clampObserver(my);
+  updateFreqDisplay();
+  if (!running) draw();
+});
+
+canvas.addEventListener('mouseup',    () => { isDragging = false; });
+canvas.addEventListener('mouseleave', () => { isDragging = false; });
+
+// ============================================================
+// OBSERVER DRAG (touch)
+// ============================================================
+canvas.addEventListener('touchstart', e => {
+  if (running) return;
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches[0];
+  if (hitTestObserver(t.clientX - r.left, t.clientY - r.top)) {
+    isDragging = hasDragged = true;
+    e.preventDefault();
+  }
+}, { passive: false });
+
+canvas.addEventListener('touchmove', e => {
+  if (!isDragging) return;
+  const r = canvas.getBoundingClientRect();
+  observerY = clampObserver(e.touches[0].clientY - r.top);
+  updateFreqDisplay();
+  if (!running) draw();
+  e.preventDefault();
+}, { passive: false });
+
+canvas.addEventListener('touchend', () => { isDragging = false; });
+
+// ============================================================
+// PRE-POPULATE WAVES
+// ============================================================
+function prePopulateWaves() {
+  waves = [];
+  const maxBackTime = MAX_WAVE_RADIUS / WAVE_SPEED;
+  for (let t = -SOURCE_PERIOD; t >= -maxBackTime; t -= SOURCE_PERIOD) {
+    if (WAVE_SPEED * (-t) > MAX_WAVE_RADIUS) break;
+    waves.push({ emitTime: t, emitX: SOURCE_START_X + sourceVx * t, emitY: SOURCE_Y });
+  }
+  waves.push({ emitTime: 0, emitX: SOURCE_START_X, emitY: SOURCE_Y });
+  nextEmitTime = SOURCE_PERIOD;
+}
+
+// ============================================================
+// FREQUENCY CALCULATIONS
+// ============================================================
+// mach = sourceVx / WAVE_SPEED = machPercent / 100
+// This is the exact Mach number, so the display formula is clean:
+//   f_obs = f_source / (1 − mach × cos θ)
+
+function computeObservedFreq() {
+  const dx   = OBSERVER_X - sourceX;
+  const dy   = observerY - SOURCE_Y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return SOURCE_FREQ;
+  const vRadial = sourceVx * (dx / dist);
+  const denom   = WAVE_SPEED - vRadial;
+  if (denom < 5) return SOURCE_FREQ * WAVE_SPEED / 5;
+  return SOURCE_FREQ * WAVE_SPEED / denom;
+}
+
+function computeDisplayFreq() {
+  const dx   = OBSERVER_X - sourceX;
+  const dy   = observerY - SOURCE_Y;
+  const dist = Math.sqrt(dx * dx + dy * dy);
+  if (dist < 1) return DISPLAY_SOURCE_FREQ;
+  const cosTheta = dx / dist;
+  const mach     = sourceVx / WAVE_SPEED;   // = machPercent / 100
+  const denom    = 1 - mach * cosTheta;
+  if (denom < 0.01) return DISPLAY_SOURCE_FREQ / 0.01;
+  return DISPLAY_SOURCE_FREQ / denom;
+}
+
+// ============================================================
+// START / PAUSE / RESET
+// ============================================================
+startBtn.addEventListener('click', () => {
+  if (finished) return;
+  if (running) {
+    running = false;
+    lastTimestamp = null;
+    startBtn.textContent = '\u25B6 Resume';
+  } else {
+    running = true;
+    startBtn.textContent = '\u23F8 Pause';
+    speedSlider.disabled = true;
+    requestAnimationFrame(gameLoop);
+  }
+});
+
+resetBtn.addEventListener('click', () => {
+  running        = false;
+  finished       = false;
+  simTime        = 0;
+  lastTimestamp  = null;
+  sourceX        = SOURCE_START_X;
+  emitFlashTimer = 0;
+  prePopulateWaves();
+  startBtn.textContent = '\u25B6 Start';
+  startBtn.disabled    = false;
+  speedSlider.disabled = false;
+  updateFreqDisplay();
+  draw();
+});
+
+// ============================================================
+// DISPLAY UPDATES
+// ============================================================
+function updateFreqDisplay() {
+  const f = computeDisplayFreq();
+  freqEl.textContent = `Observed f\u2080 = ${f.toFixed(0)} Hz`;
+  if (f > DISPLAY_SOURCE_FREQ + 2) {
+    freqEl.style.color = '#2563eb';
+  } else if (f < DISPLAY_SOURCE_FREQ - 2) {
+    freqEl.style.color = '#dc2626';
+  } else {
+    freqEl.style.color = '#d97706';
+  }
+}
+
+// ============================================================
+// MAIN GAME LOOP
+// ============================================================
+function gameLoop(timestamp) {
+  if (!running) return;
+  if (lastTimestamp === null) lastTimestamp = timestamp;
+  let dt = Math.min((timestamp - lastTimestamp) / 1000, 0.05);
+  lastTimestamp  = timestamp;
+  simTime       += dt;
+  emitFlashTimer = Math.max(0, emitFlashTimer - dt);
+
+  sourceX = SOURCE_START_X + sourceVx * simTime;
+
+  while (nextEmitTime <= simTime) {
+    waves.push({
+      emitTime: nextEmitTime,
+      emitX: SOURCE_START_X + sourceVx * nextEmitTime,
+      emitY: SOURCE_Y
+    });
+    emitFlashTimer = 0.12;
+    nextEmitTime  += SOURCE_PERIOD;
+  }
+
+  waves = waves.filter(w => WAVE_SPEED * (simTime - w.emitTime) < MAX_WAVE_RADIUS);
+
+  if (machPercent > 0 && sourceX > SOURCE_END_X) {
+    running  = false;
+    finished = true;
+    startBtn.textContent = '\u2713 Done';
+    startBtn.disabled    = true;
+  }
+
+  updateFreqDisplay();
+  draw();
+  if (running) requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// DRAWING
+// ============================================================
+function draw() {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  // Source path line
+  ctx.beginPath();
+  ctx.moveTo(0, SOURCE_Y);
+  ctx.lineTo(canvas.width, SOURCE_Y);
+  ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 4]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Dashed line from source to observer
+  if (sourceX > -30 && sourceX < canvas.width + 30) {
+    ctx.beginPath();
+    ctx.moveTo(sourceX, SOURCE_Y);
+    ctx.lineTo(OBSERVER_X, observerY);
+    ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 5]);
+    ctx.stroke();
+    ctx.setLineDash([]);
+  }
+
+  // Vertical observer track
+  ctx.beginPath();
+  ctx.moveTo(OBSERVER_X, OBS_MIN_Y);
+  ctx.lineTo(OBSERVER_X, obsMaxY());
+  ctx.strokeStyle = 'rgba(0,0,0,0.07)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([4, 6]);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.arc(OBSERVER_X, OBS_MIN_Y,  3, 0, Math.PI * 2);
+  ctx.arc(OBSERVER_X, obsMaxY(), 3, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.10)';
+  ctx.fill();
+
+  // Wave fronts
+  for (const w of waves) {
+    const radius = WAVE_SPEED * (simTime - w.emitTime);
+    if (radius <= 0) continue;
+    const alpha = Math.max(0.04, 0.7 - radius / 650);
+    ctx.beginPath();
+    ctx.arc(w.emitX, w.emitY, radius, 0, Math.PI * 2);
+    ctx.strokeStyle = `rgba(30,120,220,${alpha})`;
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  // Source (speaker) — drawn left of the wave emission point
+  const speakerDrawX = sourceX - SPEAKER_DRAW_OFFSET;
+  if (speakerDrawX > -30 && speakerDrawX < canvas.width + 30) {
+    drawSource(speakerDrawX, SOURCE_Y);
+  }
+
+  // Observer (smiley)
+  drawSmiley(OBSERVER_X, observerY, SMILEY_R);
+
+  // Labels
+  ctx.textAlign = 'center';
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#777';
+  ctx.fillText('Observer', OBSERVER_X, observerY + SMILEY_R + 14);
+
+  // Drag hint — only when stopped and not yet dragged
+  if (!hasDragged && !running) {
+    ctx.font = 'italic 11px Arial';
+    ctx.fillStyle = '#aaa';
+    ctx.fillText('\u2195 drag', OBSERVER_X, observerY + SMILEY_R + 27);
+  }
+}
+
+// ── Speaker ───────────────────────────────────────────────────
+function drawSource(x, y) {
+  const bright = emitFlashTimer > 0 ? 1 : 0;
+
+  ctx.fillStyle = bright ? '#ffaa44' : '#d06020';
+  ctx.fillRect(x - 10, y - 12, 12, 24);
+
+  ctx.beginPath();
+  ctx.moveTo(x + 2, y - 12);
+  ctx.lineTo(x + 16, y - 22);
+  ctx.lineTo(x + 16, y + 22);
+  ctx.lineTo(x + 2, y + 12);
+  ctx.closePath();
+  ctx.fillStyle = bright ? '#ffc877' : '#e08838';
+  ctx.fill();
+
+  if (bright) {
+    ctx.beginPath();
+    ctx.arc(x + 20, y, 8, -0.6, 0.6);
+    ctx.strokeStyle = 'rgba(255, 200, 120, 0.7)';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+}
+
+// ── Smiley ────────────────────────────────────────────────────
+function drawSmiley(x, y, r) {
+  ctx.beginPath(); ctx.arc(x, y, r, 0, Math.PI * 2);
+  ctx.fillStyle = '#f4d35e'; ctx.fill();
+  ctx.strokeStyle = '#c9a227'; ctx.lineWidth = 2; ctx.stroke();
+
+  ctx.fillStyle = '#333';
+  ctx.beginPath(); ctx.arc(x - 8, y - 6, 3.5, 0, Math.PI * 2); ctx.fill();
+  ctx.beginPath(); ctx.arc(x + 8, y - 6, 3.5, 0, Math.PI * 2); ctx.fill();
+
+  ctx.beginPath(); ctx.arc(x, y + 2, 10, 0.15, Math.PI - 0.15);
+  ctx.strokeStyle = '#333'; ctx.lineWidth = 2.5; ctx.stroke();
+}
+
+// ============================================================
+// INIT
+// ============================================================
+observerY = clampObserver(observerY);
+prePopulateWaves();
+updateFreqDisplay();
+draw();
+</script>
+</body>
+</html>
