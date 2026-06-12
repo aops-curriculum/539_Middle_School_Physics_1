@@ -31,25 +31,29 @@ canvas {
 #controls {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  gap: 8px;
   margin-top: 10px;
   justify-content: center;
   align-items: center;
-  max-width: 600px;
+  max-width: 620px;
 }
 button {
   background: rgba(76, 175, 80, 0.9);
   color: white;
   border: none;
   border-radius: 4px;
-  padding: 8px 16px;
+  padding: 7px 13px;
   font-size: 12px;
   font-weight: bold;
   box-shadow: 0 2px 4px rgba(0,0,0,0.2);
   cursor: pointer;
 }
 button:hover { opacity: 0.85; }
-button.active { background: rgba(200, 100, 50, 0.9); }
+button.active-mode { outline: 2px solid #fff; outline-offset: 1px; }
+button.toggle-on { background: rgba(200, 100, 50, 0.9); }
+#flip-btn { background: rgba(70, 130, 180, 0.9); }
+#barrier-free-btn, #barrier-line-btn { background: rgba(180, 60, 60, 0.9); }
+#clear-barriers-btn { background: rgba(130, 70, 30, 0.9); }
 .control-group {
   display: flex;
   align-items: center;
@@ -57,34 +61,31 @@ button.active { background: rgba(200, 100, 50, 0.9); }
   color: #ccc;
   font-size: 12px;
 }
-input[type=range] { width: 90px; cursor: pointer; }
-#flip-btn { background: rgba(70, 130, 180, 0.9); }
+input[type=range] { width: 80px; cursor: pointer; }
 #status {
   font-size: 12px;
   color: #aaa;
   margin-top: 6px;
   text-align: center;
+  max-width: 600px;
 }
 </style>
 </head>
 <body>
-<div id="instructions">Draw a wavefront — orange arrows show propagation direction. Flip to reverse.</div>
+<div id="instructions">Draw a wavefront — orange arrows show propagation direction. Add barriers to block the wave.</div>
 <canvas id="c" width="600" height="480"></canvas>
 <div id="controls">
-  <button id="draw-btn">Draw Wavefront</button>
+  <button id="draw-btn" class="active-mode">Draw Wavefront</button>
+  <button id="barrier-free-btn">Barrier: Freehand</button>
+  <button id="barrier-line-btn">Barrier: Line</button>
+  <button id="clear-barriers-btn">Clear Barriers</button>
   <button id="flip-btn">Flip Direction</button>
   <button id="animate-btn">Animate</button>
-  <button id="clear-btn">Clear</button>
-  <div class="control-group">
-    <label>Speed:</label>
-    <input type="range" id="speed" min="1" max="10" value="5">
-  </div>
-  <div class="control-group">
-    <label>Wavelength:</label>
-    <input type="range" id="wavelength" min="5" max="80" value="30">
-  </div>
-  <button id="wavelets-btn" class="active">Wavelets ON</button>
-  <button id="history-btn" class="active">History ON</button>
+  <button id="clear-btn">Clear All</button>
+  <div class="control-group"><label>Speed:</label><input type="range" id="speed" min="1" max="10" value="5"></div>
+  <div class="control-group"><label>Wavelength:</label><input type="range" id="wavelength" min="5" max="80" value="30"></div>
+  <button id="wavelets-btn" class="toggle-on">Wavelets ON</button>
+  <button id="history-btn" class="toggle-on">History ON</button>
 </div>
 <div id="status">Draw a wavefront by clicking and dragging on the canvas</div>
 
@@ -93,81 +94,112 @@ const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 480;
 
-let mode = 'draw'; // 'draw' | 'idle'
-let drawnPoints = [];
+// mode: which interaction is active
+let mode = 'draw'; // 'draw' | 'barrier-free' | 'barrier-line' | 'idle'
 let isDrawing = false;
+let drawnPoints = []; // raw points while drawing wavefront
+let currentBarrier = []; // points of barrier being drawn
 
-// Direction is determined by curve traversal handedness + this flag.
-// false = left normal of traversal direction; true = right normal (flipped).
+// flipDir: false = left-of-travel normal, true = right-of-travel normal
 let flipDir = false;
 
-let animating = false;
-let animFrame = null;
-let wavefrontHistory = []; // index 0 = initial wavefront
+// Wavefront is an ARRAY OF SEGMENTS so barriers can fragment it.
+// Each segment: {x,y}[]
+// currentWavefront: segment[]
+// wavefrontHistory: (segment[])[] — one entry per step
 let currentWavefront = [];
-let lastTime = 0;
-let animAccum = 0;
+let wavefrontHistory = [];
 
-let showWavelets = true;
-let showHistory = true;
+// Barriers: array of polylines, each is {x,y}[]
+let barriers = [];
 
-const speedSlider = document.getElementById('speed');
-const wavelengthSlider = document.getElementById('wavelength');
-const statusEl = document.getElementById('status');
+let animating = false, animFrame = null;
+let lastTime = 0, animAccum = 0;
+let showWavelets = true, showHistory = true;
 
-function getSpeed() { return parseInt(speedSlider.value); }
-function getWavelength() { return parseInt(wavelengthSlider.value); }
+function getSpeed() { return parseInt(document.getElementById('speed').value); }
+function getWavelength() { return parseInt(document.getElementById('wavelength').value); }
 
-// ---- Input ----
+// ===== INPUT =====
 function getPos(e) {
   const r = canvas.getBoundingClientRect();
   const t = e.touches ? e.touches[0] : e;
   return { x: t.clientX - r.left, y: t.clientY - r.top };
 }
-
-canvas.addEventListener('mousedown', e => onDown(getPos(e)));
-canvas.addEventListener('mousemove', e => onMove(getPos(e)));
-canvas.addEventListener('mouseup', e => onUp(getPos(e)));
-canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(getPos(e)); }, { passive: false });
-canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(getPos(e)); }, { passive: false });
-canvas.addEventListener('touchend', e => { e.preventDefault(); onUp(getPos(e)); }, { passive: false });
+canvas.addEventListener('mousedown',  e => onDown(getPos(e)));
+canvas.addEventListener('mousemove',  e => onMove(getPos(e)));
+canvas.addEventListener('mouseup',    e => onUp(getPos(e)));
+canvas.addEventListener('mouseleave', e => { if (isDrawing) onUp(getPos(e)); });
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(getPos(e)); }, {passive:false});
+canvas.addEventListener('touchmove',  e => { e.preventDefault(); onMove(getPos(e)); }, {passive:false});
+canvas.addEventListener('touchend',   e => { e.preventDefault(); onUp(getPos(e)); }, {passive:false});
 
 function onDown(p) {
-  if (mode !== 'draw') return;
-  isDrawing = true;
-  drawnPoints = [p];
-  stopAnim();
-  wavefrontHistory = [];
-  currentWavefront = [];
-  setStatus('Drawing... release to finish');
-  render();
+  if (mode === 'draw') {
+    stopAnim();
+    isDrawing = true;
+    drawnPoints = [p];
+    currentWavefront = [];
+    wavefrontHistory = [];
+    render();
+  } else if (mode === 'barrier-free' || mode === 'barrier-line') {
+    isDrawing = true;
+    currentBarrier = [p];
+    render();
+  }
 }
 
 function onMove(p) {
   if (!isDrawing) return;
-  const last = drawnPoints[drawnPoints.length - 1];
-  const dx = p.x - last.x, dy = p.y - last.y;
-  if (dx * dx + dy * dy > 25) drawnPoints.push(p);
-  render();
+  if (mode === 'draw') {
+    const last = drawnPoints[drawnPoints.length - 1];
+    if (dist2(p, last) > 25) { drawnPoints.push(p); render(); }
+  } else if (mode === 'barrier-free') {
+    const last = currentBarrier[currentBarrier.length - 1];
+    if (dist2(p, last) > 16) { currentBarrier.push(p); render(); }
+  } else if (mode === 'barrier-line') {
+    currentBarrier = [currentBarrier[0], p]; // live preview
+    render();
+  }
 }
 
 function onUp(p) {
   if (!isDrawing) return;
   isDrawing = false;
-  if (drawnPoints.length < 2) { drawnPoints = []; setStatus('Draw a longer wavefront'); return; }
-  drawnPoints = smoothPoints(drawnPoints);
-  currentWavefront = drawnPoints.slice();
-  wavefrontHistory = [currentWavefront.slice()];
-  mode = 'idle';
-  setStatus('Wavefront drawn. Click Animate, or Flip Direction to reverse the propagation arrows.');
-  render();
+  if (mode === 'draw') {
+    if (drawnPoints.length < 2) { drawnPoints = []; setStatus('Draw a longer wavefront'); return; }
+    const seg = smoothPoints(drawnPoints);
+    currentWavefront = [seg];
+    wavefrontHistory = [copyWf([seg])];
+    mode = 'idle';
+    setModeBtn('draw-btn', false);
+    setStatus('Wavefront drawn. Add barriers, then Animate.');
+    render();
+  } else if (mode === 'barrier-free') {
+    if (currentBarrier.length >= 2) {
+      barriers.push(resamplePolyline(currentBarrier, 6));
+      setStatus('Barrier added.');
+    }
+    currentBarrier = [];
+    render();
+  } else if (mode === 'barrier-line') {
+    if (dist2(currentBarrier[0], p) >= 4) {
+      barriers.push([currentBarrier[0], p]);
+      setStatus('Line barrier added.');
+    }
+    currentBarrier = [];
+    render();
+  }
 }
 
-// ---- Geometry ----
+function dist2(a, b) { return (a.x-b.x)**2 + (a.y-b.y)**2; }
+
+// ===== GEOMETRY =====
+
 function smoothPoints(pts, passes = 2) {
   if (pts.length < 3) return pts.slice();
-  // Resample to uniform ~8px spacing, preserving endpoints.
-  let result = [pts[0]];
+  // Resample to ~8px spacing, keeping endpoints.
+  const result = [pts[0]];
   const spacing = 8;
   let acc = 0;
   for (let i = 1; i < pts.length; i++) {
@@ -176,55 +208,116 @@ function smoothPoints(pts, passes = 2) {
     if (acc >= spacing) { result.push(pts[i]); acc = 0; }
   }
   const last = pts[pts.length - 1];
-  if (result[result.length - 1] !== last) result.push(last);
+  if (result[result.length-1] !== last) result.push(last);
   if (result.length < 3) return result;
-  // Laplacian smooth (endpoints pinned).
+  // Laplacian smooth, endpoints pinned.
   for (let pass = 0; pass < passes; pass++) {
     const s = [result[0]];
     for (let i = 1; i < result.length - 1; i++) {
       s.push({
-        x: (result[i-1].x + 2 * result[i].x + result[i+1].x) / 4,
-        y: (result[i-1].y + 2 * result[i].y + result[i+1].y) / 4
+        x: (result[i-1].x + 2*result[i].x + result[i+1].x) / 4,
+        y: (result[i-1].y + 2*result[i].y + result[i+1].y) / 4
       });
     }
-    s.push(result[result.length - 1]);
-    result = s;
+    s.push(result[result.length-1]);
+    result.length = 0; result.push(...s);
   }
   return result;
 }
 
-// Compute unit outward normals using curve-traversal handedness.
-// All normals are consistently on the same side: left-of-travel by default,
-// right-of-travel when flipDir is true. This means a circle stays a circle
-// regardless of the global "direction" setting.
-function computeNormals(pts) {
-  const n = pts.length;
-  const normals = [];
-  for (let i = 0; i < n; i++) {
-    const prev = pts[Math.max(0, i - 1)];
-    const next = pts[Math.min(n - 1, i + 1)];
-    const tx = next.x - prev.x, ty = next.y - prev.y;
-    const len = Math.sqrt(tx * tx + ty * ty) || 1;
-    // Left normal of traversal direction: rotate tangent 90° CCW.
-    let nx = -ty / len, ny = tx / len;
-    if (flipDir) { nx = -nx; ny = -ny; }
-    normals.push({ x: nx, y: ny });
+function resamplePolyline(pts, spacing) {
+  if (pts.length < 2) return pts.slice();
+  const result = [pts[0]];
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+    acc += Math.sqrt(dx*dx + dy*dy);
+    if (acc >= spacing) { result.push(pts[i]); acc = 0; }
   }
-  return normals;
+  const last = pts[pts.length-1];
+  if (result[result.length-1] !== last) result.push(last);
+  return result;
 }
 
-// Advance the wavefront one Huygens step: move each point along its outward normal.
+// Compute unit outward normals for a single segment using traversal handedness.
+function computeNormals(seg) {
+  const n = seg.length;
+  return seg.map((_, i) => {
+    const prev = seg[Math.max(0, i-1)];
+    const next = seg[Math.min(n-1, i+1)];
+    const tx = next.x - prev.x, ty = next.y - prev.y;
+    const len = Math.sqrt(tx*tx + ty*ty) || 1;
+    let nx = -ty/len, ny = tx/len; // left-of-travel
+    if (flipDir) { nx = -nx; ny = -ny; }
+    return { x: nx, y: ny };
+  });
+}
+
+// 2-D segment intersection: does a1→a2 cross b1→b2?
+// Uses t > 0 so a point already ON the barrier (t=0) doesn't self-block.
+function segsCross(a1, a2, b1, b2) {
+  const rx = a2.x-a1.x, ry = a2.y-a1.y;
+  const sx = b2.x-b1.x, sy = b2.y-b1.y;
+  const denom = rx*sy - ry*sx;
+  if (Math.abs(denom) < 1e-10) return false;
+  const dx = b1.x-a1.x, dy = b1.y-a1.y;
+  const t = (dx*sy - dy*sx) / denom;
+  const u = (dx*ry - dy*rx) / denom;
+  return t > 1e-9 && t <= 1 && u >= 0 && u <= 1;
+}
+
+function crossesBarrier(from, to) {
+  for (const barrier of barriers) {
+    for (let i = 0; i+1 < barrier.length; i++) {
+      if (segsCross(from, to, barrier[i], barrier[i+1])) return true;
+    }
+  }
+  return false;
+}
+
+// Split an array that may contain nulls into non-null sub-segments.
+function splitAtNulls(pts) {
+  const segs = [];
+  let cur = [];
+  for (const p of pts) {
+    if (p === null) {
+      if (cur.length >= 2) segs.push(cur);
+      cur = [];
+    } else {
+      cur.push(p);
+    }
+  }
+  if (cur.length >= 2) segs.push(cur);
+  return segs;
+}
+
+// ===== HUYGENS STEP =====
+
+// Advance a single segment, possibly splitting it where it hits barriers.
+function advanceSegment(seg, stepDist) {
+  const normals = computeNormals(seg);
+  const moved = seg.map((p, i) => {
+    const n = normals[i];
+    const to = { x: p.x + n.x*stepDist, y: p.y + n.y*stepDist };
+    return (barriers.length > 0 && crossesBarrier(p, to)) ? null : to;
+  });
+  // Split at blocked (null) points, smooth each sub-segment.
+  return splitAtNulls(moved)
+    .map(s => smoothPoints(s, 1))
+    .filter(s => s.length >= 2);
+}
+
+// Advance the whole wavefront (array of segments).
 function computeNextWavefront(wf, stepDist) {
-  if (wf.length < 2) return wf.slice();
-  const normals = computeNormals(wf);
-  const newPts = wf.map((p, i) => ({
-    x: p.x + normals[i].x * stepDist,
-    y: p.y + normals[i].y * stepDist
-  }));
-  return smoothPoints(newPts, 1);
+  const out = [];
+  for (const seg of wf) out.push(...advanceSegment(seg, stepDist));
+  return out;
 }
 
-// ---- Animation ----
+function copyWf(wf) { return wf.map(seg => seg.slice()); }
+
+// ===== ANIMATION =====
+
 function stopAnim() {
   if (animating) {
     animating = false;
@@ -256,123 +349,93 @@ function animLoop(ts) {
     animAccum -= stepDist;
     steps++;
     const next = computeNextWavefront(currentWavefront, stepDist);
-    const onScreen = next.some(p => p.x >= -20 && p.x <= W + 20 && p.y >= -20 && p.y <= H + 20);
-    if (!onScreen) {
+    // Stop if everything is gone or off-screen.
+    const alive = next.some(seg => seg.some(
+      p => p.x >= -20 && p.x <= W+20 && p.y >= -20 && p.y <= H+20
+    ));
+    if (!alive) {
       stopAnim();
-      setStatus('Wavefront left the screen. Clear to start over.');
-      currentWavefront = wavefrontHistory[0].slice();
-      wavefrontHistory = [wavefrontHistory[0]];
+      setStatus('Wavefront left the screen. Clear All to start over.');
+      currentWavefront = copyWf(wavefrontHistory[0]);
+      wavefrontHistory = [copyWf(wavefrontHistory[0])];
       render();
       return;
     }
-    wavefrontHistory.push(currentWavefront.slice());
+    wavefrontHistory.push(copyWf(currentWavefront));
     currentWavefront = next;
   }
-
   render();
   animFrame = requestAnimationFrame(animLoop);
 }
 
-// ---- Rendering ----
+// ===== RENDERING =====
+
 function render() {
   ctx.clearRect(0, 0, W, H);
   ctx.fillStyle = '#1a1a2e';
   ctx.fillRect(0, 0, W, H);
 
-  // Past wavefronts (fading blue)
+  // Past wavefronts — fading blue
   if (showHistory) {
     const maxH = 60;
     const start = Math.max(0, wavefrontHistory.length - maxH);
-    for (let i = start; i < wavefrontHistory.length; i++) {
-      const t = (i - start) / Math.max(1, wavefrontHistory.length - start - 1);
-      ctx.strokeStyle = `rgba(100,180,255,${0.10 + t * 0.28})`;
+    for (let h = start; h < wavefrontHistory.length; h++) {
+      const t = (h - start) / Math.max(1, wavefrontHistory.length - start - 1);
+      ctx.strokeStyle = `rgba(100,180,255,${0.09 + t*0.26})`;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([]);
-      drawCurve(wavefrontHistory[i]);
+      for (const seg of wavefrontHistory[h]) drawCurve(seg);
     }
   }
 
-  // Wavelets centered at current wavefront, radius = wavelength
-  if (showWavelets && currentWavefront.length > 1) {
+  // Wavelets from current wavefront
+  if (showWavelets && currentWavefront.length > 0) {
     const r = getWavelength();
-    const sources = waveletSourceIndices(currentWavefront);
-    const normals = computeNormals(currentWavefront);
     ctx.strokeStyle = 'rgba(255,220,80,0.28)';
     ctx.lineWidth = 1;
     ctx.setLineDash([]);
-    for (const idx of sources) {
-      const p = currentWavefront[idx];
-      const n = normals[idx];
-      const angle = Math.atan2(n.y, n.x);
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, r, angle - Math.PI * 0.75, angle + Math.PI * 0.75);
-      ctx.stroke();
+    for (const seg of currentWavefront) {
+      const normals = computeNormals(seg);
+      const sources = waveletSources(seg);
+      for (const idx of sources) {
+        const p = seg[idx], n = normals[idx];
+        const angle = Math.atan2(n.y, n.x);
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, angle - Math.PI*0.75, angle + Math.PI*0.75);
+        ctx.stroke();
+      }
     }
   }
 
-  // Current wavefront (bright blue)
-  if (currentWavefront.length > 1) {
-    ctx.strokeStyle = '#4fc3f7';
-    ctx.lineWidth = 2.5;
-    ctx.setLineDash([]);
-    drawCurve(currentWavefront);
-    // Propagation direction arrows (orange ticks)
-    drawNormalTicks(currentWavefront);
-  }
+  // Current wavefront — bright blue
+  ctx.strokeStyle = '#4fc3f7';
+  ctx.lineWidth = 2.5;
+  ctx.setLineDash([]);
+  for (const seg of currentWavefront) drawCurve(seg);
+  // Propagation direction arrows
+  for (const seg of currentWavefront) drawNormalTicks(seg);
 
-  // In-progress freehand stroke
-  if (isDrawing && drawnPoints.length > 1) {
+  // In-progress wavefront stroke
+  if (mode === 'draw' && isDrawing && drawnPoints.length > 1) {
     ctx.strokeStyle = 'rgba(100,255,100,0.8)';
     ctx.lineWidth = 2;
-    ctx.setLineDash([4, 4]);
+    ctx.setLineDash([4,4]);
     drawCurve(drawnPoints);
     ctx.setLineDash([]);
   }
 
-  // Subtle draw-mode tint
+  // Barriers (finished)
+  for (const b of barriers) drawBarrier(b, false);
+  // In-progress barrier
+  if (currentBarrier.length >= 2) drawBarrier(currentBarrier, true);
+
+  // Mode tint
   if (mode === 'draw') {
-    ctx.fillStyle = 'rgba(100,255,100,0.06)';
+    ctx.fillStyle = 'rgba(100,255,100,0.05)';
     ctx.fillRect(0, 0, W, H);
-  }
-}
-
-function drawNormalTicks(wf) {
-  const normals = computeNormals(wf);
-  const tickLen = 18;
-  const headLen = 7;
-  const headAngle = Math.PI / 6;
-  // Space ticks every ~80px along the wavefront
-  const spacing = 80;
-  let acc = spacing / 2; // start partway in so ticks don't cluster at the endpoint
-  const indices = [];
-  for (let i = 1; i < wf.length; i++) {
-    const dx = wf[i].x - wf[i-1].x, dy = wf[i].y - wf[i-1].y;
-    acc += Math.sqrt(dx*dx + dy*dy);
-    if (acc >= spacing) { indices.push(i); acc = 0; }
-  }
-  // Always include at least one tick near the middle
-  if (indices.length === 0) indices.push(Math.floor(wf.length / 2));
-
-  ctx.strokeStyle = 'rgba(255,165,0,0.9)';
-  ctx.fillStyle = 'rgba(255,165,0,0.9)';
-  ctx.lineWidth = 1.5;
-  ctx.setLineDash([]);
-  for (const i of indices) {
-    const p = wf[i];
-    const n = normals[i];
-    const ex = p.x + n.x * tickLen;
-    const ey = p.y + n.y * tickLen;
-    const angle = Math.atan2(n.y, n.x);
-    ctx.beginPath();
-    ctx.moveTo(p.x, p.y);
-    ctx.lineTo(ex, ey);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(ex, ey);
-    ctx.lineTo(ex - headLen * Math.cos(angle - headAngle), ey - headLen * Math.sin(angle - headAngle));
-    ctx.lineTo(ex - headLen * Math.cos(angle + headAngle), ey - headLen * Math.sin(angle + headAngle));
-    ctx.closePath();
-    ctx.fill();
+  } else if (mode === 'barrier-free' || mode === 'barrier-line') {
+    ctx.fillStyle = 'rgba(220,60,60,0.05)';
+    ctx.fillRect(0, 0, W, H);
   }
 }
 
@@ -380,45 +443,130 @@ function drawCurve(pts) {
   if (pts.length < 2) return;
   ctx.beginPath();
   ctx.moveTo(pts[0].x, pts[0].y);
-  for (let i = 1; i < pts.length - 1; i++) {
-    const mx = (pts[i].x + pts[i+1].x) / 2;
-    const my = (pts[i].y + pts[i+1].y) / 2;
+  for (let i = 1; i < pts.length-1; i++) {
+    const mx = (pts[i].x + pts[i+1].x)/2, my = (pts[i].y + pts[i+1].y)/2;
     ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
   }
-  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+  ctx.lineTo(pts[pts.length-1].x, pts[pts.length-1].y);
   ctx.stroke();
 }
 
-function waveletSourceIndices(wf) {
-  const spacing = Math.max(getWavelength() * 0.85, 18);
+function drawBarrier(pts, inProgress) {
+  if (pts.length < 2) return;
+  ctx.strokeStyle = inProgress ? 'rgba(255,80,80,0.6)' : 'rgba(220,60,60,0.95)';
+  ctx.lineWidth = 3;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].y);
+  ctx.stroke();
+  ctx.lineCap = 'butt';
+}
+
+function drawNormalTicks(seg) {
+  if (seg.length < 2) return;
+  const normals = computeNormals(seg);
+  const tickLen = 18, headLen = 7, headA = Math.PI/6;
+  // One tick every ~80px arc-length, starting at 40px in.
+  const spacing = 80;
+  let acc = 40;
+  const indices = [];
+  for (let i = 1; i < seg.length; i++) {
+    const dx = seg[i].x-seg[i-1].x, dy = seg[i].y-seg[i-1].y;
+    acc += Math.sqrt(dx*dx+dy*dy);
+    if (acc >= spacing) { indices.push(i); acc = 0; }
+  }
+  if (indices.length === 0) indices.push(Math.floor(seg.length/2));
+  ctx.strokeStyle = 'rgba(255,165,0,0.9)';
+  ctx.fillStyle   = 'rgba(255,165,0,0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  for (const i of indices) {
+    const p = seg[i], n = normals[i];
+    const ex = p.x + n.x*tickLen, ey = p.y + n.y*tickLen;
+    const a = Math.atan2(n.y, n.x);
+    ctx.beginPath(); ctx.moveTo(p.x,p.y); ctx.lineTo(ex,ey); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - headLen*Math.cos(a-headA), ey - headLen*Math.sin(a-headA));
+    ctx.lineTo(ex - headLen*Math.cos(a+headA), ey - headLen*Math.sin(a+headA));
+    ctx.closePath(); ctx.fill();
+  }
+}
+
+function waveletSources(seg) {
+  const spacing = Math.max(getWavelength()*0.85, 18);
   const indices = [0];
   let acc = 0;
-  for (let i = 1; i < wf.length; i++) {
-    const dx = wf[i].x - wf[i-1].x, dy = wf[i].y - wf[i-1].y;
-    acc += Math.sqrt(dx*dx + dy*dy);
+  for (let i = 1; i < seg.length; i++) {
+    const dx = seg[i].x-seg[i-1].x, dy = seg[i].y-seg[i-1].y;
+    acc += Math.sqrt(dx*dx+dy*dy);
     if (acc >= spacing) { indices.push(i); acc = 0; }
   }
   return indices;
 }
 
-// ---- Buttons ----
+// ===== BUTTONS =====
+
+const modeButtons = {
+  'draw':         'draw-btn',
+  'barrier-free': 'barrier-free-btn',
+  'barrier-line': 'barrier-line-btn'
+};
+function setMode(m) {
+  mode = m;
+  isDrawing = false;
+  currentBarrier = [];
+  for (const [key, id] of Object.entries(modeButtons)) {
+    document.getElementById(id).classList.toggle('active-mode', key === m);
+  }
+}
+function setModeBtn(id, active) {
+  document.getElementById(id).classList.toggle('active-mode', active);
+}
+
 document.getElementById('draw-btn').addEventListener('click', () => {
   stopAnim();
-  mode = 'draw';
-  drawnPoints = [];
-  setStatus('Draw a wavefront by clicking and dragging on the canvas');
+  setMode('draw');
+  setStatus('Draw a wavefront by clicking and dragging');
+  render();
+});
+
+document.getElementById('barrier-free-btn').addEventListener('click', () => {
+  setMode('barrier-free');
+  setStatus('Draw a freehand barrier by clicking and dragging');
+  render();
+});
+
+document.getElementById('barrier-line-btn').addEventListener('click', () => {
+  setMode('barrier-line');
+  setStatus('Draw a line barrier: click and drag from one end to the other');
+  render();
+});
+
+document.getElementById('clear-barriers-btn').addEventListener('click', () => {
+  barriers = [];
+  currentBarrier = [];
+  // Reset to initial wavefront so the barrier-fragmented state is cleared.
+  if (wavefrontHistory.length > 0) {
+    currentWavefront = copyWf(wavefrontHistory[0]);
+    wavefrontHistory = [copyWf(wavefrontHistory[0])];
+  }
+  stopAnim();
+  setStatus('Barriers cleared.');
   render();
 });
 
 document.getElementById('flip-btn').addEventListener('click', () => {
   flipDir = !flipDir;
-  // Reset to the initial wavefront so the flipped direction propagates cleanly.
   if (wavefrontHistory.length > 0) {
-    currentWavefront = wavefrontHistory[0].slice();
-    wavefrontHistory = [wavefrontHistory[0]];
-    stopAnim();
+    currentWavefront = copyWf(wavefrontHistory[0]);
+    wavefrontHistory = [copyWf(wavefrontHistory[0])];
   }
-  setStatus('Direction flipped. Click Animate to propagate.');
+  stopAnim();
+  setStatus('Direction flipped.');
   render();
 });
 
@@ -426,11 +574,10 @@ document.getElementById('animate-btn').addEventListener('click', startAnimation)
 
 document.getElementById('clear-btn').addEventListener('click', () => {
   stopAnim();
-  drawnPoints = [];
-  currentWavefront = [];
-  wavefrontHistory = [];
+  drawnPoints = []; currentWavefront = []; wavefrontHistory = [];
+  barriers = []; currentBarrier = [];
   flipDir = false;
-  mode = 'draw';
+  setMode('draw');
   setStatus('Cleared. Draw a new wavefront.');
   render();
 });
@@ -438,18 +585,18 @@ document.getElementById('clear-btn').addEventListener('click', () => {
 document.getElementById('wavelets-btn').addEventListener('click', function() {
   showWavelets = !showWavelets;
   this.textContent = showWavelets ? 'Wavelets ON' : 'Wavelets OFF';
-  this.classList.toggle('active', showWavelets);
+  this.classList.toggle('toggle-on', showWavelets);
   render();
 });
 
 document.getElementById('history-btn').addEventListener('click', function() {
   showHistory = !showHistory;
   this.textContent = showHistory ? 'History ON' : 'History OFF';
-  this.classList.toggle('active', showHistory);
+  this.classList.toggle('toggle-on', showHistory);
   render();
 });
 
-function setStatus(msg) { statusEl.textContent = msg; }
+function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
 render();
 </script>
