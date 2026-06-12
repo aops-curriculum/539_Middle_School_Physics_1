@@ -1,0 +1,524 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Huygens' Principle</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+}
+#instructions {
+  font-size: 14px;
+  color: #aaa;
+  text-align: center;
+  margin-bottom: 8px;
+  max-width: 600px;
+}
+canvas {
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: crosshair;
+  display: block;
+}
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: center;
+  align-items: center;
+  max-width: 600px;
+}
+button {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+}
+button:hover { background: rgba(76, 175, 80, 1); }
+button.active { background: rgba(200, 100, 50, 0.9); }
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ccc;
+  font-size: 12px;
+}
+input[type=range] { width: 90px; cursor: pointer; }
+#direction-btn {
+  background: rgba(70, 130, 180, 0.9);
+}
+#direction-btn:hover { background: rgba(70, 130, 180, 1); }
+#status {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 6px;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+<div id="instructions">Draw a wavefront, pick propagation direction, then animate</div>
+<canvas id="c" width="600" height="480"></canvas>
+<div id="controls">
+  <button id="draw-btn">Draw Wavefront</button>
+  <button id="direction-btn">Set Direction →</button>
+  <button id="animate-btn">Animate</button>
+  <button id="clear-btn">Clear</button>
+  <div class="control-group">
+    <label>Speed:</label>
+    <input type="range" id="speed" min="1" max="10" value="5">
+  </div>
+  <div class="control-group">
+    <label>Wavelength:</label>
+    <input type="range" id="wavelength" min="10" max="80" value="40">
+  </div>
+  <button id="wavelets-btn" class="active">Wavelets ON</button>
+  <button id="history-btn" class="active">History ON</button>
+</div>
+<div id="status">Draw a wavefront by clicking and dragging on the canvas</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 480;
+
+// State
+let mode = 'draw'; // 'draw', 'direction', 'animating', 'idle'
+let drawnPoints = [];
+let isDrawing = false;
+let directionSet = false;
+let propagationDir = { x: 1, y: 0 }; // unit vector
+
+// Wavelets
+let showWavelets = true;
+let showHistory = true;
+
+// Animation
+let animating = false;
+let animFrame = null;
+let wavefrontHistory = []; // array of point arrays
+let currentWavefront = [];
+let animStep = 0;
+let lastTime = 0;
+
+// Arrow for direction
+let dirArrowStart = null;
+let dirArrowEnd = null;
+let settingDir = false;
+
+const speedSlider = document.getElementById('speed');
+const wavelengthSlider = document.getElementById('wavelength');
+const statusEl = document.getElementById('status');
+
+function getSpeed() { return parseInt(speedSlider.value) * 0.5; }
+function getWavelength() { return parseInt(wavelengthSlider.value); }
+
+// ---- Canvas input helpers ----
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+
+// ---- Drawing mode ----
+canvas.addEventListener('mousedown', e => onDown(getPos(e)));
+canvas.addEventListener('mousemove', e => onMove(getPos(e)));
+canvas.addEventListener('mouseup', e => onUp(getPos(e)));
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(getPos(e)); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(getPos(e)); }, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); onUp(getPos(e)); }, { passive: false });
+
+function onDown(p) {
+  if (mode === 'draw') {
+    isDrawing = true;
+    drawnPoints = [p];
+    wavefrontHistory = [];
+    currentWavefront = [];
+    animStep = 0;
+    directionSet = false;
+    dirArrowStart = null;
+    dirArrowEnd = null;
+    setStatus('Drawing... release to finish wavefront');
+    render();
+  } else if (mode === 'direction') {
+    settingDir = true;
+    dirArrowStart = p;
+    dirArrowEnd = p;
+  }
+}
+
+function onMove(p) {
+  if (mode === 'draw' && isDrawing) {
+    const last = drawnPoints[drawnPoints.length - 1];
+    const dx = p.x - last.x, dy = p.y - last.y;
+    if (dx * dx + dy * dy > 25) drawnPoints.push(p);
+    render();
+  } else if (mode === 'direction' && settingDir) {
+    dirArrowEnd = p;
+    render();
+  }
+}
+
+function onUp(p) {
+  if (mode === 'draw' && isDrawing) {
+    isDrawing = false;
+    if (drawnPoints.length < 2) { drawnPoints = []; setStatus('Draw a longer wavefront'); return; }
+    // Smooth the drawn points
+    drawnPoints = smoothPoints(drawnPoints);
+    currentWavefront = [...drawnPoints];
+    mode = 'idle';
+    setStatus('Wavefront drawn. Click "Set Direction" to choose propagation direction.');
+    render();
+  } else if (mode === 'direction' && settingDir) {
+    settingDir = false;
+    dirArrowEnd = p;
+    const dx = p.x - dirArrowStart.x;
+    const dy = p.y - dirArrowStart.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 10) { setStatus('Draw a longer arrow to set direction'); return; }
+    propagationDir = { x: dx / len, y: dy / len };
+    directionSet = true;
+    mode = 'idle';
+    setStatus('Direction set. Click "Animate" to start.');
+    render();
+  }
+}
+
+// ---- Smooth drawn points ----
+function smoothPoints(pts, passes = 2) {
+  if (pts.length < 3) return pts;
+  // Resample to uniform spacing, always keeping start and end points
+  let result = [pts[0]];
+  const spacing = 8;
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+    acc += Math.sqrt(dx*dx + dy*dy);
+    if (acc >= spacing) { result.push(pts[i]); acc = 0; }
+  }
+  // Always include endpoint so wavefront length is preserved over many steps
+  const last = pts[pts.length - 1];
+  if (result[result.length - 1] !== last) result.push(last);
+  if (result.length < 3) return result;
+  // Laplacian smooth (endpoints pinned)
+  for (let pass = 0; pass < passes; pass++) {
+    const s = [result[0]];
+    for (let i = 1; i < result.length - 1; i++) {
+      s.push({ x: (result[i-1].x + result[i].x * 2 + result[i+1].x) / 4,
+               y: (result[i-1].y + result[i].y * 2 + result[i+1].y) / 4 });
+    }
+    s.push(result[result.length - 1]);
+    result = s;
+  }
+  return result;
+}
+
+// ---- Huygens step ----
+function computeNextWavefront(wf, stepDist) {
+  if (wf.length < 2) return wf;
+  const normals = computeNormals(wf, propagationDir);
+  const newPts = wf.map((p, i) => {
+    const n = normals[i];
+    const dot = n.x * propagationDir.x + n.y * propagationDir.y;
+    // If the local outward normal aligns with propagation, move along it (offset curve).
+    // Otherwise fall back to moving in the propagation direction itself so the wavefront
+    // always makes progress (handles the degenerate case where wavefront is parallel to propDir).
+    if (dot > 0.05) {
+      return { x: p.x + n.x * stepDist, y: p.y + n.y * stepDist };
+    } else {
+      return { x: p.x + propagationDir.x * stepDist, y: p.y + propagationDir.y * stepDist };
+    }
+  });
+  return smoothPoints(newPts, 1);
+}
+
+function computeNormals(pts, preferDir) {
+  const n = pts.length;
+  const normals = [];
+  for (let i = 0; i < n; i++) {
+    const prev = pts[Math.max(0, i - 1)];
+    const next = pts[Math.min(n - 1, i + 1)];
+    const tx = next.x - prev.x, ty = next.y - prev.y;
+    const len = Math.sqrt(tx * tx + ty * ty) || 1;
+    let nx = -ty / len, ny = tx / len;
+    if (nx * preferDir.x + ny * preferDir.y < 0) { nx = -nx; ny = -ny; }
+    normals.push({ x: nx, y: ny });
+  }
+  return normals;
+}
+
+// ---- Animation ----
+let animAccum = 0;
+
+function startAnimation() {
+  if (!currentWavefront.length) { setStatus('Draw a wavefront first'); return; }
+  if (!directionSet) { setStatus('Set propagation direction first'); return; }
+
+  if (animating) {
+    animating = false;
+    cancelAnimationFrame(animFrame);
+    document.getElementById('animate-btn').textContent = 'Animate';
+    setStatus('Paused. Click Animate to continue.');
+    return;
+  }
+
+  animating = true;
+  document.getElementById('animate-btn').textContent = 'Pause';
+  setStatus('Animating...');
+  lastTime = performance.now();
+  animAccum = 0;
+  animFrame = requestAnimationFrame(animLoop);
+}
+
+function animLoop(ts) {
+  if (!animating) return;
+  const dt = Math.min(ts - lastTime, 50); // cap dt to avoid big jumps
+  lastTime = ts;
+  const stepDist = getWavelength();
+  // Speed slider: px per second the wavefront advances
+  const pxPerSec = getSpeed() * 40;
+  animAccum += dt * pxPerSec / 1000;
+
+  let steps = 0;
+  while (animAccum >= stepDist && steps < 4) {
+    animAccum -= stepDist;
+    steps++;
+    const next = computeNextWavefront(currentWavefront, stepDist);
+    const visible = next.some(p => p.x >= -20 && p.x <= W + 20 && p.y >= -20 && p.y <= H + 20);
+    if (!visible) {
+      animating = false;
+      document.getElementById('animate-btn').textContent = 'Animate';
+      setStatus('Wavefront left the screen. Clear to start over.');
+      currentWavefront = [...wavefrontHistory[0]];
+      wavefrontHistory = [wavefrontHistory[0]];
+      render();
+      return;
+    }
+    wavefrontHistory.push([...currentWavefront]);
+    currentWavefront = next;
+    animStep++;
+  }
+
+  render();
+  animFrame = requestAnimationFrame(animLoop);
+}
+
+// ---- Rendering ----
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Background
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, W, H);
+
+  // Draw history wavefronts
+  if (showHistory) {
+    const maxHistory = 40;
+    const start = Math.max(0, wavefrontHistory.length - maxHistory);
+    for (let i = start; i < wavefrontHistory.length; i++) {
+      const alpha = showHistory ? 0.35 : 0;
+      const t = (i - start) / Math.max(1, wavefrontHistory.length - start - 1);
+      ctx.strokeStyle = `rgba(100, 180, 255, ${0.15 + t * 0.25})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      drawCurve(wavefrontHistory[i]);
+    }
+  }
+
+  // Draw wavelets for current wavefront — arcs centered on local outward normal
+  if (showWavelets && currentWavefront.length > 1) {
+    const r = getWavelength();
+    const sources = getWaveletSources(currentWavefront);
+    const sourceNormals = computeNormals(
+      sources.map(s => s.pt),
+      propagationDir
+    );
+    ctx.strokeStyle = 'rgba(255, 220, 80, 0.28)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([]);
+    for (let k = 0; k < sources.length; k++) {
+      const s = sources[k].pt;
+      const n = sourceNormals[k];
+      const baseAngle = Math.atan2(n.y, n.x);
+      const spread = Math.PI * 0.75;
+      ctx.beginPath();
+      ctx.arc(s.x, s.y, r, baseAngle - spread, baseAngle + spread);
+      ctx.stroke();
+    }
+  }
+
+  // Draw current wavefront
+  if (currentWavefront.length > 1) {
+    ctx.strokeStyle = '#4fc3f7';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([]);
+    drawCurve(currentWavefront);
+  }
+
+  // Draw being-drawn wavefront
+  if (isDrawing && drawnPoints.length > 1) {
+    ctx.strokeStyle = 'rgba(100, 255, 100, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    drawCurve(drawnPoints);
+    ctx.setLineDash([]);
+  }
+
+  // Draw direction arrow
+  if (dirArrowStart && dirArrowEnd) {
+    drawArrow(dirArrowStart, dirArrowEnd, '#ff9800', 3);
+  } else if (directionSet && currentWavefront.length > 0) {
+    // Draw a small arrow indicator showing direction
+    const cx = W / 2, cy = 20;
+    const len = 40;
+    const s = { x: cx - propagationDir.x * len / 2, y: cy - propagationDir.y * len / 2 };
+    const e = { x: cx + propagationDir.x * len / 2, y: cy + propagationDir.y * len / 2 };
+    drawArrow(s, e, '#ff9800', 2);
+    ctx.fillStyle = '#ff9800';
+    ctx.font = '11px Arial';
+    ctx.textAlign = 'center';
+    ctx.fillText('propagation', cx, cy + 20);
+  }
+
+  // Mode indicator
+  if (mode === 'draw') {
+    ctx.fillStyle = 'rgba(100,255,100,0.15)';
+    ctx.fillRect(0, 0, W, H);
+  } else if (mode === 'direction') {
+    ctx.fillStyle = 'rgba(255,150,0,0.08)';
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function drawCurve(pts) {
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i+1].x) / 2;
+    const my = (pts[i].y + pts[i+1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+  ctx.stroke();
+}
+
+function drawArrow(from, to, color, lw) {
+  const dx = to.x - from.x, dy = to.y - from.y;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  if (len < 1) return;
+  const ux = dx / len, uy = dy / len;
+  const headLen = 12, angle = Math.PI / 6;
+  ctx.strokeStyle = color;
+  ctx.fillStyle = color;
+  ctx.lineWidth = lw;
+  ctx.setLineDash([]);
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(to.x, to.y);
+  ctx.stroke();
+  ctx.beginPath();
+  ctx.moveTo(to.x, to.y);
+  ctx.lineTo(to.x - headLen * Math.cos(Math.atan2(dy, dx) - angle),
+             to.y - headLen * Math.sin(Math.atan2(dy, dx) - angle));
+  ctx.lineTo(to.x - headLen * Math.cos(Math.atan2(dy, dx) + angle),
+             to.y - headLen * Math.sin(Math.atan2(dy, dx) + angle));
+  ctx.closePath();
+  ctx.fill();
+}
+
+function getWaveletSources(wf) {
+  // Pick evenly-spaced source points; return {pt, idx} for normal lookup
+  const spacing = Math.max(getWavelength() * 0.8, 20);
+  if (wf.length < 2) return wf.map((pt, idx) => ({ pt, idx }));
+  const sources = [{ pt: wf[0], idx: 0 }];
+  let acc = 0;
+  for (let i = 1; i < wf.length; i++) {
+    const dx = wf[i].x - wf[i-1].x, dy = wf[i].y - wf[i-1].y;
+    acc += Math.sqrt(dx * dx + dy * dy);
+    if (acc >= spacing) { sources.push({ pt: wf[i], idx: i }); acc = 0; }
+  }
+  return sources;
+}
+
+// ---- Buttons ----
+document.getElementById('draw-btn').addEventListener('click', () => {
+  if (animating) { animating = false; cancelAnimationFrame(animFrame); document.getElementById('animate-btn').textContent = 'Animate'; }
+  mode = 'draw';
+  drawnPoints = [];
+  directionSet = false;
+  dirArrowStart = null;
+  dirArrowEnd = null;
+  setStatus('Draw a wavefront by clicking and dragging on the canvas');
+  render();
+});
+
+document.getElementById('direction-btn').addEventListener('click', () => {
+  if (!currentWavefront.length) { setStatus('Draw a wavefront first'); return; }
+  if (animating) { animating = false; cancelAnimationFrame(animFrame); document.getElementById('animate-btn').textContent = 'Animate'; }
+  mode = 'direction';
+  dirArrowStart = null;
+  dirArrowEnd = null;
+  setStatus('Click and drag on the canvas to set propagation direction');
+  render();
+});
+
+document.getElementById('animate-btn').addEventListener('click', () => {
+  if (wavefrontHistory.length === 0 && currentWavefront.length > 0) {
+    wavefrontHistory.push([...currentWavefront]);
+  }
+  startAnimation();
+});
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  animating = false;
+  cancelAnimationFrame(animFrame);
+  drawnPoints = [];
+  currentWavefront = [];
+  wavefrontHistory = [];
+  directionSet = false;
+  dirArrowStart = null;
+  dirArrowEnd = null;
+  mode = 'draw';
+  document.getElementById('animate-btn').textContent = 'Animate';
+  setStatus('Cleared. Draw a new wavefront.');
+  render();
+});
+
+const waveletBtn = document.getElementById('wavelets-btn');
+waveletBtn.addEventListener('click', () => {
+  showWavelets = !showWavelets;
+  waveletBtn.textContent = showWavelets ? 'Wavelets ON' : 'Wavelets OFF';
+  waveletBtn.classList.toggle('active', showWavelets);
+  render();
+});
+
+const historyBtn = document.getElementById('history-btn');
+historyBtn.addEventListener('click', () => {
+  showHistory = !showHistory;
+  historyBtn.textContent = showHistory ? 'History ON' : 'History OFF';
+  historyBtn.classList.toggle('active', showHistory);
+  render();
+});
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+// Initial render
+render();
+</script>
+</body>
+</html>
