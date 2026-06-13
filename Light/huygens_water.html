@@ -1,0 +1,555 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Huygens' Principle — Air/Water</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: #1a1a2e;
+  font-family: Arial, sans-serif;
+  user-select: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 16px;
+}
+#instructions {
+  font-size: 14px;
+  color: #aaa;
+  text-align: center;
+  margin-bottom: 8px;
+  max-width: 620px;
+}
+canvas {
+  border: 1px solid #333;
+  border-radius: 6px;
+  cursor: crosshair;
+  display: block;
+}
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 10px;
+  justify-content: center;
+  align-items: center;
+  max-width: 620px;
+}
+button {
+  background: rgba(76, 175, 80, 0.9);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 12px;
+  font-weight: bold;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+  cursor: pointer;
+}
+button:hover { opacity: 0.85; }
+button.active { background: rgba(200, 100, 50, 0.9); }
+.control-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: #ccc;
+  font-size: 12px;
+}
+input[type=range] { width: 90px; cursor: pointer; }
+#flip-btn { background: rgba(70, 130, 180, 0.9); }
+#status {
+  font-size: 12px;
+  color: #aaa;
+  margin-top: 6px;
+  text-align: center;
+}
+</style>
+</head>
+<body>
+<div id="instructions">Left = air · Right = water. Draw a wavefront and animate — watch refraction at the boundary! Wavelets show why: they're smaller (slower) in water.</div>
+<canvas id="c" width="600" height="480"></canvas>
+<div id="controls">
+  <button id="draw-btn">Draw Wavefront</button>
+  <button id="flip-btn">Flip Direction</button>
+  <button id="animate-btn">Animate</button>
+  <button id="clear-btn">Clear</button>
+  <div class="control-group">
+    <label>Speed:</label>
+    <input type="range" id="speed" min="1" max="10" value="5">
+  </div>
+  <div class="control-group">
+    <label>Wavelength:</label>
+    <input type="range" id="wavelength" min="5" max="80" value="30">
+  </div>
+  <div class="control-group">
+    <label>n (water): <span id="n-val">1.33</span></label>
+    <input type="range" id="n-slider" min="1.00" max="3.00" step="0.01" value="1.33">
+  </div>
+  <button id="wavelets-btn" class="active">Wavelets ON</button>
+  <button id="history-btn" class="active">History ON</button>
+</div>
+<div id="status">Draw a wavefront by clicking and dragging on the canvas</div>
+
+<script>
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 480;
+const BOUNDARY = W / 2; // x = 300
+
+let mode = 'draw';
+let drawnPoints = [];
+let isDrawing = false;
+let flipDir = false;
+let animating = false;
+let animFrame = null;
+let wavefrontHistory = [];
+let currentWavefront = [];
+let lastTime = 0;
+let animAccum = 0;
+let showWavelets = true;
+let showHistory = true;
+
+const speedSlider = document.getElementById('speed');
+const wavelengthSlider = document.getElementById('wavelength');
+const nSlider = document.getElementById('n-slider');
+const nValEl = document.getElementById('n-val');
+const statusEl = document.getElementById('status');
+
+function getSpeed() { return parseInt(speedSlider.value); }
+function getWavelength() { return parseInt(wavelengthSlider.value); }
+function getN() { return parseFloat(nSlider.value); }
+
+nSlider.addEventListener('input', () => {
+  nValEl.textContent = getN().toFixed(2);
+  render();
+});
+
+// ---- Input ----
+function getPos(e) {
+  const r = canvas.getBoundingClientRect();
+  const t = e.touches ? e.touches[0] : e;
+  return { x: t.clientX - r.left, y: t.clientY - r.top };
+}
+
+canvas.addEventListener('mousedown', e => onDown(getPos(e)));
+canvas.addEventListener('mousemove', e => onMove(getPos(e)));
+canvas.addEventListener('mouseup', e => onUp(getPos(e)));
+canvas.addEventListener('touchstart', e => { e.preventDefault(); onDown(getPos(e)); }, { passive: false });
+canvas.addEventListener('touchmove', e => { e.preventDefault(); onMove(getPos(e)); }, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); onUp(getPos(e)); }, { passive: false });
+
+function onDown(p) {
+  if (mode !== 'draw') return;
+  isDrawing = true;
+  drawnPoints = [p];
+  stopAnim();
+  wavefrontHistory = [];
+  currentWavefront = [];
+  setStatus('Drawing... release to finish');
+  render();
+}
+
+function onMove(p) {
+  if (!isDrawing) return;
+  const last = drawnPoints[drawnPoints.length - 1];
+  const dx = p.x - last.x, dy = p.y - last.y;
+  if (dx * dx + dy * dy > 25) drawnPoints.push(p);
+  render();
+}
+
+function onUp(p) {
+  if (!isDrawing) return;
+  isDrawing = false;
+  if (drawnPoints.length < 2) { drawnPoints = []; setStatus('Draw a longer wavefront'); return; }
+  drawnPoints = smoothPoints(drawnPoints);
+  currentWavefront = drawnPoints.slice();
+  wavefrontHistory = [currentWavefront.slice()];
+  mode = 'idle';
+  setStatus('Wavefront drawn. Click Animate to propagate toward the boundary.');
+  render();
+}
+
+// ---- Geometry ----
+function smoothPoints(pts, passes = 2) {
+  if (pts.length < 3) return pts.slice();
+  let result = [pts[0]];
+  const spacing = 8;
+  let acc = 0;
+  for (let i = 1; i < pts.length; i++) {
+    const dx = pts[i].x - pts[i-1].x, dy = pts[i].y - pts[i-1].y;
+    acc += Math.sqrt(dx*dx + dy*dy);
+    if (acc >= spacing) { result.push(pts[i]); acc = 0; }
+  }
+  const last = pts[pts.length - 1];
+  if (result[result.length - 1] !== last) result.push(last);
+  if (result.length < 3) return result;
+  for (let pass = 0; pass < passes; pass++) {
+    const s = [result[0]];
+    for (let i = 1; i < result.length - 1; i++) {
+      s.push({
+        x: (result[i-1].x + 2 * result[i].x + result[i+1].x) / 4,
+        y: (result[i-1].y + 2 * result[i].y + result[i+1].y) / 4
+      });
+    }
+    s.push(result[result.length - 1]);
+    result = s;
+  }
+  return result;
+}
+
+function computeNormals(pts) {
+  const n = pts.length;
+  const normals = [];
+  for (let i = 0; i < n; i++) {
+    const prev = pts[Math.max(0, i - 1)];
+    const next = pts[Math.min(n - 1, i + 1)];
+    const tx = next.x - prev.x, ty = next.y - prev.y;
+    const len = Math.sqrt(tx * tx + ty * ty) || 1;
+    let nx = -ty / len, ny = tx / len;
+    if (flipDir) { nx = -nx; ny = -ny; }
+    normals.push({ x: nx, y: ny });
+  }
+  return normals;
+}
+
+// Advance wavefront one Huygens step.
+// stepDist is the distance in air per step (proportional to time).
+// In water, the same time covers stepDist/n physical pixels.
+// When a point crosses the boundary, the step is split at the crossing.
+function computeNextWavefront(wf, stepDist) {
+  if (wf.length < 2) return wf.slice();
+  const n = getN();
+  const normals = computeNormals(wf);
+  const newPts = wf.map((p, i) => {
+    const nx = normals[i].x, ny = normals[i].y;
+    let x = p.x, y = p.y;
+    const inWater = x >= BOUNDARY;
+
+    if (!inWater && nx > 0) {
+      // In air, normal points toward water — check boundary crossing.
+      // distToBoundary: distance along normal direction to reach x = BOUNDARY.
+      const distToBoundary = (BOUNDARY - x) / nx;
+      if (distToBoundary < stepDist) {
+        // Crosses into water this step.
+        // Move to boundary in air, then remaining air-time-equivalent at water speed.
+        y += ny * distToBoundary;
+        x = BOUNDARY;
+        const remaining = stepDist - distToBoundary;
+        x += nx * remaining / n;
+        y += ny * remaining / n;
+        return { x, y };
+      }
+    } else if (inWater && nx < 0) {
+      // In water, normal points toward air — check boundary crossing.
+      // physDist: physical distance in water to reach BOUNDARY.
+      const physDist = (x - BOUNDARY) / (-nx);
+      // airEquiv: how much of the stepDist budget (air units) that physical water distance costs.
+      const airEquiv = physDist * n;
+      if (airEquiv < stepDist) {
+        // Crosses into air this step.
+        y += ny * physDist;
+        x = BOUNDARY;
+        const remaining = stepDist - airEquiv;
+        x += nx * remaining;
+        y += ny * remaining;
+        return { x, y };
+      }
+    }
+
+    // No boundary crossing — move entirely in current medium.
+    if (inWater) {
+      return { x: x + nx * stepDist / n, y: y + ny * stepDist / n };
+    }
+    return { x: x + nx * stepDist, y: y + ny * stepDist };
+  });
+  return smoothPoints(newPts, 1);
+}
+
+// ---- Animation ----
+function stopAnim() {
+  if (animating) {
+    animating = false;
+    cancelAnimationFrame(animFrame);
+    document.getElementById('animate-btn').textContent = 'Animate';
+  }
+}
+
+function startAnimation() {
+  if (!currentWavefront.length) { setStatus('Draw a wavefront first'); return; }
+  if (animating) { stopAnim(); setStatus('Paused.'); return; }
+  animating = true;
+  document.getElementById('animate-btn').textContent = 'Pause';
+  setStatus('Animating...');
+  lastTime = performance.now();
+  animAccum = 0;
+  animFrame = requestAnimationFrame(animLoop);
+}
+
+function animLoop(ts) {
+  if (!animating) return;
+  const dt = Math.min(ts - lastTime, 50);
+  lastTime = ts;
+  const stepDist = getWavelength();
+  animAccum += dt * getSpeed() * 40 / 1000;
+
+  let steps = 0;
+  while (animAccum >= stepDist && steps < 4) {
+    animAccum -= stepDist;
+    steps++;
+    const next = computeNextWavefront(currentWavefront, stepDist);
+    const onScreen = next.some(p => p.x >= -20 && p.x <= W + 20 && p.y >= -20 && p.y <= H + 20);
+    if (!onScreen) {
+      stopAnim();
+      setStatus('Wavefront left the screen. Clear to start over.');
+      currentWavefront = wavefrontHistory[0].slice();
+      wavefrontHistory = [wavefrontHistory[0]];
+      render();
+      return;
+    }
+    wavefrontHistory.push(currentWavefront.slice());
+    currentWavefront = next;
+  }
+
+  render();
+  animFrame = requestAnimationFrame(animLoop);
+}
+
+// ---- Rendering ----
+function render() {
+  ctx.clearRect(0, 0, W, H);
+
+  // Air background (left)
+  ctx.fillStyle = '#1a1a2e';
+  ctx.fillRect(0, 0, BOUNDARY, H);
+  // Water background (right) — slightly bluer/deeper tint
+  ctx.fillStyle = '#0b2040';
+  ctx.fillRect(BOUNDARY, 0, W - BOUNDARY, H);
+
+  // Region labels
+  ctx.font = 'bold 13px Arial';
+  ctx.textAlign = 'center';
+  ctx.fillStyle = 'rgba(180,200,240,0.45)';
+  ctx.fillText('AIR', BOUNDARY / 2, 22);
+  ctx.fillStyle = 'rgba(80,180,255,0.55)';
+  ctx.fillText(`WATER  n = ${getN().toFixed(2)}`, BOUNDARY + (W - BOUNDARY) / 2, 22);
+
+  // Boundary line (dashed white)
+  ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([8, 6]);
+  ctx.beginPath();
+  ctx.moveTo(BOUNDARY, 0);
+  ctx.lineTo(BOUNDARY, H);
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Past wavefronts (fading blue)
+  if (showHistory) {
+    const maxH = 60;
+    const start = Math.max(0, wavefrontHistory.length - maxH);
+    for (let i = start; i < wavefrontHistory.length; i++) {
+      const t = (i - start) / Math.max(1, wavefrontHistory.length - start - 1);
+      ctx.strokeStyle = `rgba(100,180,255,${0.10 + t * 0.28})`;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      drawCurve(wavefrontHistory[i]);
+    }
+  }
+
+  // Wavelets centered at current wavefront.
+  // Air sources: radius r in air region, radius r/n in water region (same time, less distance).
+  // Water sources: radius r/n in water region only.
+  if (showWavelets && currentWavefront.length > 1) {
+    const r = getWavelength();
+    const n = getN();
+    const sources = waveletSourceIndices(currentWavefront);
+    const normals = computeNormals(currentWavefront);
+
+    for (const idx of sources) {
+      const p = currentWavefront[idx];
+      const norm = normals[idx];
+      const angle = Math.atan2(norm.y, norm.x);
+      const arcStart = angle - Math.PI * 0.75;
+      const arcEnd = angle + Math.PI * 0.75;
+      ctx.lineWidth = 1;
+      ctx.setLineDash([]);
+
+      if (p.x < BOUNDARY) {
+        // Source in air: full-radius arc in air region
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, BOUNDARY, H);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(255,220,80,0.30)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r, arcStart, arcEnd);
+        ctx.stroke();
+        ctx.restore();
+
+        // Reduced-radius arc in water region (same elapsed time, lower speed)
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(BOUNDARY, 0, W - BOUNDARY, H);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(80,200,255,0.30)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r / n, arcStart, arcEnd);
+        ctx.stroke();
+        ctx.restore();
+      } else {
+        // Source in water: only draw r/n arc in water region
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(BOUNDARY, 0, W - BOUNDARY, H);
+        ctx.clip();
+        ctx.strokeStyle = 'rgba(80,200,255,0.30)';
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, r / n, arcStart, arcEnd);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+  }
+
+  // Current wavefront (bright cyan)
+  if (currentWavefront.length > 1) {
+    ctx.strokeStyle = '#4fc3f7';
+    ctx.lineWidth = 2.5;
+    ctx.setLineDash([]);
+    drawCurve(currentWavefront);
+    drawNormalTicks(currentWavefront);
+  }
+
+  // In-progress freehand stroke
+  if (isDrawing && drawnPoints.length > 1) {
+    ctx.strokeStyle = 'rgba(100,255,100,0.8)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([4, 4]);
+    drawCurve(drawnPoints);
+    ctx.setLineDash([]);
+  }
+
+  if (mode === 'draw') {
+    ctx.fillStyle = 'rgba(100,255,100,0.04)';
+    ctx.fillRect(0, 0, W, H);
+  }
+}
+
+function drawNormalTicks(wf) {
+  const normals = computeNormals(wf);
+  const tickLen = 18;
+  const headLen = 7;
+  const headAngle = Math.PI / 6;
+  const spacing = 80;
+  const n = getN();
+  let acc = spacing / 2;
+  const indices = [];
+  for (let i = 1; i < wf.length; i++) {
+    const dx = wf[i].x - wf[i-1].x, dy = wf[i].y - wf[i-1].y;
+    acc += Math.sqrt(dx*dx + dy*dy);
+    if (acc >= spacing) { indices.push(i); acc = 0; }
+  }
+  if (indices.length === 0) indices.push(Math.floor(wf.length / 2));
+
+  ctx.strokeStyle = 'rgba(255,165,0,0.9)';
+  ctx.fillStyle = 'rgba(255,165,0,0.9)';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([]);
+  for (const i of indices) {
+    const p = wf[i];
+    const nm = normals[i];
+    // Scale tick length by local speed so arrows show relative velocity
+    const len = p.x >= BOUNDARY ? tickLen / n : tickLen;
+    const ex = p.x + nm.x * len;
+    const ey = p.y + nm.y * len;
+    const angle = Math.atan2(nm.y, nm.x);
+    ctx.beginPath(); ctx.moveTo(p.x, p.y); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex - headLen * Math.cos(angle - headAngle), ey - headLen * Math.sin(angle - headAngle));
+    ctx.lineTo(ex - headLen * Math.cos(angle + headAngle), ey - headLen * Math.sin(angle + headAngle));
+    ctx.closePath();
+    ctx.fill();
+  }
+}
+
+function drawCurve(pts) {
+  if (pts.length < 2) return;
+  ctx.beginPath();
+  ctx.moveTo(pts[0].x, pts[0].y);
+  for (let i = 1; i < pts.length - 1; i++) {
+    const mx = (pts[i].x + pts[i+1].x) / 2;
+    const my = (pts[i].y + pts[i+1].y) / 2;
+    ctx.quadraticCurveTo(pts[i].x, pts[i].y, mx, my);
+  }
+  ctx.lineTo(pts[pts.length - 1].x, pts[pts.length - 1].y);
+  ctx.stroke();
+}
+
+function waveletSourceIndices(wf) {
+  const spacing = Math.max(getWavelength() * 0.85, 18);
+  const indices = [0];
+  let acc = 0;
+  for (let i = 1; i < wf.length; i++) {
+    const dx = wf[i].x - wf[i-1].x, dy = wf[i].y - wf[i-1].y;
+    acc += Math.sqrt(dx*dx + dy*dy);
+    if (acc >= spacing) { indices.push(i); acc = 0; }
+  }
+  return indices;
+}
+
+// ---- Buttons ----
+document.getElementById('draw-btn').addEventListener('click', () => {
+  stopAnim();
+  mode = 'draw';
+  drawnPoints = [];
+  setStatus('Draw a wavefront by clicking and dragging on the canvas');
+  render();
+});
+
+document.getElementById('flip-btn').addEventListener('click', () => {
+  flipDir = !flipDir;
+  if (wavefrontHistory.length > 0) {
+    currentWavefront = wavefrontHistory[0].slice();
+    wavefrontHistory = [wavefrontHistory[0]];
+    stopAnim();
+  }
+  setStatus('Direction flipped. Click Animate to propagate.');
+  render();
+});
+
+document.getElementById('animate-btn').addEventListener('click', startAnimation);
+
+document.getElementById('clear-btn').addEventListener('click', () => {
+  stopAnim();
+  drawnPoints = [];
+  currentWavefront = [];
+  wavefrontHistory = [];
+  flipDir = false;
+  mode = 'draw';
+  setStatus('Cleared. Draw a new wavefront.');
+  render();
+});
+
+document.getElementById('wavelets-btn').addEventListener('click', function() {
+  showWavelets = !showWavelets;
+  this.textContent = showWavelets ? 'Wavelets ON' : 'Wavelets OFF';
+  this.classList.toggle('active', showWavelets);
+  render();
+});
+
+document.getElementById('history-btn').addEventListener('click', function() {
+  showHistory = !showHistory;
+  this.textContent = showHistory ? 'History ON' : 'History OFF';
+  this.classList.toggle('active', showHistory);
+  render();
+});
+
+function setStatus(msg) { statusEl.textContent = msg; }
+
+render();
+</script>
+</body>
+</html>
