@@ -100,8 +100,8 @@ canvas { display: block; }
   <!-- Row 1: Speed slider -->
   <div class="slider-row">
     <label>Observer speed:</label>
-    <input type="range" id="speedSlider" min="0" max="40" value="20" step="1">
-    <span class="slider-val" id="speedVal">20 m/s</span>
+    <input type="range" id="speedSlider" min="0" max="40" value="10" step="1">
+    <span class="slider-val" id="speedVal">10 m/s</span>
   </div>
 
   <!-- Row 2: Frequency readout + action buttons -->
@@ -166,7 +166,7 @@ let simTime        = 0;
 let running        = false;
 let finished       = false;
 let lastTimestamp  = null;
-let obsVx          = 20 / PX_TO_MS;   // internal px/s, set from m/s slider
+let obsVx          = 10 / PX_TO_MS;   // internal px/s, set from m/s slider
 let obsX           = OBS_START_X;
 let nextEmitTime   = 0;
 let emitFlashTimer = 0;
