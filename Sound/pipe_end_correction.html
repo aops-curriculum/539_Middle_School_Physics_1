@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pipe End Correction</title>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  width: 500px; height: 300px; overflow: hidden;
+  font-family: system-ui, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: #dde5ef;
+  color: #1a3050;
+}
+body {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  padding: 6px 10px 8px;
+  gap: 5px;
+}
+#canvas-pipe {
+  display: block;
+  border-radius: 8px;
+  border: 1px solid rgba(40,90,150,0.18);
+  background: #f2f6fb;
+  flex-shrink: 0;
+}
+.info-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  padding: 3px 6px;
+  background: #e5edf6;
+  border-radius: 6px;
+  flex-shrink: 0;
+}
+.info-block {
+  text-align: center;
+  flex: 1;
+}
+.info-label {
+  display: block;
+  font-size: 9px;
+  color: #5a7a94;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-bottom: 1px;
+}
+.info-val {
+  display: block;
+  font-size: 12px;
+  font-weight: 700;
+  color: #1e5f96;
+  font-variant-numeric: tabular-nums;
+}
+.info-divider {
+  width: 1px;
+  align-self: stretch;
+  background: rgba(40,90,150,0.18);
+  margin: 3px 0;
+}
+.ctrl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+.ctrl-label {
+  font-size: 10px;
+  color: #5a7a94;
+  white-space: nowrap;
+  min-width: 46px;
+}
+input[type=range] {
+  flex: 1;
+  accent-color: #c07800;
+  cursor: pointer;
+  height: 4px;
+}
+.ctrl-value {
+  font-size: 11px;
+  font-weight: 700;
+  color: #c07800;
+  min-width: 44px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+</style>
+</head>
+<body>
+
+<canvas id="canvas-pipe" width="480" height="158"></canvas>
+
+<div class="info-row">
+  <div class="info-block">
+    <span class="info-label">Pipe length</span>
+    <span class="info-val" id="len-val">1.00 m</span>
+  </div>
+  <div class="info-divider"></div>
+  <div class="info-block">
+    <span class="info-label">Radius</span>
+    <span class="info-val" id="rad-val">5.0 cm</span>
+  </div>
+  <div class="info-divider"></div>
+  <div class="info-block">
+    <span class="info-label">End correction</span>
+    <span class="info-val" id="ec-val">3.0 cm</span>
+  </div>
+  <div class="info-divider"></div>
+  <div class="info-block">
+    <span class="info-label">Effective length</span>
+    <span class="info-val" id="eff-val">1.03 m</span>
+  </div>
+</div>
+
+<div class="ctrl-row">
+  <span class="ctrl-label">Length</span>
+  <input type="range" id="len-slider" min="0.2" max="2.0" step="0.01" value="1.0">
+  <span class="ctrl-value" id="len-slider-val">1.00 m</span>
+</div>
+
+<div class="ctrl-row">
+  <span class="ctrl-label">Radius</span>
+  <input type="range" id="rad-slider" min="1" max="15" step="0.1" value="5">
+  <span class="ctrl-value" id="rad-slider-val">5.0 cm</span>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+// ─── Physics state ────────────────────────────────────────────────────────
+let pipeLengthM = 1.0;   // 0.2 – 2.0 m
+let radiusM     = 0.05;  // 0.01 – 0.15 m (1 – 15 cm)
+let simTime     = 0;
+
+function endCorrectionM() { return 0.6 * radiusM; }
+function effectiveLengthM() { return pipeLengthM + endCorrectionM(); }
+
+// ─── Canvas ───────────────────────────────────────────────────────────────
+const cv = document.getElementById('canvas-pipe');
+const cx = cv.getContext('2d');
+
+const C_BLUE   = '#1e5f96';
+const C_BLUE_L = 'rgba(30,95,150,0.18)';
+const C_GOLD   = '#c07800';
+const C_GOLD_L = 'rgba(192,120,0,0.22)';
+const C_TEAL   = '#1a8a7a';
+const C_TEAL_L = 'rgba(26,138,122,0.20)';
+const C_BRASS  = '#d49a3a';
+const C_BRASSD = '#8a5e1a';
+const C_BG     = '#f2f6fb';
+
+const CAP_W = 5;
+const PAD_R = 14;
+const MAX_PIPE_M = 2.0;  // slider max — pipe at max length fills the canvas width
+
+function layout(W, H) {
+  const CY = Math.round(H / 2);
+  const x0 = CAP_W;
+  const availW = W - CAP_W - PAD_R;
+  const scaleX = availW / MAX_PIPE_M;
+  const pipeW = pipeLengthM * scaleX;
+  const ecW   = endCorrectionM() * scaleX;
+  const xOpen = x0 + pipeW;
+  const xEff  = x0 + pipeW + ecW;
+  const rPx   = radiusM * scaleX;
+  return { CY, x0, xOpen, xEff, pipeW, ecW, scaleX, rPx, availW };
+}
+
+// ─── Draw pipe body ───────────────────────────────────────────────────────
+function drawPipe(geom) {
+  const { CY, x0, xOpen, rPx } = geom;
+
+  const grad = cx.createLinearGradient(x0, 0, xOpen, 0);
+  grad.addColorStop(0.00, '#e8c878');
+  grad.addColorStop(0.50, '#e6b45a');
+  grad.addColorStop(1.00, '#d49a3a');
+
+  cx.save();
+  cx.beginPath();
+  cx.moveTo(x0, CY - rPx);
+  cx.lineTo(xOpen, CY - rPx);
+  cx.lineTo(xOpen, CY + rPx);
+  cx.lineTo(x0, CY + rPx);
+  cx.closePath();
+  cx.fillStyle = grad;
+  cx.globalAlpha = 0.38;
+  cx.fill();
+  cx.globalAlpha = 1;
+  cx.strokeStyle = C_BRASSD;
+  cx.lineWidth = 1.4;
+  cx.stroke();
+  cx.restore();
+
+  // Top sheen
+  cx.save();
+  cx.globalAlpha = 0.5;
+  cx.strokeStyle = '#fff5d6';
+  cx.lineWidth = 1;
+  cx.beginPath();
+  cx.moveTo(x0 + 2, CY - rPx + 2);
+  cx.lineTo(xOpen - 2, CY - rPx + 2);
+  cx.stroke();
+  cx.restore();
+}
+
+// ─── Closed end cap ───────────────────────────────────────────────────────
+function drawClosedEnd(geom) {
+  const { CY, x0, rPx } = geom;
+
+  cx.save();
+  cx.fillStyle = '#6a4a18';
+  cx.strokeStyle = C_BRASSD;
+  cx.lineWidth = 1.6;
+  cx.fillRect(x0 - CAP_W, CY - rPx, CAP_W, rPx * 2);
+  cx.strokeRect(x0 - CAP_W, CY - rPx, CAP_W, rPx * 2);
+  cx.restore();
+}
+
+// ─── End correction extension ─────────────────────────────────────────────
+function drawEndCorrection(geom) {
+  const { CY, xOpen, xEff, rPx } = geom;
+
+  cx.save();
+  cx.setLineDash([5, 4]);
+  cx.strokeStyle = C_TEAL;
+  cx.lineWidth = 1.5;
+  cx.beginPath();
+  cx.moveTo(xOpen, CY - rPx);
+  cx.lineTo(xEff, CY - rPx);
+  cx.moveTo(xOpen, CY + rPx);
+  cx.lineTo(xEff, CY + rPx);
+  cx.stroke();
+
+  cx.setLineDash([3, 4]);
+  cx.strokeStyle = 'rgba(26,138,122,0.55)';
+  cx.lineWidth = 1;
+  cx.beginPath();
+  cx.moveTo(xOpen, CY);
+  cx.lineTo(xEff, CY);
+  cx.stroke();
+  cx.setLineDash([]);
+
+  cx.fillStyle = C_TEAL_L;
+  cx.fillRect(xOpen, CY - rPx, xEff - xOpen, rPx * 2);
+
+  cx.fillStyle = C_TEAL;
+  cx.font = 'bold 12px system-ui';
+  cx.textAlign = 'center';
+  const ecLabelX = (xOpen + xEff) / 2;
+  const ecLabelY = CY - rPx - 6;
+  cx.fillText('END', ecLabelX, ecLabelY - 12);
+  cx.fillText('CORRECTION', ecLabelX, ecLabelY);
+
+  cx.strokeStyle = C_TEAL;
+  cx.lineWidth = 1.2;
+  cx.beginPath();
+  cx.moveTo(xOpen, CY - rPx - 4);
+  cx.lineTo(xOpen, CY + rPx + 4);
+  cx.stroke();
+  cx.restore();
+}
+
+// ─── Standing wave (fundamental, closed–open) ───────────────────────────────
+// Displacement: node at closed end, antinode at effective open end.
+// u(d) ∝ sin(π d / (2 L_eff)),  d measured from closed end.
+function drawStandingWave(geom) {
+  const { CY, x0, xEff, rPx, scaleX } = geom;
+  const L_eff = effectiveLengthM();
+  const NPTS = 360;
+  const animHz = 0.85;
+  const phase = Math.cos(2 * Math.PI * animHz * simTime);
+
+  const pts  = new Array(NPTS + 1);
+  const envP = new Array(NPTS + 1);
+  const envN = new Array(NPTS + 1);
+
+  for (let i = 0; i <= NPTS; i++) {
+    const dM = (i / NPTS) * L_eff;
+    const x = x0 + dM * scaleX;
+    const spatial = Math.sin(Math.PI * dM / (2 * L_eff));
+    const ampMax = Math.max(0.5, rPx * 0.85);
+    const env = ampMax * spatial;
+    const y = env * phase;
+    pts[i]  = [x, CY - y];
+    envP[i] = [x, CY - Math.abs(env)];
+    envN[i] = [x, CY + Math.abs(env)];
+  }
+
+  cx.save();
+  cx.beginPath();
+  cx.moveTo(envP[0][0], envP[0][1]);
+  for (let i = 1; i < envP.length; i++) cx.lineTo(envP[i][0], envP[i][1]);
+  for (let i = envN.length - 1; i >= 0; i--) cx.lineTo(envN[i][0], envN[i][1]);
+  cx.closePath();
+  cx.fillStyle = C_GOLD_L;
+  cx.fill();
+  cx.setLineDash([3, 5]);
+  cx.strokeStyle = 'rgba(192,120,0,0.55)';
+  cx.lineWidth = 1;
+  cx.beginPath();
+  cx.moveTo(envP[0][0], envP[0][1]);
+  for (let i = 1; i < envP.length; i++) cx.lineTo(envP[i][0], envP[i][1]);
+  cx.stroke();
+  cx.beginPath();
+  cx.moveTo(envN[0][0], envN[0][1]);
+  for (let i = 1; i < envN.length; i++) cx.lineTo(envN[i][0], envN[i][1]);
+  cx.stroke();
+  cx.restore();
+
+  cx.save();
+  cx.beginPath();
+  cx.moveTo(pts[0][0], pts[0][1]);
+  for (let i = 1; i < pts.length; i++) cx.lineTo(pts[i][0], pts[i][1]);
+  cx.strokeStyle = C_GOLD;
+  cx.lineWidth = 2.2;
+  cx.lineJoin = 'round';
+  cx.stroke();
+  cx.restore();
+
+  // Displacement node at closed end
+  cx.save();
+  cx.beginPath();
+  cx.arc(x0, CY, 3, 0, Math.PI * 2);
+  cx.fillStyle = C_BLUE;
+  cx.fill();
+  cx.strokeStyle = C_BG;
+  cx.lineWidth = 1.2;
+  cx.stroke();
+
+  // Antinode at effective open end
+  const yTick = CY - (rPx + 5);
+  cx.strokeStyle = C_GOLD;
+  cx.lineWidth = 1.4;
+  cx.beginPath();
+  cx.moveTo(xEff, yTick - 3);
+  cx.lineTo(xEff, yTick + 3);
+  cx.moveTo(xEff, CY + rPx + 5 - 3);
+  cx.lineTo(xEff, CY + rPx + 5 + 3);
+  cx.stroke();
+  cx.restore();
+}
+
+function drawAxis(geom) {
+  const { CY, x0, xEff } = geom;
+  cx.save();
+  cx.setLineDash([4, 6]);
+  cx.strokeStyle = C_BLUE_L;
+  cx.lineWidth = 1;
+  cx.beginPath();
+  cx.moveTo(x0, CY);
+  cx.lineTo(xEff, CY);
+  cx.stroke();
+  cx.restore();
+}
+
+function drawLengthBracket(geom) {
+  const { CY, x0, xOpen, rPx } = geom;
+  const y = CY + rPx + 26;
+  cx.save();
+  cx.strokeStyle = C_BLUE;
+  cx.fillStyle = C_BLUE;
+  cx.lineWidth = 1;
+  cx.font = 'bold 12px system-ui';
+  cx.textAlign = 'center';
+
+  cx.beginPath();
+  cx.moveTo(x0, y);
+  cx.lineTo(xOpen, y);
+  cx.stroke();
+  cx.beginPath();
+  cx.moveTo(x0, y - 3);
+  cx.lineTo(x0, y + 3);
+  cx.moveTo(xOpen, y - 3);
+  cx.lineTo(xOpen, y + 3);
+  cx.stroke();
+  cx.fillText('PIPE LENGTH', (x0 + xOpen) / 2, y + 12);
+  cx.restore();
+}
+
+function draw() {
+  const W = cv.width, H = cv.height;
+  cx.clearRect(0, 0, W, H);
+  cx.fillStyle = C_BG;
+  cx.fillRect(0, 0, W, H);
+
+  const geom = layout(W, H);
+  drawAxis(geom);
+  drawPipe(geom);
+  drawEndCorrection(geom);
+  drawClosedEnd(geom);
+  drawStandingWave(geom);
+  drawLengthBracket(geom);
+}
+
+// ─── UI ───────────────────────────────────────────────────────────────────
+const lenSlider = document.getElementById('len-slider');
+const radSlider = document.getElementById('rad-slider');
+const lenValEl  = document.getElementById('len-val');
+const radValEl  = document.getElementById('rad-val');
+const ecValEl   = document.getElementById('ec-val');
+const effValEl  = document.getElementById('eff-val');
+const lenSliderValEl = document.getElementById('len-slider-val');
+const radSliderValEl = document.getElementById('rad-slider-val');
+
+function fmtLen(m) { return m.toFixed(2) + ' m'; }
+function fmtCm(m) { return (m * 100).toFixed(1) + ' cm'; }
+
+function updateReadouts() {
+  const ec  = endCorrectionM();
+  const eff = effectiveLengthM();
+  lenValEl.textContent = fmtLen(pipeLengthM);
+  radValEl.textContent = fmtCm(radiusM);
+  ecValEl.textContent  = fmtCm(ec);
+  effValEl.textContent = fmtLen(eff);
+  lenSliderValEl.textContent = fmtLen(pipeLengthM);
+  radSliderValEl.textContent = fmtCm(radiusM);
+}
+
+lenSlider.addEventListener('input', e => {
+  pipeLengthM = parseFloat(e.target.value);
+  updateReadouts();
+});
+
+radSlider.addEventListener('input', e => {
+  radiusM = parseFloat(e.target.value) / 100;
+  updateReadouts();
+});
+
+updateReadouts();
+
+function loop(ts) {
+  simTime = ts / 1000;
+  draw();
+  requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
