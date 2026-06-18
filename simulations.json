@@ -907,6 +907,13 @@
       "description": "Draw a wavefront that crosses an air-water boundary, then animate Huygens' construction to see wavelets shrink on the water side and the wavefront bend. Explains refraction at an interface through Huygens' principle.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Sound/pipe_end_correction.html",
+      "title": "Pipe End Correction",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
