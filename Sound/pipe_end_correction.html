@@ -143,12 +143,13 @@ const cx = cv.getContext('2d');
 
 const C_BLUE   = '#1e5f96';
 const C_BLUE_L = 'rgba(30,95,150,0.18)';
-const C_GOLD   = '#c07800';
-const C_GOLD_L = 'rgba(192,120,0,0.22)';
+const C_MAG    = '#c030a0';
+const C_MAG_L  = 'rgba(192,48,160,0.22)';
 const C_TEAL   = '#1a8a7a';
 const C_TEAL_L = 'rgba(26,138,122,0.20)';
-const C_BRASS  = '#d49a3a';
-const C_BRASSD = '#8a5e1a';
+const C_PIPE   = '#1e5f96';
+const C_PIPE_D = '#0f2847';
+const C_PIPE_L = '#3a8fc4';
 const C_BG     = '#f2f6fb';
 
 const CAP_W = 5;
@@ -173,9 +174,9 @@ function drawPipe(geom) {
   const { CY, x0, xOpen, rPx } = geom;
 
   const grad = cx.createLinearGradient(x0, 0, xOpen, 0);
-  grad.addColorStop(0.00, '#e8c878');
-  grad.addColorStop(0.50, '#e6b45a');
-  grad.addColorStop(1.00, '#d49a3a');
+  grad.addColorStop(0.00, C_PIPE_L);
+  grad.addColorStop(0.50, C_PIPE);
+  grad.addColorStop(1.00, C_PIPE_D);
 
   cx.save();
   cx.beginPath();
@@ -185,18 +186,18 @@ function drawPipe(geom) {
   cx.lineTo(x0, CY + rPx);
   cx.closePath();
   cx.fillStyle = grad;
-  cx.globalAlpha = 0.38;
+  cx.globalAlpha = 0.55;
   cx.fill();
   cx.globalAlpha = 1;
-  cx.strokeStyle = C_BRASSD;
+  cx.strokeStyle = C_PIPE_D;
   cx.lineWidth = 1.4;
   cx.stroke();
   cx.restore();
 
   // Top sheen
   cx.save();
-  cx.globalAlpha = 0.5;
-  cx.strokeStyle = '#fff5d6';
+  cx.globalAlpha = 0.45;
+  cx.strokeStyle = 'rgba(200,225,245,0.9)';
   cx.lineWidth = 1;
   cx.beginPath();
   cx.moveTo(x0 + 2, CY - rPx + 2);
@@ -210,8 +211,8 @@ function drawClosedEnd(geom) {
   const { CY, x0, rPx } = geom;
 
   cx.save();
-  cx.fillStyle = '#6a4a18';
-  cx.strokeStyle = C_BRASSD;
+  cx.fillStyle = '#0a1e35';
+  cx.strokeStyle = C_PIPE_D;
   cx.lineWidth = 1.6;
   cx.fillRect(x0 - CAP_W, CY - rPx, CAP_W, rPx * 2);
   cx.strokeRect(x0 - CAP_W, CY - rPx, CAP_W, rPx * 2);
@@ -266,7 +267,7 @@ function drawEndCorrection(geom) {
 // Displacement: node at closed end, antinode at effective open end.
 // u(d) ∝ sin(π d / (2 L_eff)),  d measured from closed end.
 function drawStandingWave(geom) {
-  const { CY, x0, xEff, rPx, scaleX } = geom;
+  const { CY, x0, rPx, scaleX } = geom;
   const L_eff = effectiveLengthM();
   const NPTS = 360;
   const animHz = 0.85;
@@ -294,10 +295,10 @@ function drawStandingWave(geom) {
   for (let i = 1; i < envP.length; i++) cx.lineTo(envP[i][0], envP[i][1]);
   for (let i = envN.length - 1; i >= 0; i--) cx.lineTo(envN[i][0], envN[i][1]);
   cx.closePath();
-  cx.fillStyle = C_GOLD_L;
+  cx.fillStyle = C_MAG_L;
   cx.fill();
   cx.setLineDash([3, 5]);
-  cx.strokeStyle = 'rgba(192,120,0,0.55)';
+  cx.strokeStyle = 'rgba(192,48,160,0.55)';
   cx.lineWidth = 1;
   cx.beginPath();
   cx.moveTo(envP[0][0], envP[0][1]);
@@ -313,7 +314,7 @@ function drawStandingWave(geom) {
   cx.beginPath();
   cx.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length; i++) cx.lineTo(pts[i][0], pts[i][1]);
-  cx.strokeStyle = C_GOLD;
+  cx.strokeStyle = C_MAG;
   cx.lineWidth = 2.2;
   cx.lineJoin = 'round';
   cx.stroke();
@@ -327,17 +328,6 @@ function drawStandingWave(geom) {
   cx.fill();
   cx.strokeStyle = C_BG;
   cx.lineWidth = 1.2;
-  cx.stroke();
-
-  // Antinode at effective open end
-  const yTick = CY - (rPx + 5);
-  cx.strokeStyle = C_GOLD;
-  cx.lineWidth = 1.4;
-  cx.beginPath();
-  cx.moveTo(xEff, yTick - 3);
-  cx.lineTo(xEff, yTick + 3);
-  cx.moveTo(xEff, CY + rPx + 5 - 3);
-  cx.lineTo(xEff, CY + rPx + 5 + 3);
   cx.stroke();
   cx.restore();
 }
