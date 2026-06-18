@@ -84,6 +84,7 @@
         const ctx = canvas.getContext('2d');
         const showRulerCheckbox = document.getElementById('showRuler');
         
+        let logW, logH;
         let lightX = 0;
         let lightY = 0;
         let isDragging = false;
@@ -108,37 +109,43 @@
             const maxWidth = container.clientWidth;
             const maxHeight = container.clientHeight;
             
-            canvas.width = maxWidth;
-            canvas.height = maxHeight;
-            
+            const dpr = window.devicePixelRatio || 1;
+            logW = maxWidth;
+            logH = maxHeight;
+            canvas.width = logW * dpr;
+            canvas.height = logH * dpr;
+            canvas.style.width = logW + 'px';
+            canvas.style.height = logH + 'px';
+            ctx.scale(dpr, dpr);
+
             // Set initial light position
-            lightX = canvas.width * 0.5;
-            lightY = canvas.height * 0.2;
-            
+            lightX = logW * 0.5;
+            lightY = logH * 0.2;
+
             // Set initial ruler position (left side of canvas)
             // Ruler will be positioned so zero is at ground level
-            const groundY = canvas.height * 0.85; // Ground is now at 85% of canvas height
+            const groundY = logH * 0.85; // Ground is now at 85% of canvas height
             ruler.x = 50;
             ruler.y = groundY - ruler.length; // Position ruler so bottom is at ground
             
             // Adjust ruler length if needed to fit from ground to top of canvas
-            ruler.length = Math.min(300 * cmScale, groundY);
+            ruler.length = Math.min(300 * cmScale, logH * 0.85);
             
             draw();
         }
 
         // Table properties (75 cm tall)
         function getTableProps() {
-            const groundY = canvas.height * 0.85; // Ground at 85% of canvas height
+            const groundY = logH * 0.85; // Ground at 85% of canvas height
             const tableHeightCm = 75;
             const tableHeightPx = tableHeightCm * cmScale;
-            
+
             return {
                 width: 100 * cmScale, // 100 cm wide
                 height: 2 * cmScale, // 2 cm thick top
                 legWidth: 4 * cmScale, // 4 cm leg width
                 legHeight: tableHeightPx - 2 * cmScale, // Total height minus top thickness
-                x: canvas.width * 0.5,
+                x: logW * 0.5,
                 y: groundY // Table bottom touches ground
             };
         }
@@ -215,11 +222,11 @@
             ruler.y = groundY - ruler.length;
             
             // Clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
+            ctx.clearRect(0, 0, logW, logH);
+
             // Draw ground first (light green)
             ctx.fillStyle = '#5a8c5a';
-            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            ctx.fillRect(0, groundY, logW, logH - groundY);
             
             // Calculate shadow from edge rays
             let leftShadowX, rightShadowX;
@@ -251,7 +258,7 @@
                     Math.min(leftShadowX, rightShadowX),
                     groundY,
                     Math.abs(rightShadowX - leftShadowX),
-                    canvas.height - groundY
+                    logH - groundY
                 );
             }
             
@@ -260,7 +267,7 @@
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(0, groundY);
-            ctx.lineTo(canvas.width, groundY);
+            ctx.lineTo(logW, groundY);
             ctx.stroke();
             
             // Draw regular light rays
@@ -279,8 +286,8 @@
                 ctx.moveTo(lightX, lightY);
                 
                 // Extend ray to find intersection
-                let endX = lightX + rayDirX * canvas.width;
-                let endY = lightY + rayDirY * canvas.width;
+                let endX = lightX + rayDirX * logW;
+                let endY = lightY + rayDirY * logW;
                 let hitSomething = false;
                 
                 // Check intersection with table if ray is going down
@@ -439,18 +446,18 @@
                 lightY = mouseY;
                 
                 // Keep light within canvas bounds
-                lightX = Math.max(10, Math.min(canvas.width - 10, lightX));
-                lightY = Math.max(10, Math.min(canvas.height - 10, lightY));
-                
+                lightX = Math.max(10, Math.min(logW - 10, lightX));
+                lightY = Math.max(10, Math.min(logH - 10, lightY));
+
                 draw();
             }
-            
+
             if (ruler.isDragging) {
                 ruler.x = mouseX - ruler.dragOffsetX;
                 // ruler.y is not updated - only horizontal movement allowed
-                
+
                 // Keep ruler within canvas bounds horizontally
-                ruler.x = Math.max(ruler.thickness/2, Math.min(canvas.width - ruler.thickness/2, ruler.x));
+                ruler.x = Math.max(ruler.thickness/2, Math.min(logW - ruler.thickness/2, ruler.x));
                 
                 draw();
             }
@@ -494,17 +501,17 @@
                 lightX = touchX;
                 lightY = touchY;
                 
-                lightX = Math.max(10, Math.min(canvas.width - 10, lightX));
-                lightY = Math.max(10, Math.min(canvas.height - 10, lightY));
-                
+                lightX = Math.max(10, Math.min(logW - 10, lightX));
+                lightY = Math.max(10, Math.min(logH - 10, lightY));
+
                 draw();
             }
-            
+
             if (ruler.isDragging) {
                 ruler.x = touchX - ruler.dragOffsetX;
                 // ruler.y is not updated - only horizontal movement allowed
-                
-                ruler.x = Math.max(ruler.thickness/2, Math.min(canvas.width - ruler.thickness/2, ruler.x));
+
+                ruler.x = Math.max(ruler.thickness/2, Math.min(logW - ruler.thickness/2, ruler.x));
                 
                 draw();
             }

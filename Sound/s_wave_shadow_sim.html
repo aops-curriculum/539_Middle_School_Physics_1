@@ -68,6 +68,10 @@
 const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
 const W = 600, H = 440;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 
 const RE_KM = 6371;
 const REF_CORE_KM = 3500;          // anchor: 3500 km → 103° critical → 154° shadow

@@ -26,9 +26,16 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
+        // DPR fix for sharp rendering on high-DPI screens
+        const dpr = window.devicePixelRatio || 1;
+        const logW = canvas.width, logH = canvas.height;
+        canvas.width = logW * dpr; canvas.height = logH * dpr;
+        canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
+        ctx.scale(dpr, dpr);
+
         // Layout constants
-        const W = canvas.width;
-        const H = canvas.height;
+        const W = logW;
+        const H = logH;
         const eyeY = 80;
         const eyeSep = 165;
         const leftEyeX = W / 2 - eyeSep / 2;

@@ -35,6 +35,10 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const W = 600, H = 500;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
         const SURFACE = H / 2; // y = 250, water surface halfway up
         const N1 = 1.33, N2 = 1.0; // water, air
         const EYE_R = 20;

@@ -91,6 +91,10 @@ input[type=range]::-moz-range-thumb{
 const cv = document.getElementById('c');
 const cx = cv.getContext('2d');
 const W = 600, H = 450, CH = 72;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 const SY = 195;   // y-coordinate of calm sea level
 
 // Six wave components per storm, ordered short → long wavelength

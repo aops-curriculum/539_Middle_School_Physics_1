@@ -58,6 +58,10 @@
         const ctx = canvas.getContext('2d');
         const W = 360;
         const H = 360;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
 
         // Corner reflector: two mirrors meeting at 90° at vertex
         // Vertex near top-center, mirrors go diagonally down-left and down-right

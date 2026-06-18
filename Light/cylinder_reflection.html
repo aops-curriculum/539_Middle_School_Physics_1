@@ -811,7 +811,7 @@ function drawGrid(ctx, cx, cy, R, E) {
   const step    = R / 4;   // grid spacing in cm (~8 cells across diameter)
   const SAMPLES = 80;      // polyline samples per warped grid line
   const rPx     = R * PX_PER_CM;
-  const outW    = outputCanvas.width, outH = outputCanvas.height;
+  const outW    = warpSizePx, outH = warpSizePx;
 
   ctx.save();
   ctx.strokeStyle = 'rgba(0, 110, 220, 0.80)';
@@ -1001,8 +1001,14 @@ function repaintFromCache() {
   if (!warpSizePx) return;
   if (showMorph && !warpCacheData && !showGrid) return;
   const ctx = outputCanvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (showMorph && warpCacheData) {
-    ctx.putImageData(new ImageData(warpCacheData, warpSizePx, warpSizePx), 0, 0);
+    // putImageData bypasses ctx transforms, so draw via a temp canvas
+    const tmp = document.createElement('canvas');
+    tmp.width = warpSizePx; tmp.height = warpSizePx;
+    tmp.getContext('2d').putImageData(new ImageData(warpCacheData, warpSizePx, warpSizePx), 0, 0);
+    ctx.drawImage(tmp, 0, 0);
   } else {
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, warpSizePx, warpSizePx);
@@ -1023,10 +1029,14 @@ function renderGridOnly() {
   const E = getE();
   const halfCm = Math.max(5 * R + 4, 16);
   const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
-  outputCanvas.width  = sizePx;
-  outputCanvas.height = sizePx;
   warpSizePx = sizePx;
+  const dpr = window.devicePixelRatio || 1;
+  outputCanvas.width  = sizePx * dpr;
+  outputCanvas.height = sizePx * dpr;
+  outputCanvas.style.width  = sizePx + 'px';
+  outputCanvas.style.height = sizePx + 'px';
   const ctx = outputCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(0, 0, sizePx, sizePx);
   const cx = sizePx / 2, cy = sizePx / 2;
@@ -1066,11 +1076,15 @@ function doRender() {
   // Output canvas dimensions — extra room for warp that extends behind the cylinder
   const halfCm = Math.max(5 * R + 4, 16);
   const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
-  outputCanvas.width  = sizePx;
-  outputCanvas.height = sizePx;
   warpSizePx = sizePx;
+  const dpr = window.devicePixelRatio || 1;
+  outputCanvas.width  = sizePx * dpr;
+  outputCanvas.height = sizePx * dpr;
+  outputCanvas.style.width  = sizePx + 'px';
+  outputCanvas.style.height = sizePx + 'px';
 
   const ctx = outputCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
 
   // White background pixel buffer
   const outImg = new ImageData(sizePx, sizePx);
@@ -1081,7 +1095,11 @@ function doRender() {
     renderBackwardMapping(srcPx, srcW, srcH, R, E, outImg.data, sizePx, sizePx,
                           srcScaleMult, srcOffsetX, srcOffsetY, bufferMm / 10);
     warpCacheData = new Uint8ClampedArray(outImg.data);
-    ctx.putImageData(outImg, 0, 0);
+    // putImageData bypasses ctx transforms, so draw via a temp canvas
+    const warpTmp = document.createElement('canvas');
+    warpTmp.width = sizePx; warpTmp.height = sizePx;
+    warpTmp.getContext('2d').putImageData(outImg, 0, 0);
+    ctx.drawImage(warpTmp, 0, 0);
   } else {
     warpCacheData = null;   // mark stale so toggling morph on forces a real render
     ctx.fillStyle = '#ffffff';
@@ -1161,8 +1179,8 @@ pdfBtn.addEventListener('click', () => {
     contentW = (bounds.maxX - bounds.minX) / PX_PER_CM;
     contentH = (bounds.maxY - bounds.minY) / PX_PER_CM;
   } else {
-    contentW = outputCanvas.width / PX_PER_CM;
-    contentH = outputCanvas.height / PX_PER_CM;
+    contentW = warpSizePx / PX_PER_CM;
+    contentH = warpSizePx / PX_PER_CM;
   }
 
   // Choose orientation based on content aspect ratio
@@ -1183,7 +1201,9 @@ pdfBtn.addEventListener('click', () => {
   }
 
   // Crop the canvas to the content bounding box for printing
+  // Bounds are in logical pixels; the physical canvas is scaled by dpr.
   let dataUrl, imgW_cm, imgH_cm;
+  const _dpr = window.devicePixelRatio || 1;
   if (bounds) {
     const cropW = bounds.maxX - bounds.minX + 1;
     const cropH = bounds.maxY - bounds.minY + 1;
@@ -1192,7 +1212,7 @@ pdfBtn.addEventListener('click', () => {
     crop.height = cropH;
     crop.getContext('2d').drawImage(
       outputCanvas,
-      bounds.minX, bounds.minY, cropW, cropH,
+      bounds.minX * _dpr, bounds.minY * _dpr, cropW * _dpr, cropH * _dpr,
       0, 0, cropW, cropH
     );
     dataUrl  = crop.toDataURL('image/png');
@@ -1200,8 +1220,8 @@ pdfBtn.addEventListener('click', () => {
     imgH_cm  = cropH / PX_PER_CM;
   } else {
     dataUrl  = outputCanvas.toDataURL('image/png');
-    imgW_cm  = outputCanvas.width  / PX_PER_CM;
-    imgH_cm  = outputCanvas.height / PX_PER_CM;
+    imgW_cm  = warpSizePx / PX_PER_CM;
+    imgH_cm  = warpSizePx / PX_PER_CM;
   }
 
   const pageSize   = landscape ? '11in 8.5in' : '8.5in 11in';
@@ -1282,8 +1302,10 @@ function applyZoom() {
 function fitZoom() {
   const area = canvasScroll.getBoundingClientRect();
   const pad  = 40;
-  zoomFactor = Math.min((area.width - pad) / outputCanvas.width,
-                        (area.height - pad) / outputCanvas.height, 1);
+  const logW = warpSizePx || outputCanvas.width;
+  const logH = warpSizePx || outputCanvas.height;
+  zoomFactor = Math.min((area.width - pad) / logW,
+                        (area.height - pad) / logH, 1);
   applyZoom();
 }
 document.getElementById('zoom-in').addEventListener('click', () => {

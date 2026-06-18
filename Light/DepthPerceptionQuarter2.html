@@ -44,6 +44,14 @@
         const W = canvas.width;
         const H = canvas.height;
 
+        // DPR fix for sharp rendering on high-DPI screens
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = W * dpr;
+        canvas.height = H * dpr;
+        canvas.style.width = W + 'px';
+        canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
+
         // Layout
         const eyeY = 80;
         const eyeSep = 165;

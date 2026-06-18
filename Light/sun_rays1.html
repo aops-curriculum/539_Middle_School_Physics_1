@@ -134,6 +134,11 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const W = 800, H = 600;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
         const shootBtn = document.getElementById('shootBtn');
         const addBlockBtn = document.getElementById('addBlockBtn');
         const removeBlockBtn = document.getElementById('removeBlockBtn');
@@ -144,7 +149,7 @@
         let tower = { x: 400, y: 0, blockCount: 5, blockSize: 35, isDragging: false };
         let rays = [];
         let isAnimatingRays = false;
-        let groundLevel = canvas.height - 80;
+        let groundLevel = H - 80;
         
         // Mouse state
         let mousePos = { x: 0, y: 0 };
@@ -152,22 +157,22 @@
 
         function draw() {
             // Clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
+            ctx.clearRect(0, 0, W, H);
+
             // Draw sky
             ctx.fillStyle = '#87CEEB';
-            ctx.fillRect(0, 0, canvas.width, groundLevel);
-            
+            ctx.fillRect(0, 0, W, groundLevel);
+
             // Draw ground
             ctx.fillStyle = '#90EE90';
-            ctx.fillRect(0, groundLevel, canvas.width, canvas.height - groundLevel);
-            
+            ctx.fillRect(0, groundLevel, W, H - groundLevel);
+
             // Draw ground/sky line
             ctx.strokeStyle = '#228B22';
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(0, groundLevel);
-            ctx.lineTo(canvas.width, groundLevel);
+            ctx.lineTo(W, groundLevel);
             ctx.stroke();
             
             // Draw sun
@@ -277,9 +282,9 @@
 
         function getMousePos(e) {
             const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
-            
+            const scaleX = W / rect.width;
+            const scaleY = H / rect.height;
+
             return {
                 x: (e.clientX - rect.left) * scaleX,
                 y: (e.clientY - rect.top) * scaleY
@@ -334,15 +339,15 @@
                     sun.y = mousePos.y - dragOffset.y;
                     
                     // Keep sun within canvas bounds
-                    sun.x = Math.max(sun.radius, Math.min(canvas.width - sun.radius, sun.x));
-                    sun.y = Math.max(sun.radius, Math.min(canvas.height - sun.radius, sun.y));
+                    sun.x = Math.max(sun.radius, Math.min(W - sun.radius, sun.x));
+                    sun.y = Math.max(sun.radius, Math.min(H - sun.radius, sun.y));
                 }
                 
                 if (tower.isDragging) {
                     tower.x = mousePos.x - dragOffset.x;
                     
                     // Keep tower within canvas bounds
-                    tower.x = Math.max(tower.blockSize / 2, Math.min(canvas.width - tower.blockSize / 2, tower.x));
+                    tower.x = Math.max(tower.blockSize / 2, Math.min(W - tower.blockSize / 2, tower.x));
                 }
                 
                 draw();

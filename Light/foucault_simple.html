@@ -113,6 +113,10 @@
 const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
 const W = 540, H = 450;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 const DEG = Math.PI / 180;
 
 // ── Vector helpers ───────────────────────────────────

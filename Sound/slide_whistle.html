@@ -19,6 +19,10 @@
 <script>
 var canvas = document.getElementById('sim');
 var ctx    = canvas.getContext('2d');
+var dpr = window.devicePixelRatio || 1;
+canvas.width = 600 * dpr; canvas.height = 600 * dpr;
+canvas.style.width = '600px'; canvas.style.height = '600px';
+ctx.scale(dpr, dpr);
 
 var V_SOUND = 343;
 var L_MIN   = 0.01;

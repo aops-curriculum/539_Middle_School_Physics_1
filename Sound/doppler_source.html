@@ -154,14 +154,22 @@ const velBtns   = document.querySelectorAll('.vel-btn');
 // CANVAS SIZING
 // ============================================================
 
+let logW, logH;
+
 function resizeCanvas() {
   const ctrlH = document.getElementById('controls').offsetHeight;
-  canvas.width  = 600;
-  canvas.height = 600 - ctrlH;
+  const dpr = window.devicePixelRatio || 1;
+  logW = 600;
+  logH = 600 - ctrlH;
+  canvas.width  = logW * dpr;
+  canvas.height = logH * dpr;
+  canvas.style.width  = logW + 'px';
+  canvas.style.height = logH + 'px';
+  ctx.scale(dpr, dpr);
 }
 resizeCanvas();
 
-const centerY = Math.round(canvas.height / 2);
+const centerY = Math.round(logH / 2);
 
 // ============================================================
 // SIMULATION STATE
@@ -364,16 +372,16 @@ function gameLoop(timestamp) {
 // ============================================================
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, logW, logH);
 
   // ── Background ──
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, logW, logH);
 
   // ── Faint horizontal reference line ──
   ctx.beginPath();
   ctx.moveTo(0, centerY);
-  ctx.lineTo(canvas.width, centerY);
+  ctx.lineTo(logW, centerY);
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.06)';
   ctx.lineWidth = 1;
   ctx.stroke();

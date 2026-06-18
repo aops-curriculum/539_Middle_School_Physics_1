@@ -50,6 +50,9 @@ const ctx = canvas.getContext('2d');
 const slider = document.getElementById('angleSlider');
 const W = 435;
 const H = 500;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = 348 * dpr; canvas.height = 400 * dpr;
+canvas.style.width = '348px'; canvas.style.height = '400px';
 
 const GROUND_Y = 440;
 const NUM_RAYS = 25;
@@ -472,8 +475,8 @@ function drawGlowSpots(angleDeg) {
 function draw() {
   const angleDeg = parseFloat(slider.value);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.clearRect(0, 0, 348, 400);
-  ctx.setTransform(0.8, 0, 0, 0.8, 0, 0);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.setTransform(0.8 * dpr, 0, 0, 0.8 * dpr, 0, 0);
   drawSky();
   drawGround();
   drawGlowSpots(angleDeg);

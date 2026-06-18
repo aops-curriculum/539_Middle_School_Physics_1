@@ -152,10 +152,17 @@ const speedVal    = document.getElementById('speedVal');
 // ============================================================
 // CANVAS SIZING
 // ============================================================
+let logW, logH;
 function resizeCanvas() {
   const ctrlH = document.getElementById('controls').offsetHeight;
-  canvas.width  = 600;
-  canvas.height = 500 - ctrlH;
+  const dpr = window.devicePixelRatio || 1;
+  logW = 600;
+  logH = 500 - ctrlH;
+  canvas.width  = logW * dpr;
+  canvas.height = logH * dpr;
+  canvas.style.width  = logW + 'px';
+  canvas.style.height = logH + 'px';
+  ctx.scale(dpr, dpr);
 }
 resizeCanvas();
 
@@ -321,14 +328,14 @@ function gameLoop(timestamp) {
 // DRAWING
 // ============================================================
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, logW, logH);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, logW, logH);
 
   // Path line
   ctx.beginPath();
   ctx.moveTo(0, SOURCE_Y);
-  ctx.lineTo(canvas.width, SOURCE_Y);
+  ctx.lineTo(logW, SOURCE_Y);
   ctx.strokeStyle = 'rgba(0,0,0,0.08)';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
@@ -336,7 +343,7 @@ function draw() {
   ctx.setLineDash([]);
 
   // Dashed line from source to observer
-  if (obsX > -30 && obsX < canvas.width + 30) {
+  if (obsX > -30 && obsX < logW + 30) {
     ctx.beginPath();
     ctx.moveTo(SOURCE_X, SOURCE_Y);
     ctx.lineTo(obsX, SOURCE_Y);
@@ -363,7 +370,7 @@ function draw() {
   drawTrumpet(SOURCE_X, SOURCE_Y);
 
   // Observer (smiley) — moves across the screen
-  if (obsX > -50 && obsX < canvas.width + 50) {
+  if (obsX > -50 && obsX < logW + 50) {
     drawSmiley(obsX, SOURCE_Y, SMILEY_R);
 
     ctx.textAlign = 'center';

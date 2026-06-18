@@ -23,6 +23,10 @@
   const canvas = document.getElementById('sim');
   const ctx = canvas.getContext('2d');
   const W = 600, H = 500;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width = W * dpr; canvas.height = H * dpr;
+  canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
 
   // ---------- Wedge geometry ----------
   // Original Asymptote ratio: wedge depth / base width = 3.5 / 1.5 ≈ 2.33.
@@ -240,8 +244,8 @@
   // ---------- Interaction ----------
   function canvasPos(e) {
     const rect = canvas.getBoundingClientRect();
-    const scaleX = canvas.width  / rect.width;
-    const scaleY = canvas.height / rect.height;
+    const scaleX = W / rect.width;
+    const scaleY = H / rect.height;
     const clientX = e.touches ? e.touches[0].clientX : e.clientX;
     const clientY = e.touches ? e.touches[0].clientY : e.clientY;
     return { x: (clientX - rect.left) * scaleX, y: (clientY - rect.top) * scaleY };

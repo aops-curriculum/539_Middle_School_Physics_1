@@ -103,15 +103,20 @@
     <script>
         const canvas = document.getElementById('waveCanvas');
         const ctx = canvas.getContext('2d');
-        
+        const dpr = window.devicePixelRatio || 1;
+        const logW = canvas.width, logH = canvas.height;
+        canvas.width = logW * dpr; canvas.height = logH * dpr;
+        canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
+        ctx.scale(dpr, dpr);
+
         // Graph parameters
         const xMin = 0;
         const xMax = 2; // 2 seconds
         const yMin = -2.5;
         const yMax = 2.5;
         const padding = 45;
-        const graphWidth = canvas.width - 2 * padding;
-        const graphHeight = canvas.height - 2 * padding;
+        const graphWidth = logW - 2 * padding;
+        const graphHeight = logH - 2 * padding;
         
         // Wave parameters
         const f1 = 7; // Hz
@@ -136,7 +141,7 @@
         
         // Draw axes and grid
         function drawAxesAndGrid() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, logW, logH);
             
             // Draw grid
             ctx.strokeStyle = '#e0e0e0';
@@ -147,16 +152,16 @@
                 const { x: canvasX } = graphToCanvas(x, 0);
                 ctx.beginPath();
                 ctx.moveTo(canvasX, padding);
-                ctx.lineTo(canvasX, canvas.height - padding);
+                ctx.lineTo(canvasX, logH - padding);
                 ctx.stroke();
             }
-            
+
             // Horizontal grid lines (major)
             for (let y = -2; y <= 2; y += 1) {
                 const { y: canvasY } = graphToCanvas(0, y);
                 ctx.beginPath();
                 ctx.moveTo(padding, canvasY);
-                ctx.lineTo(canvas.width - padding, canvasY);
+                ctx.lineTo(logW - padding, canvasY);
                 ctx.stroke();
             }
             
@@ -168,14 +173,14 @@
             const { y: xAxisY } = graphToCanvas(0, 0);
             ctx.beginPath();
             ctx.moveTo(padding, xAxisY);
-            ctx.lineTo(canvas.width - padding, xAxisY);
+            ctx.lineTo(logW - padding, xAxisY);
             ctx.stroke();
-            
+
             // Y-axis
             const { x: yAxisX } = graphToCanvas(0, 0);
             ctx.beginPath();
             ctx.moveTo(yAxisX, padding);
-            ctx.lineTo(yAxisX, canvas.height - padding);
+            ctx.lineTo(yAxisX, logH - padding);
             ctx.stroke();
             
             // Draw tick marks and labels
@@ -203,10 +208,10 @@
             ctx.fillStyle = '#000';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText('Time (s)', canvas.width / 2, canvas.height - 15);
-            
+            ctx.fillText('Time (s)', logW / 2, logH - 15);
+
             ctx.save();
-            ctx.translate(15, canvas.height / 2);
+            ctx.translate(15, logH / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';

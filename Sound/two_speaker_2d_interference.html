@@ -118,6 +118,10 @@ canvas { display: block; flex-shrink: 0; }
 const cv  = document.getElementById('c');
 const ctx = cv.getContext('2d');
 const W = 600, H = 454, TAU = Math.PI * 2;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 
 // Wave propagation speed (px/s). λ = SPEED / freq.
 const SPEED = 120;

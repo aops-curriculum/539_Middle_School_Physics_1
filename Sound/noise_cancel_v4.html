@@ -272,12 +272,24 @@ const canvases = {
   combined: document.getElementById('canvasCombined')
 };
 
+// Logical (CSS-pixel) dimensions for each canvas, populated by sizeCanvases()
+const canvasLogical = { target: {}, user: {}, combined: {} };
+
 function sizeCanvases() {
+  const dpr = window.devicePixelRatio || 1;
   for (const key in canvases) {
     const cvs = canvases[key];
     const panel = cvs.parentElement;
-    cvs.width  = panel.clientWidth;
-    cvs.height = panel.clientHeight;
+    const logW = panel.clientWidth;
+    const logH = panel.clientHeight;
+    canvasLogical[key].w = logW;
+    canvasLogical[key].h = logH;
+    cvs.width  = logW * dpr;
+    cvs.height = logH * dpr;
+    cvs.style.width  = logW + 'px';
+    cvs.style.height = logH + 'px';
+    const ctx = cvs.getContext('2d');
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   }
 }
 sizeCanvases();
@@ -389,8 +401,9 @@ const AMP_SCALE = 20;
 
 function drawWaveOnCanvas(cvs, evalFn, color, lineWidth) {
   const ctx = cvs.getContext('2d');
-  const w = cvs.width;
-  const h = cvs.height;
+  const key = Object.keys(canvases).find(k => canvases[k] === cvs);
+  const w = key ? canvasLogical[key].w : cvs.width;
+  const h = key ? canvasLogical[key].h : cvs.height;
   const cy = h / 2;
   const maxAmpPx = (h / 2) - 8;
   const drawW = w - PAD_X * 2;
@@ -438,18 +451,18 @@ function frame() {
   const userComps = getUserComponents();
 
   const ctxT = canvases.target.getContext('2d');
-  ctxT.clearRect(0, 0, canvases.target.width, canvases.target.height);
-  drawGrid(ctxT, canvases.target.width, canvases.target.height);
+  ctxT.clearRect(0, 0, canvasLogical.target.w, canvasLogical.target.h);
+  drawGrid(ctxT, canvasLogical.target.w, canvasLogical.target.h);
   drawWaveOnCanvas(canvases.target, t => targetAt(t), '#d04040', 2.5);
 
   const ctxU = canvases.user.getContext('2d');
-  ctxU.clearRect(0, 0, canvases.user.width, canvases.user.height);
-  drawGrid(ctxU, canvases.user.width, canvases.user.height);
+  ctxU.clearRect(0, 0, canvasLogical.user.w, canvasLogical.user.h);
+  drawGrid(ctxU, canvasLogical.user.w, canvasLogical.user.h);
   drawWaveOnCanvas(canvases.user, t => userAt(t, userComps), '#4a80c4', 2.5);
 
   const ctxC = canvases.combined.getContext('2d');
-  ctxC.clearRect(0, 0, canvases.combined.width, canvases.combined.height);
-  drawGrid(ctxC, canvases.combined.width, canvases.combined.height);
+  ctxC.clearRect(0, 0, canvasLogical.combined.w, canvasLogical.combined.h);
+  drawGrid(ctxC, canvasLogical.combined.w, canvasLogical.combined.h);
   drawWaveOnCanvas(canvases.combined, t => targetAt(t) + userAt(t, userComps), '#22a860', 2.5);
 
   const rms = computeResidualRMS(userComps);

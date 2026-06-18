@@ -78,27 +78,35 @@
         const angleSlider = document.getElementById('angleSlider');
         const angleValue = document.getElementById('angleValue');
 
+        let logW, logH;
+
         // Responsive canvas sizing
         function resizeCanvas() {
             const container = document.getElementById('container');
             const maxWidth = container.clientWidth;
             const maxHeight = container.clientHeight;
-            
-            canvas.width = maxWidth;
-            canvas.height = maxHeight;
-            
+
+            const dpr = window.devicePixelRatio || 1;
+            logW = maxWidth;
+            logH = maxHeight;
+            canvas.width = logW * dpr;
+            canvas.height = logH * dpr;
+            canvas.style.width = logW + 'px';
+            canvas.style.height = logH + 'px';
+            ctx.scale(dpr, dpr);
+
             draw();
         }
 
         // Table properties (relative to canvas size)
         function getTableProps() {
-            const groundY = canvas.height * 0.7;
+            const groundY = logH * 0.7;
             return {
-                width: canvas.width * 0.2,
-                height: canvas.width * 0.015,
-                legWidth: canvas.width * 0.02,
-                legHeight: canvas.height * 0.15,
-                x: canvas.width * 0.5,
+                width: logW * 0.2,
+                height: logW * 0.015,
+                legWidth: logW * 0.02,
+                legHeight: logH * 0.15,
+                x: logW * 0.5,
                 y: groundY // Table bottom touches ground
             };
         }
@@ -110,11 +118,11 @@
             const angleRad = (angle * Math.PI) / 180;
             
             // Clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            
+            ctx.clearRect(0, 0, logW, logH);
+
             // Draw ground first (light green)
             ctx.fillStyle = '#5a8c5a';
-            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+            ctx.fillRect(0, groundY, logW, logH - groundY);
             
             // Calculate shadow boundaries
             const tableTopY = table.y - table.legHeight - table.height;
@@ -144,7 +152,7 @@
                 shadowLeftX,
                 groundY,
                 shadowRightX - shadowLeftX,
-                canvas.height - groundY
+                logH - groundY
             );
             
             // Draw ground line
@@ -152,7 +160,7 @@
             ctx.lineWidth = 3;
             ctx.beginPath();
             ctx.moveTo(0, groundY);
-            ctx.lineTo(canvas.width, groundY);
+            ctx.lineTo(logW, groundY);
             ctx.stroke();
             
             // Draw regular light rays
@@ -162,22 +170,22 @@
             
             const raySpacing = 30;
             // Calculate extra rays needed based on angle
-            const extraWidth = Math.abs(Math.tan(angleRad)) * canvas.height;
-            const totalWidth = canvas.width + extraWidth * 2;
+            const extraWidth = Math.abs(Math.tan(angleRad)) * logH;
+            const totalWidth = logW + extraWidth * 2;
             const numRays = Math.ceil(totalWidth / raySpacing) + 5;
             const startX = -totalWidth/2;
             
             for (let i = 0; i < numRays; i++) {
                 const rayX = startX + i * raySpacing;
                 const rayStartY = 0;
-                const rayStartX = rayX - Math.tan(angleRad) * canvas.height;
-                
+                const rayStartX = rayX - Math.tan(angleRad) * logH;
+
                 ctx.beginPath();
                 ctx.moveTo(rayStartX, rayStartY);
-                
+
                 // Calculate where ray intersects with table or ground
-                let endX = rayStartX + Math.sin(angleRad) * canvas.height * 2;
-                let endY = rayStartY + Math.cos(angleRad) * canvas.height * 2;
+                let endX = rayStartX + Math.sin(angleRad) * logH * 2;
+                let endY = rayStartY + Math.cos(angleRad) * logH * 2;
                 
                 // Check intersection with table top
                 const rayAtTableY = rayStartX + (tableTopY - rayStartY) * Math.tan(angleRad);

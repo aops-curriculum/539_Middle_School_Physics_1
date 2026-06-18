@@ -213,9 +213,13 @@
         const totalWidth = redWidth + greenWidth + blueWidth + gapPixels * 2;
         const maxHeight = Math.max(redHeight, greenHeight, blueHeight);
         
-        canvas.width = totalWidth;
-        canvas.height = maxHeight;
-        
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = totalWidth * dpr;
+        canvas.height = maxHeight * dpr;
+        canvas.style.width = totalWidth + 'px';
+        canvas.style.height = maxHeight + 'px';
+        ctx.scale(dpr, dpr);
+
         ctx.fillStyle = 'white';
         ctx.fillRect(0, 0, totalWidth, maxHeight);
         

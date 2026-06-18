@@ -115,6 +115,10 @@ const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
 const W = canvas.width;   // 860
 const H = canvas.height;  // 500
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 
 // ── Layout constants ──────────────────────────────────────────────────────────
 const FLOOR_Y  = 420;   // ground level (moved up to give space above for the ray)

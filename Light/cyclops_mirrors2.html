@@ -76,6 +76,12 @@ const CANVAS_H = Math.ceil(LEGEND_BOTTOM + 6);
 canvas.height = CANVAS_H;
 const H = canvas.height;
 
+// ── DPR fix for sharp rendering on high-DPI screens ──────────────────────────
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
+
 // ── Numerical reflection-point solver ────────────────────────────────────────
 function findReflectionPoint(sx, sy, ex, ey, cx, cy, r) {
   function fEval(theta) {

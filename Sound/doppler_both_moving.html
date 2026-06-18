@@ -161,9 +161,16 @@ const obsSpeedVal    = document.getElementById('obsSpeedVal');
 // ============================================================
 // CANVAS SIZING
 // ============================================================
+let logW, logH;
 function resizeCanvas() {
-  canvas.width  = 600;
-  canvas.height = 500 - document.getElementById('controls').offsetHeight;
+  const dpr = window.devicePixelRatio || 1;
+  logW = 600;
+  logH = 500 - document.getElementById('controls').offsetHeight;
+  canvas.width  = logW * dpr;
+  canvas.height = logH * dpr;
+  canvas.style.width  = logW + 'px';
+  canvas.style.height = logH + 'px';
+  ctx.scale(dpr, dpr);
 }
 resizeCanvas();
 
@@ -329,17 +336,17 @@ function gameLoop(timestamp) {
 // DRAWING
 // ============================================================
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, logW, logH);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, logW, logH);
 
   // Canvas-space positions for on-screen tests and text placement
   const srcCx = sourceX   * ZOOM;
   const obsCx = observerX * ZOOM;
   const trackCy = SOURCE_Y_W * ZOOM;
 
-  const srcOnScreen = srcCx > -100 && srcCx < canvas.width + 100;
-  const obsOnScreen = obsCx > -60  && obsCx < canvas.width + 60;
+  const srcOnScreen = srcCx > -100 && srcCx < logW + 100;
+  const obsOnScreen = obsCx > -60  && obsCx < logW + 60;
 
   // ── World-space drawing (everything scales together) ──────
   ctx.save();

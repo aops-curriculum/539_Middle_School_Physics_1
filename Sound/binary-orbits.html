@@ -180,6 +180,10 @@ input[type=range]::-moz-range-thumb {
 // ── Canvas ────────────────────────────────────────────────────────────────────
 const canvas = document.getElementById('c');
 const ctx    = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+canvas.width = 600 * dpr; canvas.height = 386 * dpr;
+canvas.style.width = '600px'; canvas.style.height = '386px';
+ctx.scale(dpr, dpr);
 
 // ── Background starfield (generated once) ─────────────────────────────────────
 const BG = Array.from({length: 120}, () => ({

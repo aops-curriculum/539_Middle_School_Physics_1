@@ -165,14 +165,21 @@
         const canvas = document.getElementById('waveCanvas');
         const ctx = canvas.getContext('2d');
 
+        // DPR fix for sharp rendering on high-DPI screens
+        const dpr = window.devicePixelRatio || 1;
+        const logW = 578, logH = 422;
+        canvas.width = logW * dpr; canvas.height = logH * dpr;
+        canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
+        ctx.scale(dpr, dpr);
+
         // Graph parameters
         const xMin = 0;
         const xMax = 1;
         const yMin = -2.5;
         const yMax = 2.5;
         const padTop = 8, padBottom = 36, padLeft = 38, padRight = 8;
-        const graphWidth  = canvas.width  - padLeft - padRight;
-        const graphHeight = canvas.height - padTop  - padBottom;
+        const graphWidth  = logW - padLeft - padRight;
+        const graphHeight = logH - padTop  - padBottom;
 
         // Wave parameters (mutable)
         let f1 = 10;
@@ -196,7 +203,7 @@
         }
 
         function drawAxesAndGrid() {
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, logW, logH);
 
             // Grid
             ctx.strokeStyle = '#e0e0e0';
@@ -206,7 +213,7 @@
                 const { x: cx } = graphToCanvas(x, 0);
                 ctx.beginPath();
                 ctx.moveTo(cx, padTop);
-                ctx.lineTo(cx, canvas.height - padBottom);
+                ctx.lineTo(cx, logH - padBottom);
                 ctx.stroke();
             }
 
@@ -214,7 +221,7 @@
                 const { y: cy } = graphToCanvas(0, y);
                 ctx.beginPath();
                 ctx.moveTo(padLeft, cy);
-                ctx.lineTo(canvas.width - padRight, cy);
+                ctx.lineTo(logW - padRight, cy);
                 ctx.stroke();
             }
 
@@ -225,13 +232,13 @@
             const { y: xAxisY } = graphToCanvas(0, 0);
             ctx.beginPath();
             ctx.moveTo(padLeft, xAxisY);
-            ctx.lineTo(canvas.width - padRight, xAxisY);
+            ctx.lineTo(logW - padRight, xAxisY);
             ctx.stroke();
 
             const { x: yAxisX } = graphToCanvas(0, 0);
             ctx.beginPath();
             ctx.moveTo(yAxisX, padTop);
-            ctx.lineTo(yAxisX, canvas.height - padBottom);
+            ctx.lineTo(yAxisX, logH - padBottom);
             ctx.stroke();
 
             // Tick labels
@@ -242,7 +249,7 @@
 
             for (let x = 0; x <= 1.001; x += 0.1) {
                 const { x: cx } = graphToCanvas(x, 0);
-                ctx.fillText(x.toFixed(1), cx, canvas.height - padBottom + 5);
+                ctx.fillText(x.toFixed(1), cx, logH - padBottom + 5);
             }
 
             ctx.textAlign = 'right';
@@ -257,10 +264,10 @@
             ctx.fillStyle = '#000';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
-            ctx.fillText('Time (s)', canvas.width / 2, canvas.height - 14);
+            ctx.fillText('Time (s)', logW / 2, logH - 14);
 
             ctx.save();
-            ctx.translate(12, canvas.height / 2);
+            ctx.translate(12, logH / 2);
             ctx.rotate(-Math.PI / 2);
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';

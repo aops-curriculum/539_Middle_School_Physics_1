@@ -85,6 +85,11 @@ const NOISE_AMP = 24;
 
 const cvStr = document.getElementById('canvas-string');
 const cxStr = cvStr.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+const logW = 568, logH = 238;
+cvStr.width = logW * dpr; cvStr.height = logH * dpr;
+cvStr.style.width = logW + 'px'; cvStr.style.height = logH + 'px';
+cxStr.scale(dpr, dpr);
 let freq = 0;
 let simTime = 0;
 
@@ -113,7 +118,7 @@ document.getElementById('freq-slider').addEventListener('input', e => {
 
 // ─── String canvas ────────────────────────────────────────────────────────────
 function drawString() {
-  const W = cvStr.width, H = cvStr.height;
+  const W = logW, H = logH;
   cxStr.clearRect(0, 0, W, H);
 
   // Light background

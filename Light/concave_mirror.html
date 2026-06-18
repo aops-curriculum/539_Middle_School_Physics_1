@@ -36,8 +36,14 @@ let ruler = { x: 0, y: 0, dragging: false, dragOffX: 0, dragOffY: 0, ready: fals
 
 // ── Resize ──────────────────────────────────────────────────────────────
 function resize() {
-  W = canvas.width  = window.innerWidth;
-  H = canvas.height = window.innerHeight;
+  const dpr = window.devicePixelRatio || 1;
+  W = window.innerWidth;
+  H = window.innerHeight;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.scale(dpr, dpr);
 
   // Scale so the full scene (image → mirror + 25 cm margin) fits width
   SCALE      = Math.min((W - 80) / (V_CM + 25), 7);

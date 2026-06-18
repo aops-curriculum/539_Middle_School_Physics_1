@@ -271,6 +271,14 @@ const rightCtx    = rightCanvas.getContext('2d');
 const CW = 600;
 const CH = 240;
 
+const dpr = window.devicePixelRatio || 1;
+[leftCanvas, rightCanvas].forEach(c => {
+  c.width = CW * dpr; c.height = CH * dpr;
+  c.style.width = CW + 'px'; c.style.height = CH + 'px';
+});
+leftCtx.scale(dpr, dpr);
+rightCtx.scale(dpr, dpr);
+
 // Per-letter offsets: [{x, y}, ...]
 let letterOffsets = [];
 let prevWord = '';
@@ -348,20 +356,21 @@ function render() {
 
   // ── Offscreen for slid version ──
   const off    = document.createElement('canvas');
-  off.width    = CW;
-  off.height   = CH;
+  off.width    = CW * dpr;
+  off.height   = CH * dpr;
   const offCtx = off.getContext('2d');
+  offCtx.scale(dpr, dpr);
   renderWordToCtx(offCtx, word);
 
   // ── Right canvas: split + slide ──
   rightCtx.clearRect(0, 0, CW, CH);
 
   if (splitY > 0) {
-    rightCtx.drawImage(off, 0, 0, CW, splitY, 0, 0, CW, splitY);
+    rightCtx.drawImage(off, 0, 0, CW * dpr, splitY * dpr, 0, 0, CW, splitY);
   }
   if (splitY < CH) {
     const h = CH - splitY;
-    rightCtx.drawImage(off, 0, splitY, CW, h, slideAmount, splitY, CW, h);
+    rightCtx.drawImage(off, 0, splitY * dpr, CW * dpr, h * dpr, slideAmount, splitY, CW, h);
   }
 
   if (showLineCheck.checked) drawSplitLine(rightCtx, splitY);

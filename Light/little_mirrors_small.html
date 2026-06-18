@@ -51,8 +51,12 @@ let coneInitialized = false;
 function resize() {
   W = window.innerWidth;
   H = window.innerHeight;
-  canvas.width  = W;
-  canvas.height = H;
+  const dpr = window.devicePixelRatio || 1;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   if (!coneInitialized) {
     cone = { x: Math.round(W * 0.48), y: Math.round(H * 0.50) };
     coneInitialized = true;

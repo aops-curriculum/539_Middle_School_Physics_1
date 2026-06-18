@@ -531,9 +531,8 @@ function drawScene() {
 
 // ── render ────────────────────────────────────────────────────────────────────
 function render() {
-  W       = canvas.width;
-  H       = canvas.height;
-  UPPER_Y = Math.round(H / 6);
+  // W, H, and UPPER_Y are set by resize() using logical (CSS) dimensions.
+  // Do not read canvas.width/canvas.height here — those are physical pixels after DPR scaling.
   buildSegmentCache();
   drawScene();
 }
@@ -587,10 +586,16 @@ function initControls() {
 // ── init ──────────────────────────────────────────────────────────────────────
 function init() {
   const resize = () => {
-    canvas.width  = canvas.clientWidth  || window.innerWidth;
-    canvas.height = canvas.clientHeight || (window.innerHeight - document.getElementById('controls').offsetHeight);
-    W       = canvas.width;
-    H       = canvas.height;
+    const dpr = window.devicePixelRatio || 1;
+    const logW = canvas.clientWidth  || window.innerWidth;
+    const logH = canvas.clientHeight || (window.innerHeight - document.getElementById('controls').offsetHeight);
+    canvas.width  = logW * dpr;
+    canvas.height = logH * dpr;
+    canvas.style.width  = logW + 'px';
+    canvas.style.height = logH + 'px';
+    ctx.scale(dpr, dpr);
+    W       = logW;
+    H       = logH;
     UPPER_Y = Math.round(H / 6);
     generateCircles();
     render();

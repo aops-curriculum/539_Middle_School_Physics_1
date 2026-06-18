@@ -172,6 +172,11 @@
         // Get canvas and context
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const logW = canvas.width, logH = canvas.height;
+        canvas.width = logW * dpr; canvas.height = logH * dpr;
+        canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
+        ctx.scale(dpr, dpr);
         const controlBtn = document.getElementById('controlBtn');
         const trailButton = document.getElementById('trailButton');
         const timeSlider = document.getElementById('timeSlider');
@@ -190,8 +195,8 @@
         
         // Fixed simulation parameters
         const NUM_DOTS = 50;
-        const WIDTH = canvas.width;
-        const HEIGHT = canvas.height;
+        const WIDTH = logW;
+        const HEIGHT = logH;
         const RANGE = 50; // μm range for X axis
         const RANGE_Y = 30; // μm range for Y axis
         const DOT_RADIUS = 4; // pixels (visual radius)

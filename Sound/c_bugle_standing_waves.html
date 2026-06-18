@@ -155,6 +155,11 @@ const NOTES = [
 // ─── Canvas ───────────────────────────────────────────────────────────────
 const cv = document.getElementById('canvas-bugle');
 const cx = cv.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+const logW = cv.width, logH = cv.height;
+cv.width = logW * dpr; cv.height = logH * dpr;
+cv.style.width = logW + 'px'; cv.style.height = logH + 'px';
+cx.scale(dpr, dpr);
 
 let harmonic = 1;
 let simTime = 0;
@@ -404,7 +409,7 @@ function drawEndLabels(geom, H) {
 
 // ─── Frame ────────────────────────────────────────────────────────────────
 function draw() {
-  const W = cv.width, H = cv.height;
+  const W = logW, H = logH;
   cx.clearRect(0, 0, W, H);
   cx.fillStyle = C_BG;
   cx.fillRect(0, 0, W, H);

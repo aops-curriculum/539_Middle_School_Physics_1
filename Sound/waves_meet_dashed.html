@@ -233,6 +233,13 @@
         // Canvas and its 2D drawing context
         const canvas = document.getElementById('waveCanvas');
         const ctx = canvas.getContext('2d');
+
+        // High-DPI (Retina/4K) fix: scale canvas backing store by devicePixelRatio
+        const dpr = window.devicePixelRatio || 1;
+        const logW = canvas.width, logH = canvas.height;
+        canvas.width = logW * dpr; canvas.height = logH * dpr;
+        canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
+        ctx.scale(dpr, dpr);
         
         // Control elements for left pulse
         const leftShapeSelect = document.getElementById('leftShape');
@@ -261,8 +268,8 @@
         };
         
         // Calculate the actual drawing area
-        const PLOT_WIDTH = canvas.width - MARGIN.left - MARGIN.right;
-        const PLOT_HEIGHT = canvas.height - MARGIN.top - MARGIN.bottom;
+        const PLOT_WIDTH = logW - MARGIN.left - MARGIN.right;
+        const PLOT_HEIGHT = logH - MARGIN.top - MARGIN.bottom;
         
         // The y-coordinate of the equilibrium line (center of plot)
         const EQUILIBRIUM_Y = MARGIN.top + PLOT_HEIGHT / 2;
@@ -465,7 +472,7 @@
             ctx.fillStyle = COLORS.axis;
             ctx.font = '11px sans-serif';
             ctx.textAlign = 'center';
-            ctx.fillText('Distance', MARGIN.left + PLOT_WIDTH / 2, canvas.height - 8);
+            ctx.fillText('Distance', MARGIN.left + PLOT_WIDTH / 2, logH - 8);
             
             // Draw y-axis label
             ctx.save();
@@ -576,7 +583,7 @@
             const settings = getCurrentSettings();
             
             // Clear the canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, logW, logH);
             
             // Draw the axes
             drawAxes();

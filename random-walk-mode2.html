@@ -142,11 +142,18 @@
         const speedSlider = document.getElementById('speedSlider');
         const stepValue = document.getElementById('stepValue');
         const speedValue = document.getElementById('speedValue');
-        
+
+        // DPR fix for sharp rendering on high-DPI screens
+        const dpr = window.devicePixelRatio || 1;
+        const logW = canvas.width, logH = canvas.height;
+        canvas.width = logW * dpr; canvas.height = logH * dpr;
+        canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
+        ctx.scale(dpr, dpr);
+
         // Simulation parameters
         const NUM_DOTS = 50;
-        const WIDTH = canvas.width;
-        const HEIGHT = canvas.height;
+        const WIDTH = logW;
+        const HEIGHT = logH;
         const RANGE = 50; // μm range for X axis
         const RANGE_Y = 30; // μm range for Y axis (adjusted for canvas)
         

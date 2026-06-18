@@ -92,6 +92,11 @@ canvas {
 <script>
 const cv  = document.getElementById('cv');
 const ctx = cv.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+const W = 820, H_CV = 490;
+cv.width = W * dpr; cv.height = H_CV * dpr;
+cv.style.width = W + 'px'; cv.style.height = H_CV + 'px';
+ctx.scale(dpr, dpr);
 
 const slA  = document.getElementById('sA');
 const slN  = document.getElementById('sN');
@@ -199,7 +204,7 @@ function minT1forNoTIR(A, n) {
 // ── main draw ─────────────────────────────────────────────────────────────────
 
 function draw() {
-  ctx.clearRect(0, 0, cv.width, cv.height);
+  ctx.clearRect(0, 0, W, H_CV);
 
   const A_deg = parseFloat(slA.value);
   const n     = parseFloat(slN.value);
@@ -542,7 +547,7 @@ function draw() {
     ctx.textAlign = 'left';
     ctx.fillText(
       `Min deviation: D_min = ${(Dmin * DEG).toFixed(2)}° at θ₁ = ${(t1_minDev * DEG).toFixed(2)}°`,
-      10, cv.height - 12
+      10, H_CV - 12
     );
     ctx.restore();
   }

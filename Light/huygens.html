@@ -92,6 +92,10 @@ input[type=range] { width: 90px; cursor: pointer; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 480;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 
 let mode = 'draw'; // 'draw' | 'idle'
 let drawnPoints = [];

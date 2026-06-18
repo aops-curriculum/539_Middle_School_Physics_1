@@ -28,6 +28,10 @@ canvas.grabbing { cursor: grabbing; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const W = 540, H = 405;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 const S = 0.9; // overall scale factor
 
 // Scene geometry (all scaled by S from original)
@@ -76,8 +80,8 @@ function getPos(e) {
     cy = e.clientY;
   }
   return {
-    x: (cx - rect.left) * (canvas.width / rect.width),
-    y: (cy - rect.top) * (canvas.height / rect.height)
+    x: (cx - rect.left) * (W / rect.width),
+    y: (cy - rect.top) * (H / rect.height)
   };
 }
 

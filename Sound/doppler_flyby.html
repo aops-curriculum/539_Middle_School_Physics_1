@@ -204,10 +204,18 @@ const distSlider = document.getElementById('distSlider');
 // CANVAS SIZING
 // ============================================================
 
+let logW, logH;
+
 function resizeCanvas() {
   const ctrlH = document.getElementById('controls').offsetHeight;
-  canvas.width  = 600;
-  canvas.height = 600 - ctrlH;
+  const dpr = window.devicePixelRatio || 1;
+  logW = 600;
+  logH = 600 - ctrlH;
+  canvas.width  = logW * dpr;
+  canvas.height = logH * dpr;
+  canvas.style.width  = logW + 'px';
+  canvas.style.height = logH + 'px';
+  ctx.scale(dpr, dpr);
 }
 resizeCanvas();
 
@@ -219,7 +227,7 @@ resizeCanvas();
 // "Far" (slider=100) puts the observer near the bottom.
 
 const OBS_Y_MIN = SOURCE_Y;                    // zero separation
-const OBS_Y_MAX = SOURCE_Y + (canvas.height - 30 - SOURCE_Y) / 2;  // half the old range
+const OBS_Y_MAX = SOURCE_Y + (logH - 30 - SOURCE_Y) / 2;  // half the old range
 
 function getObserverY() {
   const t = distSlider.value / 100;
@@ -454,15 +462,15 @@ function gameLoop(timestamp) {
 // ============================================================
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.clearRect(0, 0, logW, logH);
 
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.fillRect(0, 0, logW, logH);
 
   // ── Faint source path line ──
   ctx.beginPath();
   ctx.moveTo(0, SOURCE_Y);
-  ctx.lineTo(canvas.width, SOURCE_Y);
+  ctx.lineTo(logW, SOURCE_Y);
   ctx.strokeStyle = 'rgba(0, 0, 0, 0.08)';
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
@@ -470,7 +478,7 @@ function draw() {
   ctx.setLineDash([]);
 
   // ── Faint line from source to observer ──
-  if (sourceX > -30 && sourceX < canvas.width + 30) {
+  if (sourceX > -30 && sourceX < logW + 30) {
     ctx.beginPath();
     ctx.moveTo(sourceX, SOURCE_Y);
     ctx.lineTo(OBSERVER_X, observerY);
@@ -496,7 +504,7 @@ function draw() {
   }
 
   // ── Source (speaker icon) ──
-  if (sourceX > -30 && sourceX < canvas.width + 30) {
+  if (sourceX > -30 && sourceX < logW + 30) {
     drawSource(sourceX, SOURCE_Y);
   }
 
@@ -508,7 +516,7 @@ function draw() {
   ctx.font = '12px Arial';
   ctx.fillStyle = '#777';
 
-  if (sourceX > -10 && sourceX < canvas.width + 10) {
+  if (sourceX > -10 && sourceX < logW + 10) {
     ctx.fillText('Source', sourceX, SOURCE_Y - 18);
   }
   ctx.fillText('Observer', OBSERVER_X, observerY + 40);

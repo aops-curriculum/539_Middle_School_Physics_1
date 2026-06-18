@@ -67,6 +67,10 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
         const W = 600, H = 640;
+        const dpr = window.devicePixelRatio || 1;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
 
         // ── Corner reflector ── (y-coords shifted down 55px for instructions area)
         const vx = 280, vy = 285;

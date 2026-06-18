@@ -37,7 +37,12 @@ canvas.over-ray { cursor: pointer; }
 
 const canvas = document.getElementById('canvas');
 const ctx    = canvas.getContext('2d');
-const W = canvas.width, H = canvas.height;
+const dpr = window.devicePixelRatio || 1;
+const logW = canvas.width, logH = canvas.height;
+canvas.width = logW * dpr; canvas.height = logH * dpr;
+canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
+ctx.scale(dpr, dpr);
+const W = logW, H = logH;
 
 const N_GLASS = 1.5;
 
@@ -630,8 +635,8 @@ function distPointSegment(P, A, B) {
 
 function getEventPos(e) {
     const rect = canvas.getBoundingClientRect();
-    const sx = canvas.width / rect.width;
-    const sy = canvas.height / rect.height;
+    const sx = W / rect.width;
+    const sy = H / rect.height;
     const t = e.touches ? e.touches[0] : e;
     return {
         x: (t.clientX - rect.left) * sx,

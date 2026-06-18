@@ -48,6 +48,10 @@
 // command (lines, arcs, fills) goes through this object.
 const canvas = document.getElementById('sim');
 const ctx    = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+canvas.width = 600 * dpr; canvas.height = 600 * dpr;
+canvas.style.width = '600px'; canvas.style.height = '600px';
+ctx.scale(dpr, dpr);
 
 
 // ── Physics Constants ───────────────────────────────────────────

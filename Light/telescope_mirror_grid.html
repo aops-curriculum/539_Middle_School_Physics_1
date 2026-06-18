@@ -24,6 +24,10 @@ const Rc = 135;
 const conicK = { spherical: 0, parabolic: -1, elliptical: -0.5, hyperbolic: -2 };
 
 const W = 600, H = 600;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 const baseX = W / 2, baseY = H - 80;
 
 const rayAngle = 20 * Math.PI / 180;

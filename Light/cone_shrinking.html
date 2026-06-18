@@ -12,6 +12,14 @@
 <body>
 <canvas id="canvas"></canvas>
 <script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const dpr = window.devicePixelRatio || 1;
+canvas.width = 300 * dpr; canvas.height = 150 * dpr;
+canvas.style.width = '300px'; canvas.style.height = '150px';
+ctx.scale(dpr, dpr);
+</script>
+<script>
 // EigenNode auto-height v2.4
 (function() {
   // 4px buffer for subpixel rounding + parent's >=3px noise threshold.

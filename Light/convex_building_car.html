@@ -55,6 +55,9 @@ const angleSlider = document.getElementById('angleSlider');
 const curveSlider = document.getElementById('curveSlider');
 const W = 435;
 const H = 500;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = 348 * dpr; canvas.height = 400 * dpr;
+canvas.style.width = '348px'; canvas.style.height = '400px';
 
 const GROUND_Y = 440;
 const MAX_BOUNCES = 6;
@@ -580,9 +583,9 @@ function draw() {
 
   const allSurfaces = getCurveSurfaces(bow);
 
-  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.clearRect(0, 0, 348, 400);
-  ctx.setTransform(0.8, 0, 0, 0.8, 0, 0);
+  ctx.setTransform(0.8 * dpr, 0, 0, 0.8 * dpr, 0, 0);
   drawSky();
   drawGround();
   drawGlowSpots(angleDeg, allSurfaces);

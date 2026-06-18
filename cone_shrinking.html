@@ -37,6 +37,10 @@ canvas.grabbing { cursor: grabbing; }
 const canvas = document.getElementById('c');
 const ctx = canvas.getContext('2d');
 const W = 600, H = 500;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 
 // Physics (in cm, then we map to pixels)
 const f = 12;           // focal length cm

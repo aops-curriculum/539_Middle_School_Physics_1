@@ -66,6 +66,10 @@ button.danger:hover { background: rgba(220, 60, 60, 1); }
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = 550, H = 400;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 
 const SCALE = 40;
 

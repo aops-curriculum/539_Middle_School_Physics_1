@@ -77,6 +77,10 @@ button.clear-btn:hover { background: rgba(150, 150, 150, 1); }
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const W = 507, H = 507;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+ctx.scale(dpr, dpr);
 
 // Telescope parameters
 const tubeLength = 303;

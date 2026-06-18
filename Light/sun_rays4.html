@@ -175,6 +175,11 @@
     <script>
         const canvas = document.getElementById('gameCanvas');
         const ctx = canvas.getContext('2d');
+        const dpr = window.devicePixelRatio || 1;
+        const W = 800, H = 600;
+        canvas.width = W * dpr; canvas.height = H * dpr;
+        canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
+        ctx.scale(dpr, dpr);
         const shootBtn = document.getElementById('shootBtn');
 
         // Game state - Fixed sun and tower positions
@@ -187,7 +192,7 @@
         let rays = [];
         let shadowRays = [];
         let isAnimatingRays = false;
-        let groundLevel = canvas.height - 80;
+        let groundLevel = H - 80;
         
         // Rulers - 1 cm = blockSize (35 pixels)
         let cmScale = blockSize; // 35 pixels = 1 cm
@@ -218,22 +223,22 @@
 
         function draw() {
             // Clear canvas
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            ctx.clearRect(0, 0, W, H);
             
             // Draw sky
             ctx.fillStyle = '#87CEEB';
-            ctx.fillRect(0, 0, canvas.width, groundLevel);
+            ctx.fillRect(0, 0, W, groundLevel);
             
             // Draw ground
             ctx.fillStyle = '#90EE90';
-            ctx.fillRect(0, groundLevel, canvas.width, canvas.height - groundLevel);
+            ctx.fillRect(0, groundLevel, W, H - groundLevel);
             
             // Draw ground/sky line
             ctx.strokeStyle = '#228B22';
             ctx.lineWidth = 2;
             ctx.beginPath();
             ctx.moveTo(0, groundLevel);
-            ctx.lineTo(canvas.width, groundLevel);
+            ctx.lineTo(W, groundLevel);
             ctx.stroke();
             
             // Draw sun
@@ -667,8 +672,8 @@
 
         function getMousePos(e) {
             const rect = canvas.getBoundingClientRect();
-            const scaleX = canvas.width / rect.width;
-            const scaleY = canvas.height / rect.height;
+            const scaleX = W / rect.width;
+            const scaleY = H / rect.height;
             
             return {
                 x: (e.clientX - rect.left) * scaleX,
@@ -728,8 +733,8 @@
                     horizontalRuler.y = mousePos.y - dragOffset.y;
                     
                     // Keep horizontal ruler within canvas bounds
-                    horizontalRuler.x = Math.max(0, Math.min(canvas.width - horizontalRuler.length, horizontalRuler.x));
-                    horizontalRuler.y = Math.max(horizontalRuler.thickness/2, Math.min(canvas.height - horizontalRuler.thickness/2, horizontalRuler.y));
+                    horizontalRuler.x = Math.max(0, Math.min(W - horizontalRuler.length, horizontalRuler.x));
+                    horizontalRuler.y = Math.max(horizontalRuler.thickness/2, Math.min(H - horizontalRuler.thickness/2, horizontalRuler.y));
                 }
                 
                 if (verticalRuler.isDragging) {
@@ -737,8 +742,8 @@
                     verticalRuler.y = mousePos.y - dragOffset.y;
                     
                     // Keep vertical ruler within canvas bounds
-                    verticalRuler.x = Math.max(verticalRuler.thickness/2, Math.min(canvas.width - verticalRuler.thickness/2, verticalRuler.x));
-                    verticalRuler.y = Math.max(0, Math.min(canvas.height - verticalRuler.length, verticalRuler.y));
+                    verticalRuler.x = Math.max(verticalRuler.thickness/2, Math.min(W - verticalRuler.thickness/2, verticalRuler.x));
+                    verticalRuler.y = Math.max(0, Math.min(H - verticalRuler.length, verticalRuler.y));
                 }
                 
                 if (protractor.isDragging) {
@@ -746,8 +751,8 @@
                     protractor.y = mousePos.y - dragOffset.y;
                     
                     // Keep protractor within canvas bounds
-                    protractor.x = Math.max(protractor.radius, Math.min(canvas.width - protractor.radius, protractor.x));
-                    protractor.y = Math.max(protractor.radius, Math.min(canvas.height - protractor.radius, protractor.y));
+                    protractor.x = Math.max(protractor.radius, Math.min(W - protractor.radius, protractor.x));
+                    protractor.y = Math.max(protractor.radius, Math.min(H - protractor.radius, protractor.y));
                 }
                 
                 draw();

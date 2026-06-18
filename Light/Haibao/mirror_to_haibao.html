@@ -30,7 +30,7 @@
 </style>
 </head>
 <body>
-<canvas id="canvas" width="1200" height="700"></canvas>
+<canvas id="canvas" width="600" height="350"></canvas>
 <div id="warning"></div>
 
 <script>
@@ -38,11 +38,11 @@ const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const warningEl = document.getElementById('warning');
 
-// HiDPI: canvas is 1200x700 but displayed at 600x350 via CSS
-const DPR = 2;
-ctx.scale(DPR, DPR);
-
-const CW = 600, CH = 350; // CSS dimensions
+const CW = 600, CH = 350; // logical (CSS) dimensions
+const dpr = window.devicePixelRatio || 1;
+canvas.width = CW * dpr; canvas.height = CH * dpr;
+canvas.style.width = CW + 'px'; canvas.style.height = CH + 'px';
+ctx.scale(dpr, dpr);
 
 // --- Style constants ---
 const BROWN = '#8B4513';
