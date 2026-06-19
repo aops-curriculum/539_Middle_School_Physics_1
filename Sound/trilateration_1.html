@@ -43,6 +43,10 @@ canvas { display:block; }
 }
 .btn:hover  { background:rgba(255,255,255,.12); border-color:rgba(255,255,255,.38); }
 .btn.active { background:rgba(79,195,247,.18); border-color:#4fc3f7; color:#4fc3f7; }
+.check {
+  color:rgba(255,255,255,.7); font:11px system-ui; cursor:pointer;
+  display:flex; align-items:center; gap:5px;
+}
 #hint {
   color:rgba(255,255,255,.32); font:10px system-ui;
   text-align:right; line-height:1.65;
@@ -84,6 +88,10 @@ canvas { display:block; }
 
   <div id="controls">
     <button class="btn" id="clear-btn">✕ Clear</button>
+    <label class="check" id="locations-label" style="display:none">
+      <input type="checkbox" id="show-locations">
+      Show Locations
+    </label>
     <div id="hint">
       Drag on globe to draw circle<br>
       Click center dot to move<br>
@@ -112,12 +120,32 @@ const LIFT = 1.004;          // circles float just above globe surface
 const MIN_RADIUS_KM = 1;
 const COLORS = ['#4fc3f7','#81c784','#ffb74d','#f06292','#ce93d8','#80deea','#fff176','#ff8a65'];
 
+// ─── URL param: ?sites=v2 switches to the Alaska-centred problem ──────────────
+const _sitesParam = new URLSearchParams(location.search).get('sites');
+const _useV2 = _sitesParam === 'v2';
+if (_useV2) document.getElementById('locations-label').style.display = '';
+
 // ─── Fixed site locations ──────────────────────────────────────────────────────
-const SITES = [
+const SITES_V1 = [
   { name: 'Standing Stone, PA',  lat:  41.67, lon:  -76.55 },
   { name: 'Tepich, Mexico',      lat:  20.23, lon:  -88.38 },
   { name: 'Isla Socorro, Mexico',lat:  18.72, lon: -110.95 },
 ];
+const SITES_V2 = [
+  { name: 'Palmer, Alaska',        lat: 61.5997, lon: -149.1128 },
+  { name: 'Golden, Colorado',      lat: 39.7555, lon: -105.2211 },
+  { name: 'Isla Socorro, Mexico',  lat: 18.7200, lon: -110.9500 },
+];
+const EXTRA_LOCATIONS = [
+  { name: 'Adak',      lat: 51.8800, lon: -176.6581 },
+  { name: 'Akutan',    lat: 54.1335, lon: -165.7769 },
+  { name: 'Anchorage', lat: 61.2181, lon: -149.9003 },
+  { name: 'Deadhorse', lat: 70.2002, lon: -148.4597 },
+  { name: 'Juneau',    lat: 58.3019, lon: -134.4197 },
+  { name: 'Kodiak',    lat: 57.7900, lon: -152.4072 },
+  { name: 'Nome',      lat: 64.5011, lon: -165.4064 },
+];
+const SITES = _useV2 ? SITES_V2 : SITES_V1;
 
 // ─── Three.js core ────────────────────────────────────────────────────────────
 const wrap      = document.getElementById('wrap');
@@ -544,11 +572,14 @@ window.addEventListener('mouseup', () => {
 // ─── UI ───────────────────────────────────────────────────────────────────────
 
 document.getElementById('clear-btn').addEventListener('click', clearAllCircles);
+const _showLocCb = document.getElementById('show-locations');
+if (_showLocCb) _showLocCb.addEventListener('change', () => setExtraLocationsVisible(_showLocCb.checked));
 
 // ─── Fixed site markers ───────────────────────────────────────────────────────
 const GEO_SITE = new THREE.SphereGeometry(0.055, 12, 12);
 const GEO_SITE_GLOW = new THREE.SphereGeometry(0.11, 10, 10);
-const siteMarkers = []; // {mesh, glowMesh, labelDiv, pos}
+const siteMarkers = []; // {mesh, glow, labelDiv, pos}
+const extraLocationMarkers = []; // {mesh, glowMesh, labelDiv, pos}
 
 function buildSiteMarkers() {
   SITES.forEach(site => {
@@ -574,6 +605,39 @@ function buildSiteMarkers() {
 
     siteMarkers.push({ mesh, glow, labelDiv: div, pos: pos.clone() });
   });
+  if (_useV2) buildExtraLocationMarkers();
+}
+
+function setExtraLocationsVisible(show) {
+  extraLocationMarkers.forEach(({ mesh, glowMesh, labelDiv }) => {
+    mesh.visible = show;
+    glowMesh.visible = show;
+    if (!show) labelDiv.style.display = 'none';
+  });
+}
+
+function buildExtraLocationMarkers() {
+  EXTRA_LOCATIONS.forEach(site => {
+    const pos = latLonToVec3(site.lat, site.lon, GLOBE_R * LIFT);
+    const mesh = new THREE.Mesh(GEO_SITE,
+      new THREE.MeshBasicMaterial({ color: 0xffe082 }));
+    mesh.position.copy(pos);
+    scene.add(mesh);
+    const glow = new THREE.Mesh(GEO_SITE_GLOW,
+      new THREE.MeshBasicMaterial({
+        color: 0xffe082, transparent: true, opacity: 0.24,
+        blending: THREE.AdditiveBlending, depthWrite: false
+      }));
+    glow.position.copy(pos);
+    scene.add(glow);
+    const div = document.createElement('div');
+    div.className = 'site-label';
+    div.textContent = site.name;
+    labelsDiv.appendChild(div);
+    extraLocationMarkers.push({ mesh, glowMesh: glow, labelDiv: div, pos: pos.clone() });
+  });
+  const cb = document.getElementById('show-locations');
+  setExtraLocationsVisible(cb ? cb.checked : false);
 }
 
 // ─── Animation loop ───────────────────────────────────────────────────────────
@@ -636,6 +700,22 @@ function animate() {
       labelDiv.style.display = 'none';
     }
   });
+
+  // Extra location labels (v2 only)
+  if (_useV2 && _showLocCb && _showLocCb.checked) {
+    extraLocationMarkers.forEach(({labelDiv, pos}) => {
+      const f = isFacing(pos);
+      if (f > 0) {
+        const {x,y} = screenXY(pos);
+        labelDiv.style.display = '';
+        labelDiv.style.left    = x + 'px';
+        labelDiv.style.top     = y + 'px';
+        labelDiv.style.opacity = Math.min(1, f * 3);
+      } else {
+        labelDiv.style.display = 'none';
+      }
+    });
+  }
 
   renderer.render(scene, camera);
 }

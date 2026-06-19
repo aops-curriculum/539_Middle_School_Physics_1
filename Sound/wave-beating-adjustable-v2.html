@@ -174,7 +174,7 @@
 
         // Graph parameters
         const xMin = 0;
-        const xMax = 1;
+        let xMax = 1;
         const yMin = -2.5;
         const yMax = 2.5;
         const padTop = 8, padBottom = 36, padLeft = 38, padRight = 8;
@@ -209,7 +209,8 @@
             ctx.strokeStyle = '#e0e0e0';
             ctx.lineWidth = 1;
 
-            for (let x = 0; x <= 1; x += 0.1) {
+            const xTick = xMax <= 1.001 ? 0.1 : 0.5;
+            for (let x = 0; x <= xMax + 1e-9; x += xTick) {
                 const { x: cx } = graphToCanvas(x, 0);
                 ctx.beginPath();
                 ctx.moveTo(cx, padTop);
@@ -247,7 +248,7 @@
             ctx.textAlign = 'center';
             ctx.textBaseline = 'top';
 
-            for (let x = 0; x <= 1.001; x += 0.1) {
+            for (let x = 0; x <= xMax + 1e-9; x += xTick) {
                 const { x: cx } = graphToCanvas(x, 0);
                 ctx.fillText(x.toFixed(1), cx, logH - padBottom + 5);
             }
@@ -289,11 +290,45 @@
             ctx.stroke();
         }
 
+        function drawBeatAnnotation() {
+            if (!_showBeat || !showSum || Math.abs(f2 - f1) < 0.01) return;
+            const beatPeriod = 1 / Math.abs(f2 - f1);
+            if (beatPeriod > xMax * 0.9) return;
+            const numPts = 2000;
+            const pts = [];
+            for (let i = 0; i <= numPts; i++) {
+                const t = i / numPts * xMax;
+                pts.push({ t, s: Math.sin(2*Math.PI*f1*t) + Math.sin(2*Math.PI*f2*t) });
+            }
+            const peaks = [];
+            for (let i = 1; i < pts.length - 1; i++) {
+                if (pts[i].s > pts[i-1].s && pts[i].s > pts[i+1].s && pts[i].s > 1.5)
+                    peaks.push(pts[i]);
+            }
+            peaks.sort((a, b) => b.s - a.s);
+            let p1 = null, p2 = null;
+            for (let i = 0; i < peaks.length && !p2; i++) {
+                if (!p1) { p1 = peaks[i]; continue; }
+                if (Math.abs(Math.abs(peaks[i].t - p1.t) - beatPeriod) < beatPeriod * 0.2) p2 = peaks[i];
+            }
+            if (!p1 || !p2) return;
+            const { x: ax1, y: ay } = graphToCanvas(Math.min(p1.t, p2.t), -2.2);
+            const { x: ax2 }        = graphToCanvas(Math.max(p1.t, p2.t), -2.2);
+            const arr = 8;
+            ctx.strokeStyle = '#333'; ctx.fillStyle = '#333'; ctx.lineWidth = 2;
+            ctx.beginPath(); ctx.moveTo(ax1, ay); ctx.lineTo(ax2, ay); ctx.stroke();
+            ctx.beginPath(); ctx.moveTo(ax1, ay); ctx.lineTo(ax1+arr, ay-arr/2); ctx.lineTo(ax1+arr, ay+arr/2); ctx.closePath(); ctx.fill();
+            ctx.beginPath(); ctx.moveTo(ax2, ay); ctx.lineTo(ax2-arr, ay-arr/2); ctx.lineTo(ax2-arr, ay+arr/2); ctx.closePath(); ctx.fill();
+            ctx.font = '11px Arial'; ctx.textAlign = 'center'; ctx.textBaseline = 'top'; ctx.fillStyle = '#333';
+            ctx.fillText('T = ' + beatPeriod.toFixed(2) + ' s', (ax1+ax2)/2, ay + 12);
+        }
+
         function draw() {
             drawAxesAndGrid();
             if (showWave1) drawWave(t => Math.sin(2 * Math.PI * f1 * t), wave1Color, 1.5);
             if (showWave2) drawWave(t => Math.sin(2 * Math.PI * f2 * t), wave2Color, 1.5);
             if (showSum)   drawWave(t => Math.sin(2 * Math.PI * f1 * t) + Math.sin(2 * Math.PI * f2 * t), sumColor, 2.5);
+            drawBeatAnnotation();
         }
 
         function updateBeatInfo() {
@@ -326,6 +361,37 @@
         document.getElementById('sumToggle').addEventListener('change', (e) => {
             showSum = e.target.checked; draw();
         });
+
+        // URL params: ?f1=N &f2=N &timeWindow=N &mode=adjustable|on-off &showBeat=true
+        const _qs = new URLSearchParams(location.search);
+        const _f1p = _qs.get('f1'), _f2p = _qs.get('f2');
+        if (_f1p !== null) {
+            f1 = parseFloat(_f1p);
+            document.getElementById('f1Slider').value = f1;
+            document.getElementById('f1Value').textContent = f1.toFixed(1) + ' Hz';
+        }
+        if (_f2p !== null) {
+            f2 = parseFloat(_f2p);
+            document.getElementById('f2Slider').value = f2;
+            document.getElementById('f2Value').textContent = f2.toFixed(1) + ' Hz';
+        }
+        const _twp = _qs.get('timeWindow');
+        if (_twp !== null) xMax = parseFloat(_twp);
+        const _onOff = (_qs.get('mode') || 'adjustable') === 'on-off';
+        const _showBeat = _qs.get('showBeat') === 'true';
+        if (_f1p !== null || _f2p !== null) updateBeatInfo();
+
+        if (_onOff) {
+            document.getElementById('f1Slider').style.display = 'none';
+            document.getElementById('f2Slider').style.display = 'none';
+            document.getElementById('f1Value').style.display = 'none';
+            document.getElementById('f2Value').style.display = 'none';
+            document.querySelector('label[for="wave1Toggle"]').innerHTML =
+                '<span class="color-indicator" style="background-color:#0066cc;"></span>Wave 1 (' + f1 + ' Hz)';
+            document.querySelector('label[for="wave2Toggle"]').innerHTML =
+                '<span class="color-indicator" style="background-color:#cc0000;"></span>Wave 2 (' + f2 + ' Hz)';
+            document.getElementById('beatInfo').style.display = 'none';
+        }
 
         draw();
     </script>

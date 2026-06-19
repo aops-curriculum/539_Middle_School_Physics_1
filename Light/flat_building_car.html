@@ -43,6 +43,10 @@ canvas {
   <label>Sun angle:</label>
   <input type="range" id="angleSlider" min="10" max="80" value="35">
 </div>
+<div class="slider-container" id="curveContainer" style="display:none">
+  <label>Curvature:</label>
+  <input type="range" id="curveSlider" min="0" max="100" value="40">
+</div>
 <canvas id="canvas" width="348" height="400"></canvas>
 <script>
 const canvas = document.getElementById('canvas');
@@ -91,6 +95,54 @@ const allSurfaces = [
   { x1: bldgLeft, y1: bldgTop, x2: bldgLeft, y2: bldgBottom, nx: -1, ny: 0, type: 'glass' },
   { x1: bldgLeft, y1: bldgTop, x2: bldgRight, y2: bldgTop, nx: 0, ny: -1, type: 'wall' },
 ];
+
+// URL params: ?mirrorType=flat|convex (default flat)
+const _qs = new URLSearchParams(location.search);
+const _convex = _qs.get('mirrorType') === 'convex';
+
+// Convex curve helpers (active when ?mirrorType=convex)
+const maxBow = 80;
+function getCurveX(y, bow) {
+  const midY = (bldgTop + bldgBottom) / 2;
+  const halfH = (bldgBottom - bldgTop) / 2;
+  const t = (y - midY) / halfH;
+  return bldgLeft - bow * (1 - t * t);
+}
+function getCurveDxDy(y, bow) {
+  const midY = (bldgTop + bldgBottom) / 2;
+  const halfH = (bldgBottom - bldgTop) / 2;
+  const t = (y - midY) / halfH;
+  return 2 * bow * t / halfH;
+}
+function getCurveNormal(y, bow) {
+  const dxdy = getCurveDxDy(y, bow);
+  const len = Math.sqrt(1 + dxdy * dxdy);
+  return { nx: -1 / len, ny: dxdy / len };
+}
+function getCurveSurfaces(bow) {
+  const segments = 40;
+  const surfaces = [];
+  for (let i = 0; i < segments; i++) {
+    const y1 = bldgTop + (bldgBottom - bldgTop) * i / segments;
+    const y2 = bldgTop + (bldgBottom - bldgTop) * (i + 1) / segments;
+    const x1 = getCurveX(y1, bow);
+    const x2 = getCurveX(y2, bow);
+    const yMid = (y1 + y2) / 2;
+    const n = getCurveNormal(yMid, bow);
+    surfaces.push({ x1, y1, x2, y2, nx: n.nx, ny: n.ny, type: 'glass' });
+  }
+  const roofLeftX = getCurveX(bldgTop, bow);
+  surfaces.push({ x1: roofLeftX, y1: bldgTop, x2: bldgRight, y2: bldgTop, nx: 0, ny: -1, type: 'wall' });
+  return surfaces;
+}
+
+// Active surface list — updated in draw() before ray tracing
+let _activeSurfaces = allSurfaces;
+const curveSlider = document.getElementById('curveSlider');
+if (_convex) {
+  document.getElementById('curveContainer').style.display = '';
+  curveSlider.addEventListener('input', draw);
+}
 
 // Car body definition
 const carX = 80;
@@ -144,7 +196,7 @@ function traceRay(ox, oy, dx, dy) {
     let hitType = null;
 
     // Check all building/window surfaces
-    for (const surf of allSurfaces) {
+    for (const surf of _activeSurfaces) {
       const hit = raySegmentIntersect(cx, cy, rdx, rdy, surf.x1, surf.y1, surf.x2, surf.y2);
       if (hit && (!closest || hit.t < closest.t)) {
         closest = { t: hit.t, x: hit.x, y: hit.y, nx: surf.nx, ny: surf.ny };
@@ -270,6 +322,113 @@ function drawBuilding() {
   // Roof accent
   ctx.fillStyle = '#456';
   ctx.fillRect(bldgLeft - windowProtrusion, bldgTop, bldgRight - bldgLeft + windowProtrusion, 4);
+}
+
+function drawConvexBuilding(bow) {
+  const curveSteps = 60;
+  const windowRows = 13;
+  const windowH = (bldgBottom - bldgTop) / windowRows;
+  const windowProtrusion = 8;
+
+  ctx.fillStyle = '#8a8a8a';
+  ctx.beginPath();
+  for (let i = 0; i <= curveSteps; i++) {
+    const y = bldgTop + (bldgBottom - bldgTop) * i / curveSteps;
+    const x = getCurveX(y, bow);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.lineTo(bldgRight, bldgBottom);
+  ctx.lineTo(bldgRight, bldgTop);
+  ctx.closePath();
+  ctx.fill();
+
+  ctx.strokeStyle = '#7a7a7a';
+  ctx.lineWidth = 1;
+  const panelCount = 6;
+  const minLeft = getCurveX((bldgTop + bldgBottom) / 2, bow);
+  for (let i = 1; i < panelCount; i++) {
+    const px = minLeft + i * (bldgRight - minLeft) / panelCount;
+    ctx.beginPath();
+    let started = false;
+    for (let j = 0; j <= curveSteps; j++) {
+      const y = bldgTop + (bldgBottom - bldgTop) * j / curveSteps;
+      const edgeX = getCurveX(y, bow);
+      if (px >= edgeX && !started) { ctx.moveTo(px, y); started = true; }
+      if (px < edgeX && started) { ctx.lineTo(px, y); started = false; }
+    }
+    if (started) ctx.lineTo(px, bldgBottom);
+    ctx.stroke();
+  }
+
+  for (let r = 0; r < windowRows; r++) {
+    const yTop = bldgTop + r * windowH;
+    const yBot = yTop + windowH;
+    const yCen = (yTop + yBot) / 2;
+    const edgeX = getCurveX(yCen, bow);
+    const dxdy = getCurveDxDy(yCen, bow);
+    const tanLen = Math.sqrt(dxdy * dxdy + 1);
+    const tx = dxdy / tanLen, ty = 1 / tanLen;
+    const nx = -ty, ny = tx;
+    const halfH = windowH / 2;
+    const corners = [
+      { x: edgeX + nx * windowProtrusion - tx * halfH, y: yCen + ny * windowProtrusion - ty * halfH },
+      { x: edgeX - tx * halfH, y: yCen - ty * halfH },
+      { x: edgeX + tx * halfH, y: yCen + ty * halfH },
+      { x: edgeX + nx * windowProtrusion + tx * halfH, y: yCen + ny * windowProtrusion + ty * halfH },
+    ];
+    ctx.fillStyle = '#606060';
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x - nx, corners[0].y - ny);
+    ctx.lineTo(corners[1].x + nx, corners[1].y + ny);
+    ctx.lineTo(corners[2].x + nx, corners[2].y + ny);
+    ctx.lineTo(corners[3].x - nx, corners[3].y - ny);
+    ctx.closePath();
+    ctx.fill();
+    ctx.save();
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    ctx.lineTo(corners[1].x, corners[1].y);
+    ctx.lineTo(corners[2].x, corners[2].y);
+    ctx.lineTo(corners[3].x, corners[3].y);
+    ctx.closePath();
+    ctx.clip();
+    const gx1 = edgeX + nx * windowProtrusion, gy1 = yCen + ny * windowProtrusion;
+    const glassGrad = ctx.createLinearGradient(gx1, gy1, edgeX, yCen);
+    glassGrad.addColorStop(0, '#7ec8e3');
+    glassGrad.addColorStop(1, '#5ba3c9');
+    ctx.fillStyle = glassGrad;
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(corners[0].x, corners[0].y);
+    ctx.lineTo(corners[3].x, corners[3].y);
+    ctx.stroke();
+    ctx.restore();
+    ctx.strokeStyle = '#4a4a4a';
+    ctx.lineWidth = 0.5;
+    ctx.beginPath();
+    corners.forEach((c, i) => i === 0 ? ctx.moveTo(c.x, c.y) : ctx.lineTo(c.x, c.y));
+    ctx.closePath();
+    ctx.stroke();
+  }
+
+  ctx.strokeStyle = '#456';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  const topLeftX = getCurveX(bldgTop, bow);
+  ctx.moveTo(topLeftX, bldgTop);
+  ctx.lineTo(bldgRight, bldgTop);
+  ctx.lineTo(bldgRight, bldgBottom);
+  ctx.lineTo(getCurveX(bldgBottom, bow), bldgBottom);
+  for (let i = curveSteps; i >= 0; i--) {
+    const y = bldgTop + (bldgBottom - bldgTop) * i / curveSteps;
+    ctx.lineTo(getCurveX(y, bow), y);
+  }
+  ctx.stroke();
+  ctx.fillStyle = '#456';
+  ctx.fillRect(topLeftX, bldgTop, bldgRight - topLeftX, 4);
 }
 
 function drawCar() {
@@ -474,6 +633,8 @@ function drawGlowSpots(angleDeg) {
 
 function draw() {
   const angleDeg = parseFloat(slider.value);
+  const bow = _convex ? maxBow * parseFloat(curveSlider.value) / 100 : 0;
+  _activeSurfaces = _convex ? getCurveSurfaces(bow) : allSurfaces;
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(0.8 * dpr, 0, 0, 0.8 * dpr, 0, 0);
@@ -481,7 +642,7 @@ function draw() {
   drawGround();
   drawGlowSpots(angleDeg);
   drawRays(angleDeg);
-  drawBuilding();
+  if (_convex) drawConvexBuilding(bow); else drawBuilding();
   drawCar();
 
   // Angle label

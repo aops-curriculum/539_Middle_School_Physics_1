@@ -32,10 +32,14 @@ canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
 ctx.scale(dpr, dpr);
 const DEG = Math.PI / 180;
 
+// ── URL param: ?rotation=N (degrees to rotate octagon, default 0) ─────────
+const _rotDeg = parseFloat(new URLSearchParams(location.search).get('rotation') || '0');
+
 // ── Layout (same as rotate_octagon) ──────────────────────
 const OCT_CX = 125, OCT_CY = 340, OCT_R = 22;
 const INRADIUS = OCT_R * Math.cos(Math.PI / 8);
 const BASE_ANGLE = 22.5 * DEG;
+const DRAW_ANGLE = BASE_ANGLE + _rotDeg * DEG;
 
 const FACE0_MID_X = OCT_CX + INRADIUS * Math.cos(45 * DEG);
 const FACE0_MID_Y = OCT_CY + INRADIUS * Math.sin(45 * DEG);
@@ -92,6 +96,25 @@ function faceN(vs, i) {
     return vnorm(vsub(mid, v(OCT_CX, OCT_CY)));
 }
 
+// ── Mirror / edge helpers (used when rotation != 0) ──────
+function rayMirror(o, d) {
+    if (Math.abs(d.x) < 1e-10) return null;
+    const t = (MIRROR_X - o.x) / d.x;
+    if (t < 0.01) return null;
+    const y = o.y + t * d.y;
+    if (y >= MIRROR_TOP && y <= MIRROR_BOT)
+        return { t, pt: v(MIRROR_X, y) };
+    return null;
+}
+function toEdge(o, d) {
+    let tm = 1e9;
+    if (d.x > 1e-10) tm = Math.min(tm, (W-o.x)/d.x);
+    if (d.x < -1e-10) tm = Math.min(tm, -o.x/d.x);
+    if (d.y > 1e-10) tm = Math.min(tm, (H-o.y)/d.y);
+    if (d.y < -1e-10) tm = Math.min(tm, -o.y/d.y);
+    return vadd(o, vsc(d, Math.max(Math.min(tm, 2000), 1)));
+}
+
 // ── Ray intersections ────────────────────────────────────
 function raySeg(o, d, p1, p2) {
     const s = vsub(p2, p1);
@@ -112,9 +135,9 @@ function rayOct(o, d, vs) {
     return best;
 }
 
-// ── Compute the full light path at base angle ────────────
+// ── Compute the full light path ──────────────────────────
 function computeLightPath() {
-    const vs = octVerts(BASE_ANGLE);
+    const vs = octVerts(DRAW_ANGLE);
     const points = [SOURCE];
 
     // Leg 1: source -> octagon face 0
@@ -126,23 +149,30 @@ function computeLightPath() {
     if (vdot(PHOTON_DIR, n1) >= 0) return points;
     const r1 = vrefl(PHOTON_DIR, n1);
 
-    // Leg 2: octagon -> mirror
-    const mirrorPt = v(MIRROR_X, h0.pt.y + r1.y * (MIRROR_X - h0.pt.x) / r1.x);
-    points.push(mirrorPt);
-
-    // Leg 3: mirror -> octagon face 6
-    const r2 = vrefl(r1, MN);
-    const hR = rayOct(mirrorPt, r2, vs);
-    if (!hR) return points;
-    points.push(hR.pt);
-
-    // Leg 4: octagon -> observer
-    const n3 = faceN(vs, hR.face);
-    const r3 = vrefl(r2, n3);
-    const toObs = vsub(OBSERVER, hR.pt);
-    const along = vdot(toObs, r3);
-    if (along > 0) {
-        points.push(vadd(hR.pt, vsc(r3, along)));
+    // Leg 2: octagon -> mirror (handle miss when rotated)
+    if (_rotDeg !== 0) {
+        const mH = rayMirror(h0.pt, r1);
+        if (!mH) { points.push(toEdge(h0.pt, r1)); return points; }
+        points.push(mH.pt);
+        const r2 = vrefl(r1, MN);
+        const hR = rayOct(mH.pt, r2, vs);
+        if (!hR) { points.push(toEdge(mH.pt, r2)); return points; }
+        points.push(hR.pt);
+        const n3 = faceN(vs, hR.face);
+        const r3 = vrefl(r2, n3);
+        points.push(toEdge(hR.pt, r3));
+    } else {
+        const mirrorPt = v(MIRROR_X, h0.pt.y + r1.y * (MIRROR_X - h0.pt.x) / r1.x);
+        points.push(mirrorPt);
+        const r2 = vrefl(r1, MN);
+        const hR = rayOct(mirrorPt, r2, vs);
+        if (!hR) return points;
+        points.push(hR.pt);
+        const n3 = faceN(vs, hR.face);
+        const r3 = vrefl(r2, n3);
+        const toObs = vsub(OBSERVER, hR.pt);
+        const along = vdot(toObs, r3);
+        if (along > 0) points.push(vadd(hR.pt, vsc(r3, along)));
     }
 
     return points;
@@ -150,7 +180,7 @@ function computeLightPath() {
 
 // ── Drawing ──────────────────────────────────────────────
 function drawOctagon() {
-    const vs = octVerts(BASE_ANGLE);
+    const vs = octVerts(DRAW_ANGLE);
     ctx.beginPath();
     ctx.moveTo(vs[0].x, vs[0].y);
     for (let i=1;i<8;i++) ctx.lineTo(vs[i].x, vs[i].y);

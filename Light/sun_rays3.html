@@ -187,9 +187,19 @@
         const removeBlockBtn = document.getElementById('removeBlockBtn');
         const blockCountDisplay = document.getElementById('blockCount');
 
+        // URL params: ?collisionDetection=false &showTools=false &towerMode=dual
+        const _qs = new URLSearchParams(location.search);
+        const _collisionDetection = _qs.get('collisionDetection') !== 'false';
+        const _showTools = _qs.get('showTools') !== 'false';
+        const _dual = _qs.get('towerMode') === 'dual';
+
         // Game state
         let sun = { x: 120, y: 80, radius: 20, isDragging: false };
         let tower = { x: 400, y: 0, blockCount: 5, blockSize: 35, isDragging: false };
+        // _towers: unified list used by draw, collision, and shadow logic
+        const _towers = _dual
+            ? [{ x: 270, blockCount: 3, blockSize: 35 }, { x: 400, blockCount: 5, blockSize: 35 }]
+            : [tower];
         let rays = [];
         let shadowRays = [];
         let isAnimatingRays = false;
@@ -255,14 +265,15 @@
             ctx.fillStyle = '#8B4513';
             ctx.strokeStyle = '#654321';
             ctx.lineWidth = 2;
-            
-            for (let i = 0; i < tower.blockCount; i++) {
-                let blockX = tower.x - tower.blockSize / 2;
-                let blockY = groundLevel - tower.blockSize * (i + 1);
-                
-                ctx.fillRect(blockX, blockY, tower.blockSize, tower.blockSize);
-                ctx.strokeRect(blockX, blockY, tower.blockSize, tower.blockSize);
-            }
+
+            _towers.forEach(t => {
+                for (let i = 0; i < t.blockCount; i++) {
+                    let blockX = t.x - t.blockSize / 2;
+                    let blockY = groundLevel - t.blockSize * (i + 1);
+                    ctx.fillRect(blockX, blockY, t.blockSize, t.blockSize);
+                    ctx.strokeRect(blockX, blockY, t.blockSize, t.blockSize);
+                }
+            });
             
             // Draw rays
             ctx.strokeStyle = 'white';
@@ -475,10 +486,12 @@
         }
 
         function getCollisionPoint(startX, startY, angle, maxLength) {
+            if (!_collisionDetection) return maxLength;
+
             const dirX = Math.cos(angle);
             const dirY = Math.sin(angle);
             let closestDistance = maxLength;
-            
+
             // Check ground collision
             if (dirY > 0) { // Ray going downward
                 const distanceToGround = (groundLevel - startY) / dirY;
@@ -486,120 +499,75 @@
                     closestDistance = distanceToGround;
                 }
             }
-            
-            // Check block collisions
-            for (let i = 0; i < tower.blockCount; i++) {
-                const blockLeft = tower.x - tower.blockSize / 2;
-                const blockRight = tower.x + tower.blockSize / 2;
-                const blockTop = groundLevel - tower.blockSize * (i + 1);
-                const blockBottom = groundLevel - tower.blockSize * i;
-                
-                // Check intersection with each edge of the block
-                const intersections = [];
-                
-                // Left edge
-                if (dirX !== 0) {
-                    const t = (blockLeft - startX) / dirX;
-                    if (t > 0) {
-                        const y = startY + t * dirY;
-                        if (y >= blockTop && y <= blockBottom) {
-                            intersections.push(t);
-                        }
+
+            // Check block collisions across all towers
+            for (const twr of _towers) {
+                for (let i = 0; i < twr.blockCount; i++) {
+                    const blockLeft = twr.x - twr.blockSize / 2;
+                    const blockRight = twr.x + twr.blockSize / 2;
+                    const blockTop = groundLevel - twr.blockSize * (i + 1);
+                    const blockBottom = groundLevel - twr.blockSize * i;
+
+                    const intersections = [];
+
+                    if (dirX !== 0) {
+                        const t = (blockLeft - startX) / dirX;
+                        if (t > 0) { const y = startY + t * dirY; if (y >= blockTop && y <= blockBottom) intersections.push(t); }
                     }
-                }
-                
-                // Right edge
-                if (dirX !== 0) {
-                    const t = (blockRight - startX) / dirX;
-                    if (t > 0) {
-                        const y = startY + t * dirY;
-                        if (y >= blockTop && y <= blockBottom) {
-                            intersections.push(t);
-                        }
+                    if (dirX !== 0) {
+                        const t = (blockRight - startX) / dirX;
+                        if (t > 0) { const y = startY + t * dirY; if (y >= blockTop && y <= blockBottom) intersections.push(t); }
                     }
-                }
-                
-                // Top edge
-                if (dirY !== 0) {
-                    const t = (blockTop - startY) / dirY;
-                    if (t > 0) {
-                        const x = startX + t * dirX;
-                        if (x >= blockLeft && x <= blockRight) {
-                            intersections.push(t);
-                        }
+                    if (dirY !== 0) {
+                        const t = (blockTop - startY) / dirY;
+                        if (t > 0) { const x = startX + t * dirX; if (x >= blockLeft && x <= blockRight) intersections.push(t); }
                     }
-                }
-                
-                // Bottom edge
-                if (dirY !== 0) {
-                    const t = (blockBottom - startY) / dirY;
-                    if (t > 0) {
-                        const x = startX + t * dirX;
-                        if (x >= blockLeft && x <= blockRight) {
-                            intersections.push(t);
-                        }
+                    if (dirY !== 0) {
+                        const t = (blockBottom - startY) / dirY;
+                        if (t > 0) { const x = startX + t * dirX; if (x >= blockLeft && x <= blockRight) intersections.push(t); }
                     }
-                }
-                
-                // Find closest intersection with this block
-                for (let intersection of intersections) {
-                    if (intersection < closestDistance) {
-                        closestDistance = intersection;
+
+                    for (const intersection of intersections) {
+                        if (intersection < closestDistance) closestDistance = intersection;
                     }
                 }
             }
-            
+
             return closestDistance;
         }
 
         function calculateShadowRays() {
             shadowRays = [];
-            
-            if (tower.blockCount === 0) return; // No tower, no shadows
-            
-            // Calculate tower corners
-            const topLeftCorner = {
-                x: tower.x - tower.blockSize / 2,
-                y: groundLevel - tower.blockSize * tower.blockCount
-            };
-            const topRightCorner = {
-                x: tower.x + tower.blockSize / 2,
-                y: groundLevel - tower.blockSize * tower.blockCount
-            };
-            
-            // Determine which shadow rays to draw based on sun position
-            const cornersToUse = [];
-            
-            if (sun.x < tower.x - tower.blockSize / 2) {
-                // Sun is to the left of tower - use top right corner
-                cornersToUse.push(topRightCorner);
-            } else if (sun.x > tower.x + tower.blockSize / 2) {
-                // Sun is to the right of tower - use top left corner  
-                cornersToUse.push(topLeftCorner);
-            } else {
-                // Sun is above or within tower bounds - use both corners
-                cornersToUse.push(topLeftCorner, topRightCorner);
-            }
-            
-            // Calculate shadow rays for each relevant corner
-            cornersToUse.forEach(corner => {
-                // Calculate direction from sun to corner
-                const dirX = corner.x - sun.x;
-                const dirY = corner.y - sun.y;
-                
-                // Find where this ray hits the ground
-                if (dirY !== 0) {
-                    const t = (groundLevel - sun.y) / dirY;
-                    if (t > 0) { // Ray goes forward (not backward)
-                        const groundX = sun.x + t * dirX;
-                        
-                        // Only add if the ray actually extends beyond the tower
-                        shadowRays.push({
-                            endX: groundX,
-                            endY: groundLevel
-                        });
-                    }
+
+            _towers.forEach(twr => {
+                if (twr.blockCount === 0) return;
+
+                const topLeftCorner = {
+                    x: twr.x - twr.blockSize / 2,
+                    y: groundLevel - twr.blockSize * twr.blockCount
+                };
+                const topRightCorner = {
+                    x: twr.x + twr.blockSize / 2,
+                    y: groundLevel - twr.blockSize * twr.blockCount
+                };
+
+                const cornersToUse = [];
+                if (sun.x < twr.x - twr.blockSize / 2) {
+                    cornersToUse.push(topRightCorner);
+                } else if (sun.x > twr.x + twr.blockSize / 2) {
+                    cornersToUse.push(topLeftCorner);
+                } else {
+                    cornersToUse.push(topLeftCorner, topRightCorner);
                 }
+
+                cornersToUse.forEach(corner => {
+                    const dirX = corner.x - sun.x;
+                    const dirY = corner.y - sun.y;
+                    if (dirY !== 0) {
+                        const t = (groundLevel - sun.y) / dirY;
+                        if (t > 0) shadowRays.push({ endX: sun.x + t * dirX, endY: groundLevel });
+                    }
+                });
             });
         }
 
@@ -709,14 +677,13 @@
         }
 
         function isPointInTower(point) {
+            if (_dual) return false; // towers are not draggable in dual mode
             if (tower.blockCount === 0) return false;
-            
             const towerLeft = tower.x - tower.blockSize / 2;
             const towerRight = tower.x + tower.blockSize / 2;
             const towerTop = groundLevel - tower.blockSize * tower.blockCount;
             const towerBottom = groundLevel;
-            
-            return point.x >= towerLeft && point.x <= towerRight && 
+            return point.x >= towerLeft && point.x <= towerRight &&
                    point.y >= towerTop && point.y <= towerBottom;
         }
 
@@ -747,8 +714,8 @@
         // Event listeners
         canvas.addEventListener('mousedown', (e) => {
             mousePos = getMousePos(e);
-            
-            if (isPointInCircle(mousePos, sun)) {
+
+            if (!_dual && isPointInCircle(mousePos, sun)) {
                 sun.isDragging = true;
                 dragOffset.x = mousePos.x - sun.x;
                 dragOffset.y = mousePos.y - sun.y;
@@ -877,8 +844,23 @@
             draw();
         });
 
+        // URL param-driven UI setup
+        if (!_showTools) {
+            document.querySelector('.visibility-controls').style.display = 'none';
+            showVerticalRuler = false;
+            showHorizontalRuler = false;
+            showProtractor = false;
+            showShadowRays = false;
+        }
+        if (_dual) {
+            addBlockBtn.style.display = 'none';
+            removeBlockBtn.style.display = 'none';
+            document.querySelector('.info div').textContent = 'Drag rulers & protractor';
+            blockCountDisplay.textContent = 'Towers: 3 blocks, 5 blocks';
+        }
+
         // Initial setup
-        updateBlockCount();
+        if (!_dual) updateBlockCount();
         draw();
     </script>
 <script>

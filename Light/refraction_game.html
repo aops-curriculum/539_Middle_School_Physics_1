@@ -45,6 +45,7 @@ ctx.scale(dpr, dpr);
 const W = logW, H = logH;
 
 const N_GLASS = 1.5;
+const showNormal = new URLSearchParams(location.search).get('showNormal') === 'true';
 
 // ── Game state ───────────────────────────────────────────────────────────
 let streak  = 0;
@@ -336,9 +337,8 @@ function drawCandidates(p) {
     drawOne(p.rayB);
 }
 
-// ── Normal + angle labels (shown during feedback) ────────────────────────
-function drawNormalAndAngles(p) {
-    // Normal line: dashed, through hit point along ±normal, on both sides
+// ── Normal line (guess phase when ?showNormal=true) ─────────────────────
+function drawNormalLine(p) {
     const nLen = 90;
     ctx.save();
     ctx.strokeStyle = 'rgba(160, 190, 255, 0.6)';
@@ -350,17 +350,34 @@ function drawNormalAndAngles(p) {
     ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
+    const lx = p.hit.x + (nLen + 14) * p.normal.x * p.incomingSign;
+    const ly = p.hit.y + (nLen + 14) * p.normal.y * p.incomingSign;
+    ctx.fillStyle = 'rgba(180, 210, 255, 0.85)';
+    ctx.font = 'italic 13px Arial';
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('normal', lx, ly);
+    ctx.textBaseline = 'alphabetic';
+}
 
-    // "normal" label
-    {
-        const lx = p.hit.x + (nLen + 14) * p.normal.x * p.incomingSign;
-        const ly = p.hit.y + (nLen + 14) * p.normal.y * p.incomingSign;
-        ctx.fillStyle = 'rgba(180, 210, 255, 0.85)';
-        ctx.font = 'italic 13px Arial';
-        ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-        ctx.fillText('normal', lx, ly);
-        ctx.textBaseline = 'alphabetic';
-    }
+// ── Unrefracted-path reference line ──────────────────────────────────────
+function drawUnrefracted(p) {
+    const endX = 2 * p.hit.x - p.src.x;
+    const endY = 2 * p.hit.y - p.src.y;
+    ctx.save();
+    ctx.strokeStyle = 'rgba(255, 90, 90, 0.85)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([2, 5]);
+    ctx.beginPath();
+    ctx.moveTo(p.hit.x, p.hit.y);
+    ctx.lineTo(endX, endY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+}
+
+// ── Normal + angle labels (shown during feedback) ────────────────────────
+function drawNormalAndAngles(p) {
+    drawNormalLine(p);
 
     // Angle arcs at the hit point.
     // Angle of incidence: between normal (incoming side) and incident ray (from source).
@@ -588,9 +605,11 @@ function draw() {
     drawIncident(problem);
 
     if (phase === 'guess') {
+        if (showNormal) { drawNormalLine(problem); drawUnrefracted(problem); }
         drawCandidates(problem);
     } else if (phase === 'feedback') {
         drawNormalAndAngles(problem);
+        if (showNormal) drawUnrefracted(problem);
         drawFeedbackRays(problem);
     }
 

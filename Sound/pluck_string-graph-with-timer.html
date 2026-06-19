@@ -61,26 +61,28 @@
     // Normal Mode Decomposition Approach
     // ===========================================
     
+    // URL params: ?showGraph=false &markerMode=separated &numLoads=28
+    const _qs = new URLSearchParams(location.search);
+    const _showGraphDefault = _qs.get('showGraph') !== 'false';
+    const _markerSeparated = _qs.get('markerMode') === 'separated';
+
     // --- Physical Parameters ---
-    const NUM_LOADS = 29;           // Number of point masses (odd for exact center)
+    const NUM_LOADS = parseInt(_qs.get('numLoads') || '29');
     const STRING_TENSION = 1.0;     // Normalized tension
     const DAMPING = 0.998;          // Per-frame amplitude decay (higher modes decay faster)
-    
+
     // --- Time Calibration ---
-    // Physical assumptions for a demonstration string:
-    // Length L = 1.0 m, Tension T = 50 N, Total mass = 5 g (each load ≈ 0.17 g)
-    // This gives ω₀ = √(T/(m*a)) ≈ 540 rad/s
-    // With these parameters, 1 simulation time unit ≈ 1.85 ms
-    // We round to TIME_SCALE = 2.0 ms per sim unit for cleaner numbers
     const TIME_SCALE = 2.0;         // milliseconds per simulation time unit
-    
+
     // --- Display Parameters ---
     const CANVAS_SIZE = 600;
-    const STRING_Y = 180;                     // Vertical center of string at rest (moved up for graph)
-    const STRING_LEFT = 50;                   // Left fixed point x-coordinate
-    const STRING_RIGHT = CANVAS_SIZE - 50;   // Right fixed point x-coordinate
+    // When showGraph=false, string moves to center and gets more amplitude room
+    const STRING_Y = _showGraphDefault ? 180 : 300;
+    const STRING_LEFT = 50;
+    const STRING_RIGHT = CANVAS_SIZE - 50;
     const STRING_LENGTH = STRING_RIGHT - STRING_LEFT;
-    const MAX_AMPLITUDE = 100;               // Maximum visual displacement in pixels
+    const MAX_AMPLITUDE = _showGraphDefault ? 100 : 120;
+    const _DT = _showGraphDefault ? 0.44 : 0.22;
     
     // --- Graph Parameters ---
     const GRAPH_LEFT = 80;
@@ -121,6 +123,9 @@
       
       // Get checkbox reference
       showGraphCheckbox = document.getElementById('showGraph');
+      if (!_showGraphDefault) {
+        showGraphCheckbox.parentElement.parentElement.style.display = 'none';
+      }
       
       // Initialize arrays
       for (let j = 0; j < NUM_LOADS; j++) {
@@ -171,7 +176,7 @@
     // --- Physics Update ---
     function updateVibration() {
       // Time step (scaled for visual speed - adjust to taste)
-      const dt = 0.44;
+      const dt = _DT;
       time += dt;
       
       // Reconstruct string position from modes
@@ -273,7 +278,7 @@
       
       // Draw marker on tracked mass if graphing
       if (showGraphCheckbox && showGraphCheckbox.checked) {
-        if (isPlucking) {
+        if (!_markerSeparated && isPlucking) {
           // During plucking: follow mouse position along the string
           let mx = constrain(mouseX, STRING_LEFT, STRING_RIGHT);
           let currentIndex = getClosestMassIndex(mx);
@@ -283,7 +288,7 @@
           noStroke();
           circle(markerX, markerY, 10);
         } else if (graphMassIndex >= 0) {
-          // After release: show on tracked mass
+          // After release (or Shift+click in separated mode): show on tracked mass
           let markerX = STRING_LEFT + ((graphMassIndex + 1) * STRING_LENGTH) / (NUM_LOADS + 1);
           let markerY = STRING_Y - massPositions[graphMassIndex];
           fill(0, 120, 200);
@@ -446,6 +451,15 @@
       // Check if mouse is near the string (within interaction zone)
       if (mouseX > STRING_LEFT && mouseX < STRING_RIGHT) {
         if (abs(mouseY - STRING_Y) < MAX_AMPLITUDE + 50) {
+          // Shift-click (separated mode): set graph point without plucking
+          if (_markerSeparated && keyIsDown(SHIFT) && showGraphCheckbox && showGraphCheckbox.checked) {
+            graphMassIndex = getClosestMassIndex(mouseX);
+            displacementHistory = [];
+            marker1Index = -1;
+            marker2Index = -1;
+            return;
+          }
+
           // Regular click: start plucking
           isPlucking = true;
           isVibrating = false;
@@ -470,9 +484,11 @@
       if (isPlucking) {
         isPlucking = false;
         
-        // Set the mass to graph based on release position (peak of pluck)
-        graphMassIndex = getClosestMassIndex(mouseX);
-        
+        // Set the mass to graph based on release position (during mode only)
+        if (!_markerSeparated) {
+          graphMassIndex = getClosestMassIndex(mouseX);
+        }
+
         // Clear previous history and markers when plucking
         displacementHistory = [];
         marker1Index = -1;

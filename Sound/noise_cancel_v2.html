@@ -244,24 +244,89 @@
     </div>
   </div>
 
-  <!-- Future: bank-3 inserted here -->
+  <!-- Component 3 (visible only when ?target=v3) -->
+  <div class="component-bank" id="bank-3" style="display:none">
+    <div class="bank-title">Component 3</div>
+    <div class="slider-row">
+      <span class="slider-label">Amplitude</span>
+      <input type="range" id="amp3" min="0" max="20" step="1" value="0">
+      <span class="slider-value" id="amp3-val">0 μm</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Frequency</span>
+      <input type="range" id="freq3" min="0" max="500" step="50" value="50">
+      <span class="slider-value" id="freq3-val">50 Hz</span>
+    </div>
+    <div class="slider-row">
+      <span class="slider-label">Phase</span>
+      <input type="range" id="phase3" min="0" max="360" step="5" value="0">
+      <span class="slider-value" id="phase3-val">0°</span>
+    </div>
+  </div>
 
   <button id="reset-btn">Reset Sliders</button>
 </div>
 
 <script>
 // ============================================================
-//  BACK-END CONFIGURATION
-//  Target: fundamental at 1.5 Hz, 10 μm
-//        + octave overtone at 3.0 Hz, 7 μm
+//  URL PARAMS & PRESETS
+//  ?target=v1|v2|v3|v4 selects the target noise waveform and
+//  number of user-adjustable component banks.
 // ============================================================
-// Converts display Hz to visual frequency for the wave equation
 const FREQ_SCALE = 0.01; // 500 Hz on slider → 5.0 visual freq
 
-const TARGET_COMPONENTS = [
-  { amp: 10, freq: 150 * FREQ_SCALE, phase: 0 },
-  { amp: 7,  freq: 300 * FREQ_SCALE, phase: 0 }
-];
+const PRESETS = {
+  v1: {
+    displayHeight: 360,
+    numComponents: 1,
+    target: [{ amp: 10, freq: 200 * FREQ_SCALE, phase: 0 }],
+    defaults: [{ amp: 0, freq: 50, phase: 0 }]
+  },
+  v2: {
+    displayHeight: 330,
+    numComponents: 2,
+    target: [
+      { amp: 10, freq: 150 * FREQ_SCALE, phase: 0 },
+      { amp: 7,  freq: 300 * FREQ_SCALE, phase: 0 }
+    ],
+    defaults: [
+      { amp: 10, freq: 150, phase: 180 },
+      { amp: 0,  freq: 50,  phase: 0 }
+    ]
+  },
+  v3: {
+    displayHeight: 290,
+    numComponents: 3,
+    target: [
+      { amp: 10, freq: 100 * FREQ_SCALE, phase: 0 },
+      { amp: 6,  freq: 200 * FREQ_SCALE, phase: 0 },
+      { amp: 3,  freq: 300 * FREQ_SCALE, phase: 0 }
+    ],
+    defaults: [
+      { amp: 10, freq: 100, phase: 180 },
+      { amp: 6,  freq: 200, phase: 180 },
+      { amp: 0,  freq: 50,  phase: 0 }
+    ]
+  },
+  v4: {
+    displayHeight: 330,
+    numComponents: 2,
+    target: [
+      { amp: 8, freq: 100 * FREQ_SCALE, phase: 0 },
+      { amp: 6, freq: 300 * FREQ_SCALE, phase: 0 }
+    ],
+    defaults: [
+      { amp: 0, freq: 50, phase: 0 },
+      { amp: 0, freq: 50, phase: 0 }
+    ]
+  }
+};
+
+const _qs = new URLSearchParams(location.search);
+const _preset = PRESETS[_qs.get('target') || 'v2'];
+const numComponents = _preset.numComponents;
+const compNums = Array.from({length: numComponents}, (_, i) => String(i + 1));
+const TARGET_COMPONENTS = _preset.target;
 
 // ============================================================
 //  CANVAS SETUP
@@ -272,7 +337,6 @@ const canvases = {
   combined: document.getElementById('canvasCombined')
 };
 
-// Logical (CSS) dimensions per canvas, kept in sync by sizeCanvases()
 const logicalSize = { target: {w:0,h:0}, user: {w:0,h:0}, combined: {w:0,h:0} };
 
 function sizeCanvases() {
@@ -291,6 +355,12 @@ function sizeCanvases() {
     cvs.getContext('2d').scale(dpr, dpr);
   }
 }
+
+// Apply preset: display area height and bank visibility
+document.getElementById('display-area').style.height = _preset.displayHeight + 'px';
+if (numComponents < 2) document.getElementById('bank-2').style.display = 'none';
+if (numComponents >= 3) document.getElementById('bank-3').style.display = '';
+
 sizeCanvases();
 
 const TIME_WINDOW = 4;
@@ -305,7 +375,10 @@ const sliders = {
   phase1: document.getElementById('phase1'),
   amp2:   document.getElementById('amp2'),
   freq2:  document.getElementById('freq2'),
-  phase2: document.getElementById('phase2')
+  phase2: document.getElementById('phase2'),
+  amp3:   document.getElementById('amp3'),
+  freq3:  document.getElementById('freq3'),
+  phase3: document.getElementById('phase3')
 };
 const vals = {
   amp1:   document.getElementById('amp1-val'),
@@ -313,23 +386,34 @@ const vals = {
   phase1: document.getElementById('phase1-val'),
   amp2:   document.getElementById('amp2-val'),
   freq2:  document.getElementById('freq2-val'),
-  phase2: document.getElementById('phase2-val')
+  phase2: document.getElementById('phase2-val'),
+  amp3:   document.getElementById('amp3-val'),
+  freq3:  document.getElementById('freq3-val'),
+  phase3: document.getElementById('phase3-val')
 };
 
 const successMsg = document.getElementById('success-msg');
 
+// Apply preset initial slider values
+_preset.defaults.forEach((def, i) => {
+  const n = String(i + 1);
+  sliders['amp'   + n].value = def.amp;   vals['amp'   + n].textContent = def.amp   + ' μm';
+  sliders['freq'  + n].value = def.freq;  vals['freq'  + n].textContent = def.freq  + ' Hz';
+  sliders['phase' + n].value = def.phase; vals['phase' + n].textContent = def.phase + '°';
+});
+
 // Slider readouts
-for (const n of ['1', '2']) {
-  sliders['amp' + n].addEventListener('input',   () => { vals['amp' + n].textContent   = sliders['amp' + n].value + ' μm'; });
-  sliders['freq' + n].addEventListener('input',  () => { vals['freq' + n].textContent  = sliders['freq' + n].value + ' Hz'; });
-  sliders['phase' + n].addEventListener('input', () => { vals['phase' + n].textContent = sliders['phase' + n].value + '°'; });
+for (const n of compNums) {
+  sliders['amp'   + n].addEventListener('input', () => { vals['amp'   + n].textContent = sliders['amp'   + n].value + ' μm'; });
+  sliders['freq'  + n].addEventListener('input', () => { vals['freq'  + n].textContent = sliders['freq'  + n].value + ' Hz'; });
+  sliders['phase' + n].addEventListener('input', () => { vals['phase' + n].textContent = sliders['phase' + n].value + '°';  });
 }
 
-// Reset
+// Reset (returns all active sliders to zero / neutral)
 document.getElementById('reset-btn').addEventListener('click', () => {
-  for (const n of ['1', '2']) {
-    sliders['amp' + n].value = 0;    vals['amp' + n].textContent = '0 μm';
-    sliders['freq' + n].value = 50;   vals['freq' + n].textContent = '50 Hz';
+  for (const n of compNums) {
+    sliders['amp'   + n].value = 0;  vals['amp'   + n].textContent = '0 μm';
+    sliders['freq'  + n].value = 50; vals['freq'  + n].textContent = '50 Hz';
     sliders['phase' + n].value = 0;  vals['phase' + n].textContent = '0°';
   }
 });
@@ -356,18 +440,11 @@ function userAt(t, userComps) {
 }
 
 function getUserComponents() {
-  return [
-    {
-      amp:   parseFloat(sliders.amp1.value),
-      freq:  parseFloat(sliders.freq1.value) * FREQ_SCALE,
-      phase: parseFloat(sliders.phase1.value)
-    },
-    {
-      amp:   parseFloat(sliders.amp2.value),
-      freq:  parseFloat(sliders.freq2.value) * FREQ_SCALE,
-      phase: parseFloat(sliders.phase2.value)
-    }
-  ];
+  return compNums.map(n => ({
+    amp:   parseFloat(sliders['amp'   + n].value),
+    freq:  parseFloat(sliders['freq'  + n].value) * FREQ_SCALE,
+    phase: parseFloat(sliders['phase' + n].value)
+  }));
 }
 
 // ============================================================
@@ -394,8 +471,6 @@ function drawGrid(ctx, w, h) {
   ctx.setLineDash([]);
 }
 
-// Scale: max possible peak is sum of all target amps (10+7=17),
-// but user could overshoot. Use 20 to match slider max.
 const AMP_SCALE = 20;
 
 function drawWaveOnCanvas(cvs, evalFn, color, lineWidth) {
@@ -420,7 +495,6 @@ function drawWaveOnCanvas(cvs, evalFn, color, lineWidth) {
   ctx.stroke();
 }
 
-// Target RMS for normalization
 const targetRMS = (() => {
   let sumSq = 0;
   const N = 400;

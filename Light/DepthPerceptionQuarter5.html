@@ -27,6 +27,15 @@
         const canvas = document.getElementById('canvas');
         const ctx = canvas.getContext('2d');
 
+        // URL params: ?height=520 &showDirectRays=true &fullPath=false &showVirtual=false &showVirtualImage=false
+        const _qs = new URLSearchParams(location.search);
+        const _height = parseInt(_qs.get('height') || '700');
+        const _showDirectRays = _qs.get('showDirectRays') === 'true';
+        const _fullPath = _qs.get('fullPath') !== 'false';
+        const _showVirtual = _qs.get('showVirtual') !== 'false';
+        const _showVirtualImage = _qs.get('showVirtualImage') !== 'false';
+        if (_height !== 700) canvas.setAttribute('height', String(_height));
+
         const dpr = window.devicePixelRatio || 1;
         const logW = canvas.width, logH = canvas.height;
         canvas.width = logW * dpr; canvas.height = logH * dpr;
@@ -132,14 +141,21 @@
             drawEye(leftEyeX, eyeY, 22);
             drawEye(rightEyeX, eyeY, 22);
 
-            // --- Reflected rays (mirror -> eye only) ---
-            let rLeft = reflectionPoint(coinX, coinY, leftEyeX, eyeY);
-            let rRight = reflectionPoint(coinX, coinY, rightEyeX, eyeY);
+            // --- Reflected rays ---
+            const rLeft = reflectionPoint(coinX, coinY, leftEyeX, eyeY);
+            const rRight = reflectionPoint(coinX, coinY, rightEyeX, eyeY);
 
-            drawArrow(coinX, coinY, rLeft.x, rLeft.y, '#ffcc44', 2);
-            drawArrow(coinX, coinY, rRight.x, rRight.y, '#ffcc44', 2);
+            if (_fullPath) {
+                drawArrow(coinX, coinY, rLeft.x, rLeft.y, '#ffcc44', 2);
+                drawArrow(coinX, coinY, rRight.x, rRight.y, '#ffcc44', 2);
+            }
             drawArrow(rLeft.x, rLeft.y, leftEyeX, eyeY, '#ffcc44', 2);
             drawArrow(rRight.x, rRight.y, rightEyeX, eyeY, '#ffcc44', 2);
+
+            if (_showDirectRays) {
+                drawArrow(coinX, coinY, leftEyeX, eyeY, '#44bbff', 2);
+                drawArrow(coinX, coinY, rightEyeX, eyeY, '#44bbff', 2);
+            }
 
             // Draw quarter image
             if (quarterImg.complete && quarterImg.naturalWidth > 0) {
@@ -170,36 +186,44 @@
             ctx.textAlign = 'center';
             ctx.fillText('Mirror', W / 2, mirrorY + 20);
 
-            // --- Dotted lines behind mirror converging at virtual image ---
-            rLeft = reflectionPoint(coinX, coinY, leftEyeX, eyeY);
-            rRight = reflectionPoint(coinX, coinY, rightEyeX, eyeY);
-            const virtualImageX = coinX;
-            const virtualImageY = 2 * mirrorY - coinY;
+            if (_showVirtual) {
+                // --- Dotted lines behind mirror converging at virtual image ---
+                const virtualImageX = coinX;
+                const virtualImageY = 2 * mirrorY - coinY;
 
-            ctx.setLineDash([6, 6]);
-            ctx.strokeStyle = '#ffcc44';
-            ctx.lineWidth = 2;
+                ctx.setLineDash([6, 6]);
+                ctx.strokeStyle = '#ffcc44';
+                ctx.lineWidth = 2;
 
-            ctx.beginPath();
-            ctx.moveTo(rLeft.x, rLeft.y);
-            ctx.lineTo(virtualImageX, virtualImageY);
-            ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(rLeft.x, rLeft.y);
+                ctx.lineTo(virtualImageX, virtualImageY);
+                ctx.stroke();
 
-            ctx.beginPath();
-            ctx.moveTo(rRight.x, rRight.y);
-            ctx.lineTo(virtualImageX, virtualImageY);
-            ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(rRight.x, rRight.y);
+                ctx.lineTo(virtualImageX, virtualImageY);
+                ctx.stroke();
 
-            ctx.setLineDash([]);
+                ctx.setLineDash([]);
 
-            // Draw mirrored quarter at virtual image
-            if (quarterImg.complete && quarterImg.naturalWidth > 0) {
-                const size = coinRadius * 2;
-                ctx.save();
-                ctx.translate(virtualImageX, virtualImageY);
-                ctx.scale(1, -1);
-                ctx.drawImage(quarterImg, -coinRadius, -coinRadius, size, size);
-                ctx.restore();
+                if (_showVirtualImage) {
+                    // Render flipped quarter at virtual image
+                    if (quarterImg.complete && quarterImg.naturalWidth > 0) {
+                        const size = coinRadius * 2;
+                        ctx.save();
+                        ctx.translate(virtualImageX, virtualImageY);
+                        ctx.scale(1, -1);
+                        ctx.drawImage(quarterImg, -coinRadius, -coinRadius, size, size);
+                        ctx.restore();
+                    }
+                } else {
+                    ctx.font = '13px sans-serif';
+                    ctx.fillStyle = '#ffcc44';
+                    ctx.textAlign = 'center';
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText('Virtual image', virtualImageX, virtualImageY);
+                }
             }
         }
 

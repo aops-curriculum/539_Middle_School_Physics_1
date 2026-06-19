@@ -18,6 +18,9 @@
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
 const showReflAnglesChk = document.getElementById('showReflAngles');
+if (new URLSearchParams(location.search).get('angles') === 'false') {
+    showReflAnglesChk.parentElement.parentElement.style.display = 'none';
+}
 
 let W, H;
 let cone;      // {x, y} cone center on screen
