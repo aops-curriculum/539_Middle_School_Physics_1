@@ -781,6 +781,7 @@ draw();
 </script>
 
 
+
 <!-- CHEAT PANEL — visible only when ?cheat=1 is in the URL -->
 <script>
 (function () {
@@ -1009,9 +1010,26 @@ draw();
       e.preventDefault();
       window.location.href = buildCheatUrl({});
     });
+    var copyBtn = document.createElement('button');
+    copyBtn.textContent = 'copy';
+    copyBtn.style.cssText = 'background:#1a3050;color:#7ab8f5;border:1px solid #2a4a70;' +
+      'border-radius:3px;padding:2px 8px;font-size:11px;font-family:inherit;cursor:pointer;' +
+      'white-space:nowrap;flex-shrink:0;margin-left:4px';
+    copyBtn.addEventListener('click', function () {
+      var url = urlLinkEl ? urlLinkEl.href : buildCleanUrl({});
+      navigator.clipboard.writeText(url).then(function () {
+        copyBtn.textContent = 'copied!';
+        copyBtn.style.color = '#6dca80';
+        setTimeout(function () { copyBtn.textContent = 'copy'; copyBtn.style.color = '#7ab8f5'; }, 1500);
+      }).catch(function () {
+        copyBtn.textContent = 'failed';
+        setTimeout(function () { copyBtn.textContent = 'copy'; }, 1500);
+      });
+    });
     updateUrlDisplay();
     urlBox.appendChild(urlLabel);
     urlBox.appendChild(urlLinkEl);
+    urlBox.appendChild(copyBtn);
     panel.appendChild(urlBox);
 
     document.body.appendChild(panel);
