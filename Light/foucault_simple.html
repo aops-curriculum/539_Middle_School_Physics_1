@@ -621,45 +621,45 @@ window.addEventListener('load', () => {
 });
 </script>
 <script>
-// EigenNode auto-height v2.3
-(function() {
-  // 4px buffer for subpixel rounding + parent's >=3px noise threshold.
-  // 18px extra when horizontal overflow forces a scrollbar (eats vertical
-  // space — common in AoPS classroom where iframe column is < 600px content).
-  var BUFFER = 4;
-  var H_SCROLLBAR = 18;
-  function measure() {
-    var b = document.body, h = document.documentElement;
-    if (!b) return 0;
-    var max = Math.max(b.scrollHeight||0, b.offsetHeight||0, (h&&h.scrollHeight)||0, (h&&h.offsetHeight)||0);
-    // If body is sized to viewport (height:100vh), scrollHeight just echoes
-    // the iframe's height. Recover real content extent from children's bbox.
-    var minTop = 0, maxBot = 0, br = b.getBoundingClientRect();
-    for (var i = 0; i < b.children.length; i++) {
-      var r = b.children[i].getBoundingClientRect();
-      var top = r.top - br.top, bot = top + r.height;
-      if (top < minTop) minTop = top;
-      if (bot > maxBot) maxBot = bot;
-    }
-    var span = maxBot - minTop;
-    if (span > max) max = span;
-    // Check documentElement only — that's the element that owns the iframe's
-    // horizontal scrollbar. Body can be narrower than iframe and have its own
-    // 1-2px overflow that doesn't actually trigger a scrollbar.
-    var hOverflow = h && (h.scrollWidth - h.clientWidth) >= 4;
-    return Math.ceil(max) + BUFFER + (hOverflow ? H_SCROLLBAR : 0);
+// responsive-scale-to-fit v1 -- replaces the fixed-size embed + height report.
+// Scales the whole sim (the document body) to fit the iframe/sticky it is
+// given: preserve aspect ratio, centre, cap the zoom. The transform is
+// presentation only. Tunable per embed: ?maxscale= (zoom cap), ?maxw= (px
+// width cap), ?h= (exact reported height), ?maxh= (anti-spill ceiling).
+// NOTE: the AoPS live-chat embed sizes the iframe from its height= attribute
+// and ignores the reported height; set height= there.
+(function () {
+  var DOC = document.documentElement;
+  var Q = new URLSearchParams(location.search);
+  var num = function (k, d) { return Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d; };
+  var MAXSCALE = num('maxscale', 2.4), MAXW = num('maxw', 0);
+  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 320), REPORT_MIN = 140;
+  var lastH = 0;
+  function fit() {
+    var b = document.body; if (!b) return;
+    var natW = b.offsetWidth, natH = b.offsetHeight;
+    if (!natW || !natH) return;
+    var vw = DOC.clientWidth, vh = DOC.clientHeight;
+    var cap = MAXW > 0 ? Math.min(MAXSCALE, MAXW / natW) : MAXSCALE;
+    var s = Math.min(vw / natW, vh / natH, cap);
+    if (!isFinite(s) || s <= 0) s = Math.min(vw / natW, cap);
+    b.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
+    var rh = FIXED_H > 0 ? Math.max(80, Math.min(2000, FIXED_H))
+      : Math.max(REPORT_MIN, Math.min(REPORT_MAX, Math.round(natH * Math.min(vw / natW, cap))));
+    if (Math.abs(rh - lastH) >= 2) { lastH = rh; try { window.parent.postMessage({ type: 'resize', height: rh }, '*'); } catch (e) {} }
   }
-  var last = 0;
-  function report() {
-    var h = measure();
-    if (h > 0 && Math.abs(h - last) >= 2) {
-      last = h;
-      window.parent.postMessage({ type: 'resize', height: h }, '*');
-    }
+  function boot() {
+    var b = document.body; if (!b) return;
+    DOC.style.cssText += ';width:100%;height:100%;margin:0;overflow:hidden;background:transparent;';
+    b.style.position = 'absolute'; b.style.top = '50%'; b.style.left = '50%';
+    b.style.margin = '0'; b.style.transformOrigin = 'center center'; b.style.willChange = 'transform';
+    fit();
+    addEventListener('resize', fit); addEventListener('orientationchange', fit);
+    if (window.ResizeObserver) new ResizeObserver(fit).observe(DOC);
+    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
   }
-  window.addEventListener('load', report);
-  if (document.fonts && document.fonts.ready) document.fonts.ready.then(report);
-  if (window.ResizeObserver && document.body) new ResizeObserver(report).observe(document.body);
+  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
+  addEventListener('load', fit);
 })();
 </script>
 </body>
