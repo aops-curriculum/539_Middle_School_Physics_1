@@ -440,6 +440,7 @@
 
 
 
+
 <!-- CHEAT PANEL — visible only when ?cheat=1 is in the URL -->
 <script>
 (function () {
@@ -489,10 +490,46 @@
         "type": "toggle",
         "default": 0,
         "desc": "Show beat envelope"
+    },
+    {
+        "name": "maxscale",
+        "type": "number",
+        "min": 0.5,
+        "max": 5,
+        "step": 0.1,
+        "default": 2.4,
+        "desc": "Max zoom factor for responsive scaling"
+    },
+    {
+        "name": "maxw",
+        "type": "number",
+        "min": 200,
+        "max": 2000,
+        "step": 50,
+        "default": "",
+        "desc": "Max rendered width (px); 0 = uncapped"
+    },
+    {
+        "name": "h",
+        "type": "number",
+        "min": 80,
+        "max": 2000,
+        "step": 10,
+        "default": "",
+        "desc": "Exact reported iframe height (px); overrides auto"
+    },
+    {
+        "name": "maxh",
+        "type": "number",
+        "min": 80,
+        "max": 2000,
+        "step": 10,
+        "default": 320,
+        "desc": "Ceiling on auto-reported iframe height (px)"
     }
 ];
 
-  var EMBED_KEYS = ['maxscale', 'maxw', 'h', 'maxh', 'cheat'];
+  var EMBED_KEYS = ['cheat'];
 
   // Build clean URL (no embed/cheat params) with optional overrides
   function buildCleanUrl(overrides) {
