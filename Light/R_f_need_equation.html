@@ -14,7 +14,7 @@ body {
   user-select: none;
   -webkit-user-select: none;
   color: #fff;
-  padding: 6px 0 8px 0;
+  padding: 2px 0 4px 0;
 }
 .slider-row {
   display: flex;
@@ -61,12 +61,12 @@ canvas {
 </div>
 <div id="caption" class="caption-line"></div>
 
-<canvas id="canvas" width="600" height="370"></canvas>
+<canvas id="canvas" width="600" height="260"></canvas>
 
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
-const W = 600, H = 370;
+const W = 600, H = 260;
 const dpr = window.devicePixelRatio || 1;
 canvas.width = W * dpr; canvas.height = H * dpr;
 canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
