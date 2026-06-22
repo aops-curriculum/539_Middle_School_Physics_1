@@ -3,36 +3,38 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="eigennode-aspect" content="389/700">
     <title>Photo with Adjustable Lines and Intersection</title>
     <style>
+        html, body { width: 100%; height: 100%; }
         body {
             margin: 0;
             padding: 0;
             overflow: hidden;
             font-family: Arial, sans-serif;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            min-height: 100vh;
         }
 
+        /* The iframe is sized to the photo's aspect (389/700), so the photo fills
+           it with no distortion and the overlay canvas tracks it exactly. */
         #container {
             position: relative;
-            display: inline-block;
+            width: 100%;
+            height: 100%;
             line-height: 0;
         }
 
         #photoCanvas {
             display: block;
-            max-width: 100%;
-            max-height: 100vh;
+            width: 100%;
+            height: 100%;
         }
 
         #overlayCanvas {
             position: absolute;
+            inset: 0;
+            width: 100%;
+            height: 100%;
             cursor: crosshair;
-            top: 0;
-            left: 0;
             z-index: 20;
         }
 
@@ -106,26 +108,35 @@
         let dragOffset = { x: 0, y: 0 };
         const handleRadius = 10;
 
+        // fit(): backing store = overlay's rendered size * dpr (crisp); the
+        // photo's logical logW x logH coordinate grid is mapped onto it. The
+        // container's aspect equals the photo's, so the mapping never distorts.
+        function fit() {
+            if (!logW || !logH) return;
+            const dpr = window.devicePixelRatio || 1;
+            const cw = canvas.clientWidth, ch = canvas.clientHeight;
+            if (!cw || !ch) return;
+            canvas.width = Math.round(cw * dpr);
+            canvas.height = Math.round(ch * dpr);
+            ctx.setTransform(canvas.width / logW, 0, 0, canvas.height / logH, 0, 0);
+            draw();
+        }
+
         // Load the photo
         photoImg.onload = function() {
             loadingMessage.style.display = 'none';
             photoImg.style.display = 'block';
-            
-            // Set canvas size to match photo
-            const dpr = window.devicePixelRatio || 1;
-            logW = photoImg.width;
-            logH = photoImg.height;
-            canvas.width = logW * dpr;
-            canvas.height = logH * dpr;
-            canvas.style.width = logW + 'px';
-            canvas.style.height = logH + 'px';
-            ctx.scale(dpr, dpr);
+
+            // Logical coordinate system = the photo's native pixels.
+            logW = photoImg.naturalWidth;
+            logH = photoImg.naturalHeight;
 
             // Set initial line positions
             lines[0].x = logW * 0.35;
             lines[1].x = logW * 0.65;
-            
-            draw();
+
+            new ResizeObserver(fit).observe(canvas);
+            fit();
         };
         
         photoImg.onerror = function() {
@@ -496,10 +507,11 @@
             }
         });
 
-        // Handle window resize
+        // Handle window resize (ResizeObserver on the canvas already covers
+        // iframe resizes; this is a belt-and-suspenders fallback).
         window.addEventListener('resize', () => {
             if (photoImg.complete && photoImg.naturalHeight !== 0) {
-                draw();
+                fit();
             }
         });
     </script>
