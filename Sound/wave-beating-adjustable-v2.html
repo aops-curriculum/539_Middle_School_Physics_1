@@ -439,43 +439,66 @@
         if (_zoom) {
             const zoomControl = document.getElementById('zoomControl');
             const zoomLabel   = document.getElementById('zoomLabel');
+            // Move outside <body> so position:fixed stays viewport-relative
+            // even when body has a transform applied by the scaler or zoom.
+            document.documentElement.appendChild(zoomControl);
             zoomControl.style.display = 'flex';
             zoomLabel.textContent = '100%';
 
+            let panX = 0, panY = 0;
+
             function applyVisualZoom() {
-                if (window._userZoom > 1) {
-                    document.body.style.position  = 'static';
-                    document.body.style.top       = '';
-                    document.body.style.left      = '';
-                    document.body.style.transform = '';
-                    document.body.style.margin    = '0';
-                    document.body.style.zoom      = String(window._userZoom);
-                    document.body.style.cursor    = 'grab';
-                    document.documentElement.style.overflow = 'auto';
-                    // counter-zoom the floating widget so it stays natural size
-                    zoomControl.style.zoom = String(1 / window._userZoom);
+                const Z = window._userZoom;
+                if (Z > 1) {
+                    const s = window._scalerFitScale || 1;
+                    document.body.style.position      = 'absolute';
+                    document.body.style.top           = '0';
+                    document.body.style.left          = '0';
+                    document.body.style.margin        = '0';
+                    document.body.style.transformOrigin = '0 0';
+                    document.body.style.transform     = 'translate(' + panX + 'px,' + panY + 'px) scale(' + (s * Z) + ')';
+                    document.body.style.cursor        = 'grab';
                 } else {
-                    document.body.style.zoom     = '';
-                    document.body.style.position = 'absolute';
-                    document.body.style.top      = '50%';
-                    document.body.style.left     = '50%';
-                    document.body.style.margin   = '0';
-                    document.body.style.cursor   = '';
-                    document.documentElement.style.overflow = 'hidden';
-                    document.documentElement.scrollLeft = 0;
-                    document.documentElement.scrollTop  = 0;
-                    zoomControl.style.zoom = '';
+                    panX = 0; panY = 0;
+                    document.body.style.position      = 'absolute';
+                    document.body.style.top           = '50%';
+                    document.body.style.left          = '50%';
+                    document.body.style.margin        = '0';
+                    document.body.style.transformOrigin = 'center center';
+                    document.body.style.cursor        = '';
                     if (window._scaleToFit_refit) window._scaleToFit_refit();
                 }
-                zoomLabel.textContent = Math.round(window._userZoom * 100) + '%';
+                zoomLabel.textContent = Math.round(Z * 100) + '%';
             }
 
             document.getElementById('zoomIn').addEventListener('click', () => {
-                window._userZoom = Math.min(4, window._userZoom * 1.5);
+                const vw = document.documentElement.clientWidth;
+                const vh = document.documentElement.clientHeight;
+                const Zold = window._userZoom;
+                const Znew = Math.min(4, Zold * 1.5);
+                if (Zold <= 1) {
+                    // First zoom: center the scaled body in the viewport
+                    const s = window._scalerFitScale || 1;
+                    panX = vw / 2 - 300 * s * Znew;
+                    panY = vh / 2 - 200 * s * Znew;
+                } else {
+                    // Keep viewport center pinned to same body point
+                    panX = vw / 2 - (vw / 2 - panX) * Znew / Zold;
+                    panY = vh / 2 - (vh / 2 - panY) * Znew / Zold;
+                }
+                window._userZoom = Znew;
                 applyVisualZoom();
             });
             document.getElementById('zoomOut').addEventListener('click', () => {
-                window._userZoom = Math.max(1, window._userZoom / 1.5);
+                const vw = document.documentElement.clientWidth;
+                const vh = document.documentElement.clientHeight;
+                const Zold = window._userZoom;
+                const Znew = Math.max(1, Zold / 1.5);
+                if (Znew > 1) {
+                    panX = vw / 2 - (vw / 2 - panX) * Znew / Zold;
+                    panY = vh / 2 - (vh / 2 - panY) * Znew / Zold;
+                }
+                window._userZoom = Znew;
                 applyVisualZoom();
             });
             document.getElementById('zoomReset').addEventListener('click', () => {
@@ -484,19 +507,20 @@
             });
 
             // Click-drag to pan when zoomed in
-            let _drag = null, _scroll = null;
+            let _drag = null, _panStart = null;
             document.documentElement.addEventListener('mousedown', e => {
                 if (window._userZoom <= 1) return;
-                _drag   = { x: e.clientX, y: e.clientY };
-                _scroll = { x: document.documentElement.scrollLeft,
-                            y: document.documentElement.scrollTop };
+                _drag     = { x: e.clientX, y: e.clientY };
+                _panStart = { x: panX, y: panY };
                 document.body.style.cursor = 'grabbing';
                 e.preventDefault();
             });
             document.documentElement.addEventListener('mousemove', e => {
                 if (!_drag) return;
-                document.documentElement.scrollLeft = _scroll.x - (e.clientX - _drag.x);
-                document.documentElement.scrollTop  = _scroll.y - (e.clientY - _drag.y);
+                panX = _panStart.x + (e.clientX - _drag.x);
+                panY = _panStart.y + (e.clientY - _drag.y);
+                const s = window._scalerFitScale || 1;
+                document.body.style.transform = 'translate(' + panX + 'px,' + panY + 'px) scale(' + (s * window._userZoom) + ')';
             });
             document.documentElement.addEventListener('mouseup', () => {
                 _drag = null;
@@ -543,6 +567,9 @@
     var cap = MAXW > 0 ? Math.min(MAXSCALE, MAXW / natW) : MAXSCALE;
     var s = Math.min(vw / natW, vh / natH, cap);
     if (!isFinite(s) || s <= 0) s = Math.min(vw / natW, cap);
+    window._scalerFitScale = s;
+    b.style.position = 'absolute'; b.style.top = '50%'; b.style.left = '50%';
+    b.style.transformOrigin = 'center center';
     b.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
     var rh = FIXED_H > 0 ? Math.max(80, Math.min(2000, FIXED_H))
       : Math.max(REPORT_MIN, Math.min(REPORT_MAX, Math.round(natH * Math.min(vw / natW, cap))));
@@ -621,7 +648,7 @@
         "name": "zoom",
         "type": "toggle",
         "default": 0,
-        "desc": "Show zoom in/out buttons (÷2 / ×2 on time window)"
+        "desc": "Show visual zoom buttons (×1.5 / ÷1.5 per click, drag to pan)"
     },
     {
         "name": "maxscale",
