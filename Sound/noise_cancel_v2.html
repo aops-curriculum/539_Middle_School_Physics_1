@@ -16,6 +16,7 @@
     color: #333;
     display: flex;
     flex-direction: column;
+    position: relative;
   }
 
   /* ===== WAVEFORM DISPLAY ===== */
@@ -180,9 +181,65 @@
     padding: 0;
   }
   #reset-btn:hover { background: #e8e8ee; color: #333; }
+
+  /* ===== ZOOM CONTAINER & CONTROLS ===== */
+  #zoom-container {
+    display: flex;
+    flex-direction: column;
+    width: 600px;
+    height: 600px;
+    transform-origin: center center;
+    will-change: transform;
+  }
+
+  #zoom-controls {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    gap: 3px;
+    background: rgba(255,255,255,0.93);
+    border: 1px solid #d0d0d8;
+    border-radius: 8px;
+    padding: 4px 7px;
+    box-shadow: 0 1px 5px rgba(0,0,0,0.13);
+    user-select: none;
+  }
+
+  #zoom-controls button {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #eaeaef;
+    border: 1px solid #c8c8d4;
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 17px;
+    line-height: 1;
+    color: #333;
+    transition: background 0.15s;
+    padding: 0;
+    font-family: inherit;
+  }
+
+  #zoom-controls button:hover { background: #d0d0e0; }
+
+  #zoom-display {
+    font-size: 11px;
+    color: #555;
+    min-width: 28px;
+    text-align: center;
+    font-variant-numeric: tabular-nums;
+  }
 </style>
 </head>
 <body>
+
+<div id="zoom-container">
 
 <!-- ===== DISPLAY ===== -->
 <div id="display-area">
@@ -209,15 +266,6 @@
 
 <!-- ===== CONTROLS ===== -->
 <div id="controls-area">
-
-  <!-- Zoom control (visible only when ?zoom=1) -->
-  <div class="component-bank" id="zoom-row" style="display:none">
-    <div class="slider-row" style="margin-bottom:0">
-      <span class="slider-label">Zoom</span>
-      <input type="range" id="zoom-ctrl" min="1" max="4" step="1" value="1">
-      <span class="slider-value" id="zoom-val">1×</span>
-    </div>
-  </div>
 
   <!-- Component 1 -->
   <div class="component-bank" id="bank-1">
@@ -280,6 +328,15 @@
   </div>
 
   <button id="reset-btn" title="Reset sliders">↺</button>
+</div>
+
+</div><!-- /#zoom-container -->
+
+<div id="zoom-controls">
+  <button id="zoom-out" title="Zoom out">−</button>
+  <span id="zoom-display">1×</span>
+  <button id="zoom-in" title="Zoom in">+</button>
+  <button id="zoom-reset-btn" title="Reset zoom">↺</button>
 </div>
 
 <script>
@@ -431,18 +488,87 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     sliders['freq'  + n].value = 50; vals['freq'  + n].textContent = '50 Hz';
     sliders['phase' + n].value = 0;  vals['phase' + n].textContent = '0°';
   }
-  const zc = document.getElementById('zoom-ctrl');
-  if (zc) { zc.value = 1; document.getElementById('zoom-val').textContent = '1×'; _drawTimeWindow = TIME_WINDOW; }
 });
 
-// Zoom control
-if (_qs.get('zoom') === '1') {
-  document.getElementById('zoom-row').style.display = '';
-  document.getElementById('zoom-ctrl').addEventListener('input', function () {
-    _drawTimeWindow = TIME_WINDOW / Math.max(1, parseFloat(this.value));
-    document.getElementById('zoom-val').textContent = this.value + '×';
+// ============================================================
+//  ZOOM & PAN
+// ============================================================
+(function () {
+  const container = document.getElementById('zoom-container');
+  const display   = document.getElementById('zoom-display');
+  const STEP = 0.5, MIN = 1, MAX = 3;
+  let zoom = 1, panX = 0, panY = 0;
+
+  function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+  function applyTransform() {
+    const maxPan = 300 * (zoom - 1);
+    panX = clamp(panX, -maxPan, maxPan);
+    panY = clamp(panY, -maxPan, maxPan);
+    container.style.transform = `translate(${panX}px, ${panY}px) scale(${zoom})`;
+    display.textContent = (zoom % 1 === 0 ? zoom : zoom.toFixed(1)) + '×';
+    container.style.cursor = zoom > 1 ? 'grab' : '';
+  }
+
+  document.getElementById('zoom-in').addEventListener('click', () => {
+    zoom = clamp(zoom + STEP, MIN, MAX); applyTransform();
   });
-}
+  document.getElementById('zoom-out').addEventListener('click', () => {
+    zoom = clamp(zoom - STEP, MIN, MAX);
+    if (zoom === 1) { panX = 0; panY = 0; }
+    applyTransform();
+  });
+  document.getElementById('zoom-reset-btn').addEventListener('click', () => {
+    zoom = 1; panX = 0; panY = 0; applyTransform();
+  });
+
+  // Drag-to-pan
+  let dragging = false, startX = 0, startY = 0, startPanX = 0, startPanY = 0;
+
+  function bodyScale() {
+    const r = document.body.getBoundingClientRect();
+    return r.width > 0 ? r.width / 600 : 1;
+  }
+
+  function onDragStart(cx, cy, target) {
+    if (zoom <= 1) return;
+    const tag = target.tagName.toLowerCase();
+    if (tag === 'input' || tag === 'button' || tag === 'select' || tag === 'label') return;
+    dragging = true;
+    startX = cx; startY = cy;
+    startPanX = panX; startPanY = panY;
+    container.style.cursor = 'grabbing';
+  }
+
+  function onDragMove(cx, cy) {
+    if (!dragging) return;
+    const s = bodyScale();
+    panX = startPanX + (cx - startX) / s;
+    panY = startPanY + (cy - startY) / s;
+    applyTransform();
+  }
+
+  function onDragEnd() {
+    if (!dragging) return;
+    dragging = false;
+    container.style.cursor = zoom > 1 ? 'grab' : '';
+  }
+
+  container.addEventListener('mousedown', e => { onDragStart(e.clientX, e.clientY, e.target); if (dragging) e.preventDefault(); });
+  document.addEventListener('mousemove', e => onDragMove(e.clientX, e.clientY));
+  document.addEventListener('mouseup', onDragEnd);
+
+  container.addEventListener('touchstart', e => {
+    if (e.touches.length !== 1) return;
+    onDragStart(e.touches[0].clientX, e.touches[0].clientY, e.target);
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!dragging || e.touches.length !== 1) return;
+    onDragMove(e.touches[0].clientX, e.touches[0].clientY);
+    e.preventDefault();
+  }, { passive: false });
+  document.addEventListener('touchend', onDragEnd);
+})();
 
 // ============================================================
 //  WAVE MATH
@@ -637,12 +763,6 @@ requestAnimationFrame(frame);
         ],
         "default": "v2",
         "desc": "Target noise waveform preset"
-    },
-    {
-        "name": "zoom",
-        "type": "toggle",
-        "default": "0",
-        "desc": "Show zoom slider in controls panel (1–4×, zooms into time axis)"
     },
     {
         "name": "maxscale",
