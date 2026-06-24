@@ -914,6 +914,13 @@
       "description": "New simulation - description pending.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Light/building_mirror_car.html",
+      "title": "Sun Reflection off Glass Skyscraper",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
