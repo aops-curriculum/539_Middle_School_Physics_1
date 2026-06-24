@@ -9,7 +9,7 @@
         body {
             font-family: Arial, sans-serif;
             margin: 0;
-            padding: 0 5px 5px 5px;
+            padding: 0;
             background-color: #f5f5f5;
             display: flex;
             flex-direction: column;
@@ -21,8 +21,6 @@
 
         #canvas-container {
             background: white;
-            border: 1px solid #ddd;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             line-height: 0;
         }
 
@@ -33,10 +31,10 @@
             gap: 10px;
             background: white;
             padding: 5px 12px;
-            margin-bottom: 5px;
-            border-radius: 6px;
+            margin-bottom: 0;
+            border-radius: 6px 6px 0 0;
             box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            width: 578px;
+            width: 600px;
         }
 
         /* Left: two wave rows stacked */
@@ -167,7 +165,7 @@
 
         // DPR fix for sharp rendering on high-DPI screens
         const dpr = window.devicePixelRatio || 1;
-        const logW = 578, logH = 422;
+        const logW = 600, logH = 432;
         canvas.width = logW * dpr; canvas.height = logH * dpr;
         canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
         ctx.scale(dpr, dpr);
