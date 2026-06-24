@@ -3,51 +3,60 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="eigennode-aspect" content="87/100">
 <title>Sun Reflection off Glass Skyscraper</title>
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; }
 body {
-  background: #87CEEB;
+  background: #4A90D9;
   font-family: Arial, sans-serif;
-  max-width: 400px;
-  margin: 0 auto;
   user-select: none;
   -webkit-user-select: none;
 }
-.slider-container {
+canvas { display: block; width: 100%; height: 100%; }
+#controls {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  background: rgba(255,255,255,0.72);
+  border-radius: 6px;
+  padding: 5px 14px;
+  pointer-events: auto;
+}
+.slider-row {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 6px 16px 4px;
+  gap: 8px;
 }
-.slider-container label {
+.slider-row label {
   font-size: 13px;
-  color: #555;
+  color: #444;
   white-space: nowrap;
 }
-.slider-container input[type="range"] {
-  width: 180px;
+.slider-row input[type="range"] {
+  width: 160px;
   accent-color: #f9a825;
-}
-canvas {
-  display: block;
-  border: 1px solid #333;
-  border-radius: 6px;
-  cursor: default;
 }
 </style>
 </head>
 <body>
-<div class="slider-container">
-  <label>Sun angle:</label>
-  <input type="range" id="angleSlider" min="10" max="80" value="35">
-</div>
-<div class="slider-container" id="curveContainer" style="display:none">
-  <label>Curvature:</label>
-  <input type="range" id="curveSlider" min="0" max="100" value="40">
-</div>
 <canvas id="canvas"></canvas>
+<div id="controls">
+  <div class="slider-row">
+    <label>Sun angle:</label>
+    <input type="range" id="angleSlider" min="10" max="80" value="35">
+  </div>
+  <div class="slider-row" id="curveContainer" style="display:none">
+    <label>Curvature:</label>
+    <input type="range" id="curveSlider" min="0" max="100" value="40">
+  </div>
+</div>
 <script>
 const canvas = document.getElementById('canvas');
 const ctx = canvas.getContext('2d');
@@ -55,9 +64,16 @@ const angleSlider = document.getElementById('angleSlider');
 const curveSlider = document.getElementById('curveSlider');
 
 const W = 435, H = 500;
-const dpr = window.devicePixelRatio || 1;
-canvas.width = 348 * dpr; canvas.height = 400 * dpr;
-canvas.style.width = '348px'; canvas.style.height = '400px';
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  if (!cw || !ch) return;
+  canvas.width  = Math.round(cw * dpr);
+  canvas.height = Math.round(ch * dpr);
+  ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+  draw();
+}
 
 const GROUND_Y = 440;
 const MAX_BOUNCES = 6;
@@ -578,9 +594,7 @@ function draw() {
   if (shouldMelt && meltProgress < 1) meltProgress = Math.min(1, meltProgress + 0.025);
   else if (!shouldMelt && meltProgress > 0) meltProgress = Math.max(0, meltProgress - 0.025);
 
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, 348, 400);
-  ctx.setTransform(0.8 * dpr, 0, 0, 0.8 * dpr, 0, 0);
+  ctx.clearRect(0, 0, W, H);
 
   drawSky();
   drawGround();
@@ -600,47 +614,9 @@ function draw() {
 }
 
 angleSlider.addEventListener('input', draw);
-draw();
+new ResizeObserver(fit).observe(canvas);
+fit();
 
-window.addEventListener('load', () => {
-  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
-});
-</script>
-<script>
-// responsive-scale-to-fit v1
-(function () {
-  var DOC = document.documentElement;
-  var Q = new URLSearchParams(location.search);
-  var num = function (k, d) { return Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d; };
-  var MAXSCALE = num('maxscale', 2.4), MAXW = num('maxw', 0);
-  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 320), REPORT_MIN = 140;
-  var lastH = 0;
-  function fit() {
-    var b = document.body; if (!b) return;
-    var natW = b.offsetWidth, natH = b.offsetHeight;
-    if (!natW || !natH) return;
-    var vw = DOC.clientWidth, vh = DOC.clientHeight;
-    var cap = MAXW > 0 ? Math.min(MAXSCALE, MAXW / natW) : MAXSCALE;
-    var s = Math.min(vw / natW, vh / natH, cap);
-    if (!isFinite(s) || s <= 0) s = Math.min(vw / natW, cap);
-    b.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
-    var rh = FIXED_H > 0 ? Math.max(80, Math.min(2000, FIXED_H))
-      : Math.max(REPORT_MIN, Math.min(REPORT_MAX, Math.round(natH * Math.min(vw / natW, cap))));
-    if (Math.abs(rh - lastH) >= 2) { lastH = rh; try { window.parent.postMessage({ type: 'resize', height: rh }, '*'); } catch (e) {} }
-  }
-  function boot() {
-    var b = document.body; if (!b) return;
-    DOC.style.cssText += ';width:100%;height:100%;margin:0;overflow:hidden;background:transparent;';
-    b.style.position = 'absolute'; b.style.top = '50%'; b.style.left = '50%';
-    b.style.margin = '0'; b.style.transformOrigin = 'center center'; b.style.willChange = 'transform';
-    fit();
-    addEventListener('resize', fit); addEventListener('orientationchange', fit);
-    if (window.ResizeObserver) new ResizeObserver(fit).observe(DOC);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-  }
-  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
-  addEventListener('load', fit);
-})();
 </script>
 
 
@@ -653,14 +629,6 @@ window.addEventListener('load', () => {
   var CHEAT_DEFS = [
     { name: 'mirrorType', type: 'select', values: ['flat', 'convex', 'concave'], default: 'flat',
       desc: 'Building mirror shape' },
-    { name: 'maxscale', type: 'number', min: 0.5, max: 5, step: 0.1, default: 2.4,
-      desc: 'Max zoom factor for responsive scaling' },
-    { name: 'maxw', type: 'number', min: 200, max: 2000, step: 50, default: '',
-      desc: 'Max rendered width (px); 0 = uncapped' },
-    { name: 'h', type: 'number', min: 80, max: 2000, step: 10, default: '',
-      desc: 'Exact reported iframe height (px); overrides auto' },
-    { name: 'maxh', type: 'number', min: 80, max: 2000, step: 10, default: 320,
-      desc: 'Ceiling on auto-reported iframe height (px)' },
   ];
 
   var EMBED_KEYS = ['cheat'];
