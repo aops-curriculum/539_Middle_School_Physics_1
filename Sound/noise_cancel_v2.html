@@ -210,6 +210,15 @@
 <!-- ===== CONTROLS ===== -->
 <div id="controls-area">
 
+  <!-- Zoom control (visible only when ?zoom=1) -->
+  <div class="component-bank" id="zoom-row" style="display:none">
+    <div class="slider-row" style="margin-bottom:0">
+      <span class="slider-label">Zoom</span>
+      <input type="range" id="zoom-ctrl" min="1" max="4" step="1" value="1">
+      <span class="slider-value" id="zoom-val">1×</span>
+    </div>
+  </div>
+
   <!-- Component 1 -->
   <div class="component-bank" id="bank-1">
     <div class="bank-title">Component 1</div>
@@ -369,6 +378,7 @@ if (numComponents >= 3) document.getElementById('bank-3').style.display = '';
 sizeCanvases();
 
 const TIME_WINDOW = 4;
+let _drawTimeWindow = TIME_WINDOW;
 const PAD_X = 6;
 
 // ============================================================
@@ -421,7 +431,18 @@ document.getElementById('reset-btn').addEventListener('click', () => {
     sliders['freq'  + n].value = 50; vals['freq'  + n].textContent = '50 Hz';
     sliders['phase' + n].value = 0;  vals['phase' + n].textContent = '0°';
   }
+  const zc = document.getElementById('zoom-ctrl');
+  if (zc) { zc.value = 1; document.getElementById('zoom-val').textContent = '1×'; _drawTimeWindow = TIME_WINDOW; }
 });
+
+// Zoom control
+if (_qs.get('zoom') === '1') {
+  document.getElementById('zoom-row').style.display = '';
+  document.getElementById('zoom-ctrl').addEventListener('input', function () {
+    _drawTimeWindow = TIME_WINDOW / Math.max(1, parseFloat(this.value));
+    document.getElementById('zoom-val').textContent = this.value + '×';
+  });
+}
 
 // ============================================================
 //  WAVE MATH
@@ -491,7 +512,7 @@ function drawWaveOnCanvas(cvs, evalFn, color, lineWidth) {
   ctx.lineWidth = lineWidth;
   ctx.beginPath();
   for (let px = 0; px <= drawW; px++) {
-    const t = (px / drawW) * TIME_WINDOW;
+    const t = (px / drawW) * _drawTimeWindow;
     const y = evalFn(t) / AMP_SCALE;
     const canvasY = cy - y * maxAmpPx;
     if (px === 0) ctx.moveTo(PAD_X + px, canvasY);
@@ -616,6 +637,12 @@ requestAnimationFrame(frame);
         ],
         "default": "v2",
         "desc": "Target noise waveform preset"
+    },
+    {
+        "name": "zoom",
+        "type": "toggle",
+        "default": "0",
+        "desc": "Show zoom slider in controls panel (1–4×, zooms into time axis)"
     },
     {
         "name": "maxscale",
