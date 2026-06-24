@@ -422,20 +422,64 @@
         const _zoom = _qs.get('zoom') === '1';
         if (_f1p !== null || _f2p !== null) updateBeatInfo();
 
+        window._userZoom = 1; // scaler reads this to know when to step back
+
         if (_zoom) {
             const zoomControl = document.getElementById('zoomControl');
             const zoomLabel   = document.getElementById('zoomLabel');
             zoomControl.style.display = 'flex';
-            zoomLabel.textContent = xMax.toFixed(2) + ' s';
-            document.getElementById('zoomOut').addEventListener('click', () => {
-                xMax = Math.min(5, xMax * 2);
-                zoomLabel.textContent = xMax.toFixed(2) + ' s';
-                draw();
-            });
+            zoomLabel.textContent = '100%';
+
+            function applyVisualZoom() {
+                if (window._userZoom > 1) {
+                    document.body.style.position  = 'static';
+                    document.body.style.top       = '';
+                    document.body.style.left      = '';
+                    document.body.style.transform = '';
+                    document.body.style.margin    = '0';
+                    document.body.style.zoom      = String(window._userZoom);
+                    document.body.style.cursor    = 'grab';
+                    document.documentElement.style.overflow = 'auto';
+                } else {
+                    document.body.style.zoom     = '';
+                    document.body.style.position = 'absolute';
+                    document.body.style.top      = '50%';
+                    document.body.style.left     = '50%';
+                    document.body.style.margin   = '0';
+                    document.body.style.cursor   = '';
+                    document.documentElement.style.overflow = 'hidden';
+                    if (window._scaleToFit_refit) window._scaleToFit_refit();
+                }
+                zoomLabel.textContent = Math.round(window._userZoom * 100) + '%';
+            }
+
             document.getElementById('zoomIn').addEventListener('click', () => {
-                xMax = Math.max(0.1, xMax / 2);
-                zoomLabel.textContent = xMax.toFixed(2) + ' s';
-                draw();
+                window._userZoom = Math.min(4, window._userZoom * 1.5);
+                applyVisualZoom();
+            });
+            document.getElementById('zoomOut').addEventListener('click', () => {
+                window._userZoom = Math.max(1, window._userZoom / 1.5);
+                applyVisualZoom();
+            });
+
+            // Click-drag to pan when zoomed in
+            let _drag = null, _scroll = null;
+            document.documentElement.addEventListener('mousedown', e => {
+                if (window._userZoom <= 1) return;
+                _drag   = { x: e.clientX, y: e.clientY };
+                _scroll = { x: document.documentElement.scrollLeft,
+                            y: document.documentElement.scrollTop };
+                document.body.style.cursor = 'grabbing';
+                e.preventDefault();
+            });
+            document.documentElement.addEventListener('mousemove', e => {
+                if (!_drag) return;
+                document.documentElement.scrollLeft = _scroll.x - (e.clientX - _drag.x);
+                document.documentElement.scrollTop  = _scroll.y - (e.clientY - _drag.y);
+            });
+            document.documentElement.addEventListener('mouseup', () => {
+                _drag = null;
+                if (window._userZoom > 1) document.body.style.cursor = 'grab';
             });
         }
 
@@ -470,6 +514,7 @@
   var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 500), REPORT_MIN = 140;
   var lastH = 0;
   function fit() {
+    if (window._userZoom > 1) return;
     var b = document.body; if (!b) return;
     var natW = b.offsetWidth, natH = b.offsetHeight;
     if (!natW || !natH) return;
@@ -492,6 +537,7 @@
     if (window.ResizeObserver) new ResizeObserver(fit).observe(DOC);
     if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
   }
+  window._scaleToFit_refit = fit;
   if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
   addEventListener('load', fit);
 })();
