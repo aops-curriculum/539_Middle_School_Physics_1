@@ -12,9 +12,7 @@
       margin: 0;
       display: flex;
       justify-content: center;
-      align-items: center;
-      min-height: 100vh;
-      background-color: #f3f4f6;
+      background-color: white;
     }
   </style>
 </head>
@@ -115,7 +113,7 @@
       const targetRgb = `rgb(${toRgb(targetColor.r)}, ${toRgb(targetColor.g)}, ${toRgb(targetColor.b)})`;
 
       return React.createElement('div', { 
-        className: 'w-[600px] h-[400px] bg-gray-100 flex flex-col items-center justify-center p-4 rounded-lg shadow-lg'
+        className: 'w-[600px] bg-white flex flex-col items-center p-4'
       },
         React.createElement('div', { className: 'flex items-center gap-8' },
           // Level selector
