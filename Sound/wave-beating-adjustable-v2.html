@@ -110,6 +110,37 @@
             color: #555;
             white-space: nowrap;
         }
+
+        .zoom-widget {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .zoom-btn {
+            width: 20px;
+            height: 20px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            background: #f0f0f0;
+            cursor: pointer;
+            font-size: 14px;
+            line-height: 1;
+            padding: 0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .zoom-btn:hover { background: #e0e0e0; }
+
+        .zoom-label {
+            font-size: 11px;
+            color: #555;
+            white-space: nowrap;
+            min-width: 36px;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
@@ -152,6 +183,11 @@
                 </label>
             </div>
             <span class="beat-info" id="beatInfo">Beat: 1.25 Hz</span>
+            <div id="zoomControl" class="zoom-widget" style="display:none">
+                <button class="zoom-btn" id="zoomOut">−</button>
+                <span class="zoom-label" id="zoomLabel">1.0 s</span>
+                <button class="zoom-btn" id="zoomIn">+</button>
+            </div>
         </div>
     </div>
 
