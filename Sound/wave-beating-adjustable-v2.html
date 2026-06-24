@@ -111,20 +111,29 @@
             white-space: nowrap;
         }
 
-        .zoom-widget {
-            display: flex;
+        #zoomControl {
+            position: fixed;
+            bottom: 10px;
+            right: 10px;
+            background: white;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+            padding: 5px 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.25);
+            display: none;
             align-items: center;
-            gap: 4px;
+            gap: 6px;
+            z-index: 9999;
         }
 
         .zoom-btn {
-            width: 20px;
-            height: 20px;
+            width: 22px;
+            height: 22px;
             border: 1px solid #ccc;
             border-radius: 3px;
             background: #f0f0f0;
             cursor: pointer;
-            font-size: 14px;
+            font-size: 15px;
             line-height: 1;
             padding: 0;
             display: flex;
@@ -183,16 +192,19 @@
                 </label>
             </div>
             <span class="beat-info" id="beatInfo">Beat: 1.25 Hz</span>
-            <div id="zoomControl" class="zoom-widget" style="display:none">
-                <button class="zoom-btn" id="zoomOut">−</button>
-                <span class="zoom-label" id="zoomLabel">1.0 s</span>
-                <button class="zoom-btn" id="zoomIn">+</button>
-            </div>
         </div>
     </div>
 
     <div id="canvas-container">
         <canvas id="waveCanvas" width="600" height="330"></canvas>
+    </div>
+
+    <!-- Floating zoom widget — shown only when ?zoom=1 -->
+    <div id="zoomControl" style="display:none">
+        <button class="zoom-btn" id="zoomOut">−</button>
+        <span class="zoom-label" id="zoomLabel">100%</span>
+        <button class="zoom-btn" id="zoomIn">+</button>
+        <button class="zoom-btn" id="zoomReset" title="Reset to 100%">↺</button>
     </div>
 
     <script>
@@ -440,6 +452,8 @@
                     document.body.style.zoom      = String(window._userZoom);
                     document.body.style.cursor    = 'grab';
                     document.documentElement.style.overflow = 'auto';
+                    // counter-zoom the floating widget so it stays natural size
+                    zoomControl.style.zoom = String(1 / window._userZoom);
                 } else {
                     document.body.style.zoom     = '';
                     document.body.style.position = 'absolute';
@@ -448,6 +462,9 @@
                     document.body.style.margin   = '0';
                     document.body.style.cursor   = '';
                     document.documentElement.style.overflow = 'hidden';
+                    document.documentElement.scrollLeft = 0;
+                    document.documentElement.scrollTop  = 0;
+                    zoomControl.style.zoom = '';
                     if (window._scaleToFit_refit) window._scaleToFit_refit();
                 }
                 zoomLabel.textContent = Math.round(window._userZoom * 100) + '%';
@@ -459,6 +476,10 @@
             });
             document.getElementById('zoomOut').addEventListener('click', () => {
                 window._userZoom = Math.max(1, window._userZoom / 1.5);
+                applyVisualZoom();
+            });
+            document.getElementById('zoomReset').addEventListener('click', () => {
+                window._userZoom = 1;
                 applyVisualZoom();
             });
 
