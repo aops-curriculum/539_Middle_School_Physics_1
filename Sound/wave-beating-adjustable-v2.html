@@ -16,7 +16,7 @@
             align-items: center;
             overflow: hidden;
             width: 600px;
-            height: 500px;
+            height: 400px;
         }
 
         #canvas-container {
@@ -156,19 +156,16 @@
     </div>
 
     <div id="canvas-container">
-        <canvas id="waveCanvas" width="578" height="422"></canvas>
+        <canvas id="waveCanvas" width="600" height="330"></canvas>
     </div>
 
     <script>
         const canvas = document.getElementById('waveCanvas');
         const ctx = canvas.getContext('2d');
 
-        // DPR fix for sharp rendering on high-DPI screens
         const dpr = window.devicePixelRatio || 1;
-        const logW = 600, logH = 432;
-        canvas.width = logW * dpr; canvas.height = logH * dpr;
-        canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
-        ctx.scale(dpr, dpr);
+        const logW = 600;
+        let logH, graphHeight;
 
         // Graph parameters
         const xMin = 0;
@@ -176,8 +173,17 @@
         const yMin = -2.5;
         const yMax = 2.5;
         const padTop = 8, padBottom = 36, padLeft = 38, padRight = 8;
-        const graphWidth  = logW - padLeft - padRight;
-        const graphHeight = logH - padTop  - padBottom;
+        const graphWidth = logW - padLeft - padRight;
+
+        // Called after DOM is fully set up (including on-off mode hiding)
+        // so offsetHeight reflects the actual rendered controls height.
+        function initCanvas() {
+            logH = 400 - document.querySelector('.controls').offsetHeight;
+            graphHeight = logH - padTop - padBottom;
+            canvas.width  = logW * dpr; canvas.height = logH * dpr;
+            canvas.style.width  = logW + 'px'; canvas.style.height = logH + 'px';
+            ctx.scale(dpr, dpr);
+        }
 
         // Wave parameters (mutable)
         let f1 = 10;
@@ -391,6 +397,7 @@
             document.getElementById('beatInfo').style.display = 'none';
         }
 
+        initCanvas();
         draw();
     </script>
 <script>
@@ -406,7 +413,7 @@
   var Q = new URLSearchParams(location.search);
   var num = function (k, d) { return Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d; };
   var MAXSCALE = num('maxscale', 2.4), MAXW = num('maxw', 0);
-  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 320), REPORT_MIN = 140;
+  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 500), REPORT_MIN = 140;
   var lastH = 0;
   function fit() {
     var b = document.body; if (!b) return;
