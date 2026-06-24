@@ -461,34 +461,6 @@
       "category": "light"
     },
     {
-      "path": "Light/flat_building_car.html",
-      "title": "Sun Reflection off Glass Skyscraper",
-      "description": "Drag a sun-angle slider and watch sunlight rays reflect off a flat glass skyscraper toward a car on the street. Shows how a flat vertical mirror always reflects parallel rays as parallel beams.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/convex_building_car.html",
-      "title": "Sun Reflection off Glass Skyscraper",
-      "description": "Adjust sun angle and wall curvature to see how rays reflect off a convex glass skyscraper. Demonstrates that a convex mirror diverges reflected rays, reducing the chance of a hotspot on the ground.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/curved_building_car.html",
-      "title": "Sun Reflection off Glass Skyscraper",
-      "description": "Adjust sun angle to see light reflected off a curved glass building toward a car below. Explores the intermediate behavior between flat and convex building reflections.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/concave_building_car.html",
-      "title": "Sun Reflection off Glass Skyscraper",
-      "description": "Vary the sun angle and concave curvature of a glass skyscraper to see where reflected sunlight concentrates on the street below. Illustrates how a concave mirror focuses parallel rays to a dangerous hotspot.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
       "path": "Light/focal_length_radius_curvature.html",
       "title": "Concave Mirror",
       "description": "Slide a control to change the radius of curvature R of a concave mirror and see the focal length f = R/2 update live. Builds intuition for the geometric relationship between mirror shape and focal point.",
