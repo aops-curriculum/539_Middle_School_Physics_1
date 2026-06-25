@@ -4,7 +4,109 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/539_Middle_School_Physics_1/two-microphones/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>my-tsx-project</title>
+    <meta name="eigennode-aspect" content="3/2" />
+    <title>Two Microphones</title>
+
+    <!-- Responsive sizing: override Vite defaults so iframe never scrolls -->
+    <style>
+      html, body {
+        width: 100% !important;
+        height: 100% !important;
+        min-width: 0 !important;
+        min-height: 0 !important;
+        overflow: hidden !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      body {
+        display: flex !important;
+        align-items: center !important;
+        justify-content: center !important;
+        background: #f0f0f0;
+      }
+      /* React root: act as a pass-through flex container */
+      #root {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 100%;
+        height: 100%;
+      }
+      /*
+        Canvas aspect ratio is 800:560 = 10:7.
+        Fit inside the iframe without stretching:
+          - height: min(iframe height, height-if-full-width)
+          - width: auto (driven by aspect-ratio)
+       */
+      canvas {
+        display: block !important;
+        aspect-ratio: 800 / 560 !important;
+        height: min(100%, calc(100vw * 560 / 800)) !important;
+        width: auto !important;
+        max-width: 100% !important;
+      }
+    </style>
+
+    <!--
+      Mouse-coordinate fix for CSS-scaled canvas.
+
+      The React draw + hit-test code uses fixed constants canvasWidth=800,
+      canvasHeight=560 when converting getBoundingClientRect()-relative clientX/Y
+      into simulation coordinates. That math is correct only when the canvas CSS
+      display size equals 800×560. When we let CSS shrink the canvas, the
+      displayed width W < 800, so every coordinate is off by factor 800/W.
+
+      Fix: intercept mousedown and mousemove in the CAPTURE phase (before React
+      sees them), scale clientX/Y from display-pixel space to logical-800×560
+      space, then re-dispatch a corrected event on the canvas. React's bubble-
+      phase listeners on div#root receive the corrected event. The _patched flag
+      prevents infinite re-entry.
+    -->
+    <script>
+    (function () {
+      var CANVAS_W = 800, CANVAS_H = 560;
+
+      function patchCanvas(canvas) {
+        ['mousedown', 'mousemove'].forEach(function (type) {
+          window.addEventListener(type, function (e) {
+            if (e._patched) return;
+            if (e.target !== canvas && !canvas.contains(e.target)) return;
+
+            var rect = Element.prototype.getBoundingClientRect.call(canvas);
+            var scaleX = rect.width  / CANVAS_W;
+            var scaleY = rect.height / CANVAS_H;
+            /* Skip if canvas is already at natural size (< 0.5% difference) */
+            if (Math.abs(scaleX - 1) < 0.005 && Math.abs(scaleY - 1) < 0.005) return;
+
+            e.stopPropagation();
+
+            /* Map display-pixel offset → logical-800×560 offset */
+            var corrX = rect.left + (e.clientX - rect.left) / scaleX;
+            var corrY = rect.top  + (e.clientY - rect.top)  / scaleY;
+
+            var newEvt = new MouseEvent(e.type, {
+              bubbles: true,
+              cancelable: e.cancelable,
+              clientX: corrX,
+              clientY: corrY,
+              button: e.button,
+              buttons: e.buttons
+            });
+            newEvt._patched = true;
+            canvas.dispatchEvent(newEvt);
+          }, true /* capture */);
+        });
+      }
+
+      /* Watch for the React canvas to appear, then patch it */
+      var obs = new MutationObserver(function () {
+        var c = document.querySelector('canvas');
+        if (c) { obs.disconnect(); patchCanvas(c); }
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+    })();
+    </script>
+
     <script type="module" crossorigin src="/539_Middle_School_Physics_1/two-microphones/assets/index-23D4zfBr.js"></script>
     <link rel="stylesheet" crossorigin href="/539_Middle_School_Physics_1/two-microphones/assets/index-DQ3P1g1z.css">
   </head>
