@@ -7,7 +7,20 @@
 <style>
   * { margin: 0; padding: 0; box-sizing: border-box; }
   html, body { width: 100%; height: 100%; overflow: hidden; }
-  body { position: relative; font-family: sans-serif; background: #fafafa; }
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: sans-serif;
+    background: #fafafa;
+  }
+  .sim-wrap {
+    position: relative;
+    aspect-ratio: 6/5;
+    height: min(100%, calc(100vw * 5 / 6));
+    width: auto;
+    flex-shrink: 0;
+  }
   .instructions {
     position: absolute;
     top: 8px; left: 0; right: 0;
@@ -28,10 +41,12 @@
 </style>
 </head>
 <body>
+<div class="sim-wrap">
   <div class="instructions">
     Drag the filled red circle (source) and the red ring (aim point) to set the incoming ray.
   </div>
   <canvas id="sim" width="600" height="500"></canvas>
+</div>
 <script>
 (function () {
   // ---------- Canvas setup ----------
