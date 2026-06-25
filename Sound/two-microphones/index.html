@@ -8,12 +8,12 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; }
-    body { background: #1a1a2e; font-family: Arial, sans-serif; user-select: none; }
-    canvas { display: block; width: 100%; height: 100%; }
+    body { position: relative; background: #1a1a2e; font-family: Arial, sans-serif; user-select: none; }
+    canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
   </style>
 </head>
 <body>
-<canvas id="c"></canvas>
+<canvas id="c" width="800" height="600"></canvas>
 <script>
 const DESIGN_W = 800, DESIGN_H = 600;
 const W = DESIGN_W, H = DESIGN_H;
