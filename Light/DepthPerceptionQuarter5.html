@@ -375,248 +375,158 @@
 ];
 
   var EMBED_KEYS = ['cheat'];
-
-  // Build clean URL (no embed/cheat params) with optional overrides
-  function buildCleanUrl(overrides) {
+  function buildCleanUrl(ov) {
     var p = new URLSearchParams(location.search);
-    EMBED_KEYS.forEach(function (k) { p.delete(k); });
-    for (var k in overrides) {
-      var v = overrides[k];
-      if (v === null || v === '') p.delete(k);
-      else p.set(k, v);
-    }
+    EMBED_KEYS.forEach(function(k) { p.delete(k); });
+    for (var k in ov) { var v=ov[k]; if(v===null||v==='') p.delete(k); else p.set(k,v); }
     var qs = p.toString();
     return location.origin + location.pathname + (qs ? '?' + qs : '');
   }
-
-  function buildCheatUrl(overrides) {
-    var base = buildCleanUrl(overrides);
-    return base + (base.indexOf('?') >= 0 ? '&' : '?') + 'cheat=1';
+  function buildCheatUrl(ov) {
+    var b = buildCleanUrl(ov);
+    return b + (b.indexOf('?') >= 0 ? '&' : '?') + 'cheat=1';
   }
-
-  var urlLinkEl = null; // set after render
-
-  function updateUrlDisplay(overrides) {
-    if (!urlLinkEl) return;
-    var u = buildCleanUrl(overrides || {});
-    urlLinkEl.href = u;
-    urlLinkEl.textContent = u;
+  function getEff(d) {
+    var r = _cpQ.get(d.name);
+    return r !== null ? r : (d['default'] !== undefined ? String(d['default']) : '');
   }
+  function isTruthy(v) { return v!=='0'&&v!=='false'&&v!=='no'&&v!=='off'&&v!==''; }
 
-  // Resolve the effective current value of a param (may differ from raw URL string)
-  function getEffective(def) {
-    var raw = _cpQ.get(def.name);
-    if (raw === null) return def['default'] !== undefined ? String(def['default']) : '';
-    return raw;
-  }
-
-  function isTruthy(v) {
-    return v !== '0' && v !== 'false' && v !== 'no' && v !== 'off' && v !== '';
-  }
-
-  function makeControl(def) {
-    var effective = getEffective(def);
-
-    if (def.type === 'toggle') {
-      var on = isTruthy(effective);
-      var btn = document.createElement('button');
+  function makeControl(d) {
+    var eff = getEff(d);
+    if (d.type === 'toggle') {
+      var on = isTruthy(eff), btn = document.createElement('button');
       btn.textContent = on ? '1 (on)' : '0 (off)';
-      btn.style.cssText = 'background:' + (on ? '#1b3d1b' : '#3d1b1b') + ';color:' +
-        (on ? '#6dca80' : '#e07070') + ';border:1px solid ' +
-        (on ? '#2a7a3a' : '#8a2a2a') + ';border-radius:3px;padding:3px 10px;' +
-        'cursor:pointer;font-size:12px;font-family:inherit;min-width:70px';
-      btn.addEventListener('click', function () {
-        var updates = {};
-        updates[def.name] = on ? '0' : '1';
-        window.location.href = buildCheatUrl(updates);
-      });
+      btn.style.cssText = 'background:'+(on?'#1b3d1b':'#3d1b1b')+';color:'+(on?'#6dca80':'#e07070')+
+        ';border:1px solid '+(on?'#2a7a3a':'#8a2a2a')+';border-radius:3px;padding:3px 10px;'+
+        'cursor:pointer;font-size:12px;min-width:70px';
+      btn.onclick = function() { var u={}; u[d.name]=on?'0':'1'; location.href=buildCheatUrl(u); };
       return btn;
     }
-
-    if (def.type === 'select') {
+    if (d.type === 'select') {
       var sel = document.createElement('select');
-      sel.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;' +
-        'border-radius:3px;padding:3px 8px;font-size:12px;font-family:inherit;cursor:pointer';
-      def.values.forEach(function (v) {
-        var opt = document.createElement('option');
-        opt.value = v; opt.textContent = v;
-        if (effective === String(v)) opt.selected = true;
-        sel.appendChild(opt);
+      sel.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
+        'border-radius:3px;padding:3px 8px;font-size:12px;cursor:pointer';
+      d.values.forEach(function(v) {
+        var o = document.createElement('option'); o.value=v; o.textContent=v;
+        if (eff===String(v)) o.selected=true; sel.appendChild(o);
       });
-      sel.addEventListener('change', function () {
-        var updates = {}; updates[def.name] = sel.value;
-        window.location.href = buildCheatUrl(updates);
-      });
+      sel.onchange = function() { var u={}; u[d.name]=sel.value; location.href=buildCheatUrl(u); };
       return sel;
     }
-
-    if (def.type === 'number') {
-      var inp = document.createElement('input');
-      inp.type = 'number';
-      inp.value = effective;
-      if (def.min !== undefined) inp.min = String(def.min);
-      if (def.max !== undefined) inp.max = String(def.max);
-      if (def.step !== undefined) inp.step = String(def.step);
-      inp.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;' +
-        'border-radius:3px;padding:3px 6px;width:90px;font-size:12px;font-family:inherit';
-      inp.addEventListener('change', function () {
-        var updates = {}; updates[def.name] = inp.value;
-        window.location.href = buildCheatUrl(updates);
-      });
-      return inp;
-    }
-
-    // text
-    var inp2 = document.createElement('input');
-    inp2.type = 'text';
-    inp2.value = effective;
-    inp2.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;' +
-      'border-radius:3px;padding:3px 6px;width:220px;font-size:12px;font-family:inherit';
-    inp2.addEventListener('change', function () {
-      var updates = {}; updates[def.name] = inp2.value;
-      window.location.href = buildCheatUrl(updates);
-    });
-    return inp2;
+    var inp = document.createElement('input');
+    inp.type = d.type==='number' ? 'number' : 'text'; inp.value = eff;
+    if (d.min!==undefined) inp.min=String(d.min);
+    if (d.max!==undefined) inp.max=String(d.max);
+    if (d.step!==undefined) inp.step=String(d.step);
+    inp.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
+      'border-radius:3px;padding:3px 6px;width:'+(d.type==='number'?'90':'220')+'px;font-size:12px';
+    inp.onchange = function() { var u={}; u[d.name]=inp.value; location.href=buildCheatUrl(u); };
+    return inp;
   }
 
-  function typeLabel(def) {
-    if (def.type === 'toggle') return '0 | 1';
-    if (def.type === 'select') return def.values.join(' | ');
-    if (def.type === 'number') {
-      var s = 'number';
-      if (def.min !== undefined && def.max !== undefined) s = def.min + '–' + def.max;
-      else if (def.min !== undefined) s = '≥' + def.min;
-      else if (def.max !== undefined) s = '≤' + def.max;
-      return s;
-    }
-    return 'text';
+  function typeLabel(d) {
+    if (d.type==='toggle') return '0|1';
+    if (d.type==='select') return d.values.join('|');
+    if (d.type==='number'&&d.min!==undefined&&d.max!==undefined) return d.min+'–'+d.max;
+    return d.type;
   }
 
   function render() {
-    // Panel container (fixed at bottom)
     var panel = document.createElement('div');
-    panel.id = 'cheat-panel';
-    panel.style.cssText = [
-      'position:fixed', 'bottom:0', 'left:0', 'right:0',
-      'background:rgba(12,18,32,0.97)',
-      'color:#c8d8e8',
-      'font-family:"Segoe UI",system-ui,monospace',
-      'font-size:13px',
-      'border-top:2px solid #3a7bd5',
-      'z-index:2147483647',
-      'max-height:48vh',
-      'overflow-y:auto',
-      'padding:10px 16px 14px',
-      'box-sizing:border-box',
-      'box-shadow:0 -4px 24px rgba(0,0,0,0.6)'
-    ].join(';');
+    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;'+
+      'background:rgba(12,18,32,0.97);color:#c8d8e8;'+
+      'font-family:"Segoe UI",system-ui,monospace;font-size:13px;'+
+      'border-top:2px solid #3a7bd5;z-index:2147483647;max-height:48vh;overflow-y:auto;'+
+      'padding:10px 16px 14px;box-sizing:border-box;box-shadow:0 -4px 24px rgba(0,0,0,0.6)';
 
-    // Title bar
-    var title = document.createElement('div');
-    title.style.cssText = 'font-weight:bold;font-size:13px;color:#7ab8f5;margin-bottom:8px;' +
+    var bubble = document.createElement('button');
+    bubble.style.cssText = 'position:fixed;bottom:8px;right:12px;'+
+      'background:rgba(12,18,32,0.95);color:#7ab8f5;border:1px solid #3a7bd5;'+
+      'border-radius:4px;padding:4px 12px;font-size:12px;'+
+      'font-family:"Segoe UI",system-ui,monospace;cursor:pointer;'+
+      'z-index:2147483647;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.5);user-select:none';
+    bubble.textContent = '🔑 Cheat Panel';
+    bubble.onclick = function() { bubble.style.display='none'; panel.style.display=''; };
+    document.body.appendChild(bubble);
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'font-weight:bold;color:#7ab8f5;margin-bottom:8px;'+
       'display:flex;align-items:center;justify-content:space-between';
-    var titleText = document.createElement('span');
-    titleText.textContent = '🔑 Cheat Panel — ' + location.pathname.split('/').pop();
-    var closeBtn = document.createElement('button');
-    closeBtn.textContent = '×';
-    closeBtn.title = 'Close cheat panel (reload to restore)';
-    closeBtn.style.cssText = 'background:none;border:none;color:#7ab8f5;font-size:18px;' +
-      'cursor:pointer;padding:0 4px;line-height:1';
-    closeBtn.addEventListener('click', function () { panel.remove(); });
-    title.appendChild(titleText);
-    title.appendChild(closeBtn);
-    panel.appendChild(title);
+    var hspan = document.createElement('span');
+    hspan.textContent = '🔑 Cheat Panel — ' + location.pathname.split('/').pop();
+    var btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;align-items:center;gap:2px';
+    var minbtn = document.createElement('button');
+    minbtn.textContent = '−';
+    minbtn.title = 'Minimize (restore without reloading)';
+    minbtn.style.cssText = 'background:none;border:none;color:#7ab8f5;font-size:18px;cursor:pointer;padding:0 4px;line-height:1';
+    minbtn.onclick = function() { panel.style.display='none'; bubble.style.display=''; };
+    var xbtn = document.createElement('button');
+    xbtn.textContent = '×'; xbtn.title = 'Close (reload to restore)';
+    xbtn.style.cssText = 'background:none;border:none;color:#7ab8f5;font-size:18px;cursor:pointer;padding:0 4px;line-height:1';
+    xbtn.onclick = function() { panel.remove(); bubble.remove(); };
+    btns.appendChild(minbtn); btns.appendChild(xbtn);
+    hdr.appendChild(hspan); hdr.appendChild(btns); panel.appendChild(hdr);
 
-    // Table
-    var table = document.createElement('table');
-    table.style.cssText = 'border-collapse:collapse;width:100%;margin-bottom:10px';
-    var thead = table.createTHead();
-    var hrow = thead.insertRow();
-    ['Parameter', 'Type / Values', 'Control', 'Description'].forEach(function (h) {
+    var tbl = document.createElement('table');
+    tbl.style.cssText = 'border-collapse:collapse;width:100%;margin-bottom:10px';
+    var hrow = tbl.createTHead().insertRow();
+    ['Parameter','Type/Values','Control','Description'].forEach(function(h) {
       var th = document.createElement('th');
       th.textContent = h;
-      th.style.cssText = 'text-align:left;padding:4px 10px;border-bottom:1px solid #1e3050;' +
-        'color:#5a8fc0;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;' +
-        'white-space:nowrap';
+      th.style.cssText = 'text-align:left;padding:4px 10px;border-bottom:1px solid #1e3050;'+
+        'color:#5a8fc0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap';
       hrow.appendChild(th);
     });
-    var tbody = table.createTBody();
-    CHEAT_DEFS.forEach(function (def) {
-      var row = tbody.insertRow();
-      var isSet = _cpQ.has(def.name);
-      row.style.cssText = 'border-bottom:1px solid #131f30;' +
+    var tbody = tbl.createTBody();
+    CHEAT_DEFS.forEach(function(d) {
+      var row = tbody.insertRow(), isSet = _cpQ.has(d.name);
+      row.style.cssText = 'border-bottom:1px solid #131f30;'+
         (isSet ? 'background:rgba(58,123,213,0.08)' : '');
-
-      // Name cell
       var nc = row.insertCell();
-      nc.style.cssText = 'padding:5px 10px;font-weight:bold;font-size:12px;' +
-        'color:' + (isSet ? '#a8d4ff' : '#7fa8d0') + ';white-space:nowrap;font-family:monospace';
-      nc.textContent = def.name;
-
-      // Type cell
+      nc.style.cssText = 'padding:5px 10px;font-weight:bold;font-size:12px;'+
+        'color:'+(isSet?'#a8d4ff':'#7fa8d0')+';white-space:nowrap;font-family:monospace';
+      nc.textContent = d.name;
       var tc = row.insertCell();
-      tc.style.cssText = 'padding:5px 10px;color:#5a7a90;font-size:11px;' +
-        'max-width:200px;font-family:monospace';
-      tc.textContent = typeLabel(def);
-
-      // Control cell
+      tc.style.cssText = 'padding:5px 10px;color:#5a7a90;font-size:11px;font-family:monospace';
+      tc.textContent = typeLabel(d);
       var cc = row.insertCell();
       cc.style.cssText = 'padding:4px 10px;white-space:nowrap';
-      cc.appendChild(makeControl(def));
-
-      // Desc cell
+      cc.appendChild(makeControl(d));
       var dc = row.insertCell();
       dc.style.cssText = 'padding:5px 10px;color:#8aa0b0;font-size:12px';
-      dc.textContent = (def.desc || '') + (def['default'] !== undefined
-        ? ' (default: ' + def['default'] + ')' : '');
+      dc.textContent = (d.desc||'')+(d['default']!==undefined?' (default: '+d['default']+')':'');
     });
-    panel.appendChild(table);
+    panel.appendChild(tbl);
 
-    // URL display
     var urlBox = document.createElement('div');
-    urlBox.style.cssText = 'background:#080d1a;border:1px solid #1e3050;border-radius:4px;' +
+    urlBox.style.cssText = 'background:#080d1a;border:1px solid #1e3050;border-radius:4px;'+
       'padding:7px 12px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap';
-    var urlLabel = document.createElement('span');
-    urlLabel.style.cssText = 'color:#5a8fc0;font-size:11px;text-transform:uppercase;' +
-      'letter-spacing:0.06em;white-space:nowrap;flex-shrink:0';
-    urlLabel.textContent = 'URL:';
-    urlLinkEl = document.createElement('a');
-    urlLinkEl.style.cssText = 'color:#5fba7d;word-break:break-all;font-size:12px;' +
+    var ulbl = document.createElement('span');
+    ulbl.style.cssText = 'color:#5a8fc0;font-size:11px;text-transform:uppercase;'+
+      'letter-spacing:.06em;white-space:nowrap;flex-shrink:0';
+    ulbl.textContent = 'Embed URL:';
+    var ulink = document.createElement('a');
+    ulink.style.cssText = 'color:#5fba7d;word-break:break-all;font-size:12px;'+
       'font-family:monospace;text-decoration:none';
-    urlLinkEl.addEventListener('click', function (e) {
-      e.preventDefault();
-      window.location.href = buildCheatUrl({});
-    });
-    var copyBtn = document.createElement('button');
-    copyBtn.textContent = 'copy';
-    copyBtn.style.cssText = 'background:#1a3050;color:#7ab8f5;border:1px solid #2a4a70;' +
-      'border-radius:3px;padding:2px 8px;font-size:11px;font-family:inherit;cursor:pointer;' +
+    ulink.href = buildCleanUrl({}); ulink.textContent = buildCleanUrl({});
+    ulink.onclick = function(e) { e.preventDefault(); location.href=buildCheatUrl({}); };
+    var cpybtn = document.createElement('button');
+    cpybtn.textContent = 'copy';
+    cpybtn.style.cssText = 'background:#1a3050;color:#7ab8f5;border:1px solid #2a4a70;'+
+      'border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer;'+
       'white-space:nowrap;flex-shrink:0;margin-left:4px';
-    copyBtn.addEventListener('click', function () {
-      var url = urlLinkEl ? urlLinkEl.href : buildCleanUrl({});
-      navigator.clipboard.writeText(url).then(function () {
-        copyBtn.textContent = 'copied!';
-        copyBtn.style.color = '#6dca80';
-        setTimeout(function () { copyBtn.textContent = 'copy'; copyBtn.style.color = '#7ab8f5'; }, 1500);
-      }).catch(function () {
-        copyBtn.textContent = 'failed';
-        setTimeout(function () { copyBtn.textContent = 'copy'; }, 1500);
-      });
-    });
-    updateUrlDisplay();
-    urlBox.appendChild(urlLabel);
-    urlBox.appendChild(urlLinkEl);
-    urlBox.appendChild(copyBtn);
+    cpybtn.onclick = function() {
+      navigator.clipboard && navigator.clipboard.writeText(buildCleanUrl({}));
+      cpybtn.textContent = '✓ copied';
+      setTimeout(function() { cpybtn.textContent = 'copy'; }, 1500);
+    };
+    urlBox.appendChild(ulbl); urlBox.appendChild(ulink); urlBox.appendChild(cpybtn);
     panel.appendChild(urlBox);
-
     document.body.appendChild(panel);
   }
-
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', render);
-  } else {
-    render();
-  }
+  render();
 })();
 </script>
 <!-- @include shared/zoom-overlay.js -->
