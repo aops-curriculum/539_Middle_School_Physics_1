@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Foucault Speed of Light Experiment (1850)</title>
+<title>Foucault Speed of Light</title>
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
@@ -13,156 +13,92 @@
         color: #e0e0e0;
         overflow: hidden;
     }
-    #container {
-        position: relative;
-        width: 600px;
-        height: 500px;
-    }
-    canvas {
-        background: #0a0a1a;
-        display: block;
-    }
-    /* ── Mode tabs ─────────────────────────────── */
-    .mode-tabs {
-        position: absolute;
-        left: 8px;
-        top: 8px;
-        display: flex;
-        gap: 2px;
-    }
-    .mode-tab {
-        padding: 3px 10px;
-        background: rgba(42,42,74,0.85);
-        border: 1px solid #445;
-        border-radius: 3px;
-        color: #889;
-        font-size: 11px;
-        cursor: pointer;
-    }
-    .mode-tab:hover { background: #3a3a5a; }
-    .mode-tab.active { background: rgba(76,175,80,0.6); color: #fff; border-color: #6a6; }
-    /* ── Rotate controls ──────────────────────── */
+    #container { position: relative; width: 432px; height: 360px; }
+    canvas { background: #0a0a1a; display: block; }
+    /* Rotate controls */
     .rot-ctrl {
         position: absolute;
-        left: 350px;
-        top: 8px;
-        display: none;
-        flex-direction: column;
-        gap: 2px;
-        width: 170px;
+        display: flex; flex-direction: column; gap: 2px; width: 153px;
     }
-    .rot-label-row {
-        display: flex;
-        align-items: baseline;
-        gap: 4px;
-    }
-    .rot-label { font-size: 10px; color: #667; }
-    .rot-val {
-        font-family: 'Consolas',monospace;
-        font-size: 11px;
-        color: #4fc3f7;
-    }
-    .rot-row {
-        display: flex;
-        align-items: center;
-        gap: 3px;
-    }
-    .rot-row input[type=range] {
-        width: 140px;
-        accent-color: #4fc3f7;
-        height: 14px;
-    }
+    .rot-label-row { display: flex; align-items: baseline; gap: 4px; }
+    .rot-label { font-size: 9px; color: #667; }
+    .rot-val { font-family: 'Consolas',monospace; font-size: 10px; color: #4fc3f7; }
+    .rot-row { display: flex; align-items: center; gap: 3px; }
+    .rot-row input[type=range] { width: 126px; accent-color: #4fc3f7; height: 13px; }
     .fine-btn {
-        width: 20px; height: 18px;
-        background: rgba(42,42,74,0.85);
-        border: 1px solid #445;
-        border-radius: 2px;
-        color: #889;
-        font-size: 9px;
-        cursor: pointer;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        padding: 0;
-        margin-left: 2px;
+        width: 18px; height: 16px; background: rgba(42,42,74,0.85);
+        border: 1px solid #445; border-radius: 2px; color: #889;
+        font-size: 8px; cursor: pointer; display: inline-flex;
+        align-items: center; justify-content: center; padding: 0; margin-left: 2px;
     }
     .fine-btn:hover { background: #4a4a6a; color: #fff; }
-    /* ── Spin controls ────────────────────────── */
-    .speed-ctrl {
-        position: absolute;
-        left: 350px;
-        top: 20px;
-        display: none;
-        align-items: center;
-        gap: 1px;
-    }
-    .speed-label {
-        font-size: 10px;
-        color: #667;
-        position: absolute;
-        left: 350px;
-        top: 8px;
-        display: none;
-    }
+    /* Spin controls */
+    .speed-ctrl { position: absolute; display: flex; align-items: center; gap: 1px; }
+    .speed-label { font-size: 9px; color: #667; position: absolute; }
     .sign-btn {
-        width: 18px; height: 26px; background: rgba(42,42,74,0.85); border: 1px solid #445;
-        border-radius: 2px; color: #ccc; font-size: 14px; cursor: pointer;
+        width: 16px; height: 23px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        border-radius: 2px; color: #ccc; font-size: 13px; cursor: pointer;
         display: flex; align-items: center; justify-content: center;
     }
     .sign-btn:hover { background: #3a3a5a; }
     .digit-col { display: flex; flex-direction: column; align-items: center; }
     .digit-col button {
-        width: 22px; height: 13px; background: rgba(42,42,74,0.85); border: 1px solid #445;
-        color: #889; font-size: 8px; cursor: pointer; display: flex;
+        width: 20px; height: 12px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        color: #889; font-size: 7px; cursor: pointer; display: flex;
         align-items: center; justify-content: center; border-radius: 2px; padding: 0;
     }
     .digit-col button:hover { background: #4a4a6a; color: #fff; }
     .digit-val {
-        font-size: 16px; font-family: 'Consolas','Courier New',monospace;
-        color: #4fc3f7; width: 22px; text-align: center; line-height: 1.2;
+        font-size: 14px; font-family: 'Consolas','Courier New',monospace;
+        color: #4fc3f7; width: 20px; text-align: center; line-height: 1.2;
     }
-    .unit-label { font-size: 10px; color: #889; margin-left: 2px; white-space: nowrap; }
-    .dot-sep {
-        font-size: 16px; font-family: 'Consolas','Courier New',monospace;
-        color: #4fc3f7; line-height: 1.2;
-    }
+    .unit-label { font-size: 9px; color: #889; margin-left: 2px; white-space: nowrap; }
+    .dot-sep { font-size: 14px; font-family: 'Consolas','Courier New',monospace; color: #4fc3f7; line-height: 1.2; }
+    /* Common buttons */
     .reset-btn {
-        position: absolute;
-        right: 8px;
-        top: 8px;
-        padding: 4px 10px;
-        background: rgba(76,175,80,0.8);
-        border: none;
-        border-radius: 3px;
-        color: white;
-        font-size: 11px;
-        font-weight: bold;
-        cursor: pointer;
+        position: absolute; right: 7px; top: 7px;
+        padding: 4px 9px; background: rgba(76,175,80,0.8);
+        border: none; border-radius: 3px; color: white;
+        font-size: 10px; font-weight: bold; cursor: pointer;
     }
     .reset-btn:hover { background: rgba(76,175,80,1); }
     .aim-btn {
-        position: absolute;
-        padding: 2px 8px;
-        border: 1px solid #445;
-        border-radius: 3px;
-        font-size: 10px;
-        font-weight: bold;
-        cursor: pointer;
-        background: rgba(42,42,74,0.85);
+        position: absolute; padding: 2px 7px;
+        border: 1px solid #d0d8e0; border-radius: 3px;
+        font-size: 9px; font-weight: bold; cursor: pointer;
+        background: rgba(42,42,74,0.85); color: #d0d8e0;
     }
     .aim-btn:hover { filter: brightness(1.3); }
-    #aimTop { left: 340px; top: 130px; color: #4caf50; border-color: #4caf50; }
-    #aimBot { left: 300px; top: 400px; color: #e05050; border-color: #e05050; }
+    /* Water-mode-only controls */
+    .zoom-ctrl {
+        position: absolute; right: 7px; bottom: 7px;
+        display: flex; gap: 2px;
+    }
+    .zoom-btn {
+        width: 24px; height: 24px; background: rgba(42,42,74,0.85);
+        border: 1px solid #445; border-radius: 3px; color: #ccc;
+        font-size: 16px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center; padding: 0;
+    }
+    .zoom-btn:hover { background: #4a4a6a; color: #fff; }
+    .water-toggle {
+        position: absolute;
+        background: rgba(42,42,74,0.85);
+        border: 1px solid #445; border-radius: 3px;
+        padding: 3px 7px; color: #d0d8e0;
+        font-size: 10px; font-weight: bold; cursor: pointer;
+        display: flex; align-items: center; gap: 5px;
+        white-space: nowrap; transform: translate(-50%, -50%);
+    }
+    .water-toggle:hover { background: rgba(58,58,90,0.85); }
+    .water-toggle input { cursor: pointer; margin: 0; accent-color: #4fc3f7; }
 </style>
 </head>
 <body>
 <div id="container">
-    <canvas id="sim" width="600" height="500"></canvas>
-    <div class="mode-tabs">
-        <div class="mode-tab active" id="tabRotate">Rotate</div>
-        <div class="mode-tab" id="tabSpin">Spin</div>
-    </div>
-    <div class="rot-ctrl" id="rotCtrl">
+    <canvas id="sim" width="432" height="360"></canvas>
+    <!-- Rotate-mode controls -->
+    <div class="rot-ctrl" id="rotCtrl" style="display:none;">
         <div class="rot-label-row">
             <span class="rot-label">Rotation</span>
             <span class="rot-val" id="rotVal">0.0&deg;</span>
@@ -170,11 +106,12 @@
             <button class="fine-btn" id="fineUp">&#9650;</button>
         </div>
         <div class="rot-row">
-            <input type="range" id="rotSlider" min="-45" max="45" step="1" value="0">
+            <input type="range" id="rotSlider" min="-10" max="10" step="0.5" value="0">
         </div>
     </div>
-    <span class="speed-label" id="speedLbl">Speed</span>
-    <div class="speed-ctrl" id="speedCtrl">
+    <!-- Spin/water-mode controls -->
+    <span class="speed-label" id="speedLbl" style="display:none;">Spin speed</span>
+    <div class="speed-ctrl" id="speedCtrl" style="display:none;">
         <div class="sign-btn" id="signBtn">+</div>
         <div class="digit-col"><button data-digit="0" data-dir="up">&#9650;</button><span class="digit-val" id="d0">0</span><button data-digit="0" data-dir="down">&#9660;</button></div>
         <span class="dot-sep">.</span>
@@ -182,73 +119,33 @@
         <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
         <span class="unit-label">&times;10<sup>5</sup> rev/s</span>
     </div>
-    <button class="reset-btn" id="pauseBtn" style="right:65px;">Pause</button>
+    <button class="reset-btn" id="pauseBtn" style="right:62px;">Pause</button>
     <button class="reset-btn" id="resetBtn">Reset</button>
-    <button class="aim-btn" id="aimTop">Aim</button>
-    <button class="aim-btn" id="aimBot">Aim</button>
+    <button class="aim-btn" id="aimBtn" style="display:none;">Aim</button>
+    <!-- Water-mode-only controls -->
+    <label class="water-toggle" id="waterLabel" style="display:none;"><input type="checkbox" id="waterUpper">Add water</label>
+    <div class="zoom-ctrl" id="zoomCtrl" style="display:none;">
+        <button class="zoom-btn" id="zoomOut">&minus;</button>
+        <button class="zoom-btn" id="zoomReset" style="font-size:10px;">1:1</button>
+        <button class="zoom-btn" id="zoomIn">+</button>
+    </div>
 </div>
 
 <script>
+// ── Mode from query param ────────────────────────────
+const Q = new URLSearchParams(location.search);
+const MODE = ['rotate','spin','water'].includes(Q.get('mode')) ? Q.get('mode') : 'spin';
+document.title = 'Foucault Speed of Light — ' + {rotate:'Rotate', spin:'Spin', water:'Water'}[MODE];
+
+const S = 0.8;
 const canvas = document.getElementById('sim');
 const ctx = canvas.getContext('2d');
-const W = 600, H = 500;
+const W = 432, H = 360;
 const dpr = window.devicePixelRatio || 1;
 canvas.width = W * dpr; canvas.height = H * dpr;
 canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
 ctx.scale(dpr, dpr);
 const DEG = Math.PI / 180;
-
-// ── Physical constants ───────────────────────────────
-const REAL_DIST_M = 4;
-const C_LIGHT = 3e8;
-const SLOW_FACTOR = 50000000;
-const C_SIM_M = C_LIGHT / SLOW_FACTOR;   // 6 m/s
-
-// ── Layout ───────────────────────────────────────────
-// Flat rotating mirror on far left, source on far right
-const MIRROR_X = 60, MIRROR_CY = 250;
-const SOURCE_X = 540, SOURCE_Y = 250;
-const APPARATUS_PX = SOURCE_X - MIRROR_X;  // 480 px
-const M_PER_PX = REAL_DIST_M / APPARATUS_PX;
-const SIM_SPEED = C_SIM_M / M_PER_PX;     // px/s
-
-// Concave mirrors: diagonal from flat mirror
-// At ±30° from horizontal, 250 px away
-const DIAG_ANGLE = 30 * DEG;
-const DIAG_DIST = 250;
-const CONCAVE_TOP = {
-    x: MIRROR_X + DIAG_DIST * Math.cos(-DIAG_ANGLE),
-    y: MIRROR_CY + DIAG_DIST * Math.sin(-DIAG_ANGLE)
-};
-const CONCAVE_BOT = {
-    x: MIRROR_X + DIAG_DIST * Math.cos(DIAG_ANGLE),
-    y: MIRROR_CY + DIAG_DIST * Math.sin(DIAG_ANGLE)
-};
-const CONCAVE_ACCEPT = 20 * DEG;  // acceptance half-angle
-
-// Half-silvered mirror and screen near the source
-const HALFSIL_X = 360, HALFSIL_Y = 250;
-const BS_HALF_LEN = 44;
-const SCREEN_X = HALFSIL_X, SCREEN_Y = 350;
-const SCREEN_W = 80;
-
-// Flat mirror dimensions
-const FLAT_MIRROR_LEN = 30;
-
-// ── State ────────────────────────────────────────────
-let mode = 'rotate';
-let discreteAngleDeg = 0, fineAngleDeg = 0;
-let speedSign = 1, digits = [0, 0, 0];
-let photons = [], simTime = 0, photonAccum = 0, prevTS = null;
-let paused = false;
-let screenGlow = 0;
-const SCREEN_GLOW_DUR = 0.2;
-const EYE_LINGER = 0.15;
-
-// ── Draggable marker arrows ─────────────────────────
-let greenArrow = {x: SCREEN_X - 20, y: SCREEN_Y + 30};
-let redArrow = {x: SCREEN_X + 20, y: SCREEN_Y + 30};
-let dragging = null;
 
 // ── Vector helpers ───────────────────────────────────
 function v(x,y){return{x,y}}
@@ -260,53 +157,74 @@ function vlen(a){return Math.hypot(a.x,a.y)}
 function vnorm(a){const l=vlen(a);return l<1e-12?v(0,0):v(a.x/l,a.y/l)}
 function vrefl(d,n){return vsub(d,vsc(n,2*vdot(d,n)))}
 
-// ── Mirror angle & normal ────────────────────────────
-// θ = mirror angle parameter
-// At θ=0: mirror is vertical, surface=(0,1), normal=(1,0) pointing right
-// Reflection of (-1,0) off normal (1,0) → (+1,0): straight back to source
-// At θ=+15°: reflected beam goes (cos30°, sin30°) = toward bottom concave
-// At θ=-15°: reflected beam goes (cos-30°, sin-30°) = toward top concave
-function mirrorNormal(angle) {
-    return v(Math.cos(angle), Math.sin(angle));
+// ── Physical constants ───────────────────────────────
+const REAL_DIST_M = 4;
+const C_LIGHT = 3e8;
+const SLOW_FACTOR = 50000000;
+const C_SIM_M = C_LIGHT / SLOW_FACTOR;
+const N_WATER = 1.333;
+
+// ── Layout (scaled by S=0.8) ─────────────────────────
+const MIRROR_X = 90 * S, MIRROR_CY = 225 * S;
+const DIAG_ANGLE = 25 * DEG;
+const DIAG_DIST = 306 * S;
+
+const CONCAVE = {
+    x: MIRROR_X + DIAG_DIST * Math.cos(DIAG_ANGLE),
+    y: MIRROR_CY - DIAG_DIST * Math.sin(DIAG_ANGLE)
+};
+const SRC = {
+    x: MIRROR_X + DIAG_DIST * Math.cos(DIAG_ANGLE),
+    y: MIRROR_CY + DIAG_DIST * Math.sin(DIAG_ANGLE)
+};
+
+const M_PER_PX = REAL_DIST_M / DIAG_DIST;
+const SIM_SPEED = C_SIM_M / M_PER_PX;
+const SIM_SPEED_WATER = SIM_SPEED / N_WATER;
+
+const CONCAVE_ACCEPT = 20 * DEG;
+const FLAT_MIRROR_LEN = 54 * S;
+
+const DIR_RS = vnorm(vsub(SRC, v(MIRROR_X, MIRROR_CY)));
+const SCREEN_DIR = v(-DIR_RS.y, DIR_RS.x);
+const SCREEN_HALF = 99 * S;
+const HOLE_HALF = 5.4 * S;
+
+// ── Water tube (water mode only) ─────────────────────
+const TUBE_LENGTH_PX = 3 / M_PER_PX;
+const TUBE_WIDTH_PX = 1 / M_PER_PX;
+const R_PT = v(MIRROR_X, MIRROR_CY);
+function makeArmTube(armEnd) {
+    const center = vsc(vadd(R_PT, armEnd), 0.5);
+    const dir = vnorm(vsub(armEnd, R_PT));
+    return {x: center.x, y: center.y, angle: Math.atan2(dir.y, dir.x)};
 }
+const UPPER_TUBE = makeArmTube(CONCAVE);
+let waterUpper = false;
+
+// ── Zoom/pan state (water mode only) ─────────────────
+let zoom = 1, panX = 0, panY = 0;
+let panDragging = false, panStartX = 0, panStartY = 0, panStartPX = 0, panStartPY = 0;
+
+// ── Simulation state ─────────────────────────────────
+let discreteAngleDeg = 0, fineAngleDeg = 0;
+let speedSign = 1, digits = [0, 0, 0];
+let photons = [], simTime = 0, photonAccum = 0, prevTS = null;
+let paused = false;
+let screenGlow = 0, screenGlowPos = null;
+const SCREEN_GLOW_DUR = 0.25;
+const EYE_LINGER = 0.15;
+
+// ── Mirror helpers ───────────────────────────────────
+function mirrorNormal(angle) { return v(Math.cos(angle), Math.sin(angle)); }
 
 function getMirrorAngle(t) {
-    if (mode === 'rotate') {
-        return (discreteAngleDeg + fineAngleDeg) * DEG;
-    }
-    // Spin: d0.d1d2 × 10^5 rev/s (real), slowed by SLOW_FACTOR for sim
+    if (MODE === 'rotate') return (discreteAngleDeg + fineAngleDeg) * DEG;
     const revPerSec = speedSign * (digits[0]*100000 + digits[1]*10000 + digits[2]*1000);
     return (revPerSec / SLOW_FACTOR) * 2 * Math.PI * t;
 }
 
-function getOmega() {
-    if (mode === 'rotate') return 0;
-    return speedSign * (digits[0]*100000 + digits[1]*10000 + digits[2]*1000) / SLOW_FACTOR * 2 * Math.PI;
-}
-
-// ── Concave mirror hit test ──────────────────────────
-// Returns {pt, which} or null
-function checkConcaveHit(origin, dir) {
-    const dirToTop = vnorm(vsub(CONCAVE_TOP, origin));
-    const dirToBot = vnorm(vsub(CONCAVE_BOT, origin));
-    const dotTop = vdot(dir, dirToTop);
-    const dotBot = vdot(dir, dirToBot);
-    const cosAccept = Math.cos(CONCAVE_ACCEPT);
-
-    if (dotTop > cosAccept && dotBot > cosAccept) {
-        // Both match; pick closer angle
-        if (dotTop > dotBot)
-            return {pt: vadd(origin, vsc(dir, DIAG_DIST)), which:'top'};
-        else
-            return {pt: vadd(origin, vsc(dir, DIAG_DIST)), which:'bot'};
-    }
-    if (dotTop > cosAccept)
-        return {pt: vadd(origin, vsc(dir, DIAG_DIST)), which:'top'};
-    if (dotBot > cosAccept)
-        return {pt: vadd(origin, vsc(dir, DIAG_DIST)), which:'bot'};
-    return null;
-}
-
+// ── Edge helper ──────────────────────────────────────
 function toEdge(o, d) {
     let tm = 1e9;
     if (d.x > 1e-10) tm = Math.min(tm, (W-o.x)/d.x);
@@ -316,94 +234,158 @@ function toEdge(o, d) {
     return vadd(o, vsc(d, Math.max(Math.min(tm, 2000), 1)));
 }
 
+// ── Water tube intersection (water mode) ─────────────
+function tubeIntersections(origin, dir, tube) {
+    const cosA = Math.cos(-tube.angle), sinA = Math.sin(-tube.angle);
+    const dx = origin.x - tube.x, dy = origin.y - tube.y;
+    const lox = dx*cosA - dy*sinA, loy = dx*sinA + dy*cosA;
+    const ldx = dir.x*cosA - dir.y*sinA, ldy = dir.x*sinA + dir.y*cosA;
+    const halfL = TUBE_LENGTH_PX/2, halfW = TUBE_WIDTH_PX/2;
+    let tmin = 0, tmax = 1e9;
+    if (Math.abs(ldx) < 1e-12) {
+        if (lox < -halfL || lox > halfL) return [];
+    } else {
+        let t1 = (-halfL-lox)/ldx, t2 = (halfL-lox)/ldx;
+        if (t1>t2){const tmp=t1;t1=t2;t2=tmp;}
+        tmin=Math.max(tmin,t1); tmax=Math.min(tmax,t2);
+    }
+    if (Math.abs(ldy) < 1e-12) {
+        if (loy < -halfW || loy > halfW) return [];
+    } else {
+        let t1 = (-halfW-loy)/ldy, t2 = (halfW-loy)/ldy;
+        if (t1>t2){const tmp=t1;t1=t2;t2=tmp;}
+        tmin=Math.max(tmin,t1); tmax=Math.min(tmax,t2);
+    }
+    if (tmin >= tmax - 1e-9 || tmax < 1e-9) return [];
+    return [Math.max(0,tmin), tmax];
+}
+
+function splitSegForWater(seg) {
+    if (!waterUpper) return [seg];
+    const dir = vsub(seg.e, seg.s);
+    const len = vlen(dir);
+    if (len < 1e-9) return [seg];
+    const d = vnorm(dir);
+    const h = tubeIntersections(seg.s, d, UPPER_TUBE);
+    let intervals = [];
+    if (h.length === 2) intervals.push([Math.max(0,h[0]), Math.min(len,h[1])]);
+    intervals = intervals.filter(([a,b]) => b-a > 0.5);
+    if (!intervals.length) return [seg];
+    intervals.sort((a,b) => a[0]-b[0]);
+    const merged = [intervals[0].slice()];
+    for (let i=1;i<intervals.length;i++){
+        const last=merged[merged.length-1];
+        if (intervals[i][0]<=last[1]+0.5) last[1]=Math.max(last[1],intervals[i][1]);
+        else merged.push(intervals[i].slice());
+    }
+    const result = [];
+    let cursor = 0;
+    for (const [a,b] of merged) {
+        if (a-cursor > 0.5)
+            result.push({s:vadd(seg.s,vsc(d,cursor)), e:vadd(seg.s,vsc(d,a)), dur:(a-cursor)/SIM_SPEED, screen:false});
+        result.push({s:vadd(seg.s,vsc(d,a)), e:vadd(seg.s,vsc(d,b)), dur:(b-a)/SIM_SPEED_WATER, water:true, screen:false});
+        cursor = b;
+    }
+    if (len-cursor > 0.5)
+        result.push({s:vadd(seg.s,vsc(d,cursor)), e:seg.e, dur:(len-cursor)/SIM_SPEED, screen:seg.screen||false});
+    else if (seg.screen && result.length) result[result.length-1].screen = true;
+    return result;
+}
+
+function segDur(segs) { let t=0; for (const s of segs) t+=s.dur; return t; }
+
 // ── Path computation ─────────────────────────────────
-function computePath(spawn) {
+const LEG1_DUR = DIAG_DIST / SIM_SPEED;
+
+// Shared: compute legs 2–4 starting from flat mirror.
+// Does NOT split for water (used by rotate/spin).
+function computePostMirror(angle0, angleR) {
     const segs = [];
-    const mirrorCenter = v(MIRROR_X, MIRROR_CY);
-    const angle0 = getMirrorAngle(spawn);
-
-    // Leg 1: Source → half-silvered mirror (passes through)
-    const hsPos = v(HALFSIL_X, HALFSIL_Y);
-    const leg1Dist = SOURCE_X - HALFSIL_X;
-    segs.push({s: v(SOURCE_X, SOURCE_Y), e: hsPos, dur: leg1Dist / SIM_SPEED});
-
-    // Leg 2: Half-silvered mirror → flat mirror center
-    const leg2Dist = HALFSIL_X - MIRROR_X;
-    segs.push({s: hsPos, e: mirrorCenter, dur: leg2Dist / SIM_SPEED});
-
-    // Reflection at flat mirror (outgoing)
+    const R = v(MIRROR_X, MIRROR_CY);
     let n0 = mirrorNormal(angle0);
-    const inDir = v(-1, 0);
-    // Double-sided mirror: flip normal if it faces away from incoming beam
-    if (vdot(inDir, n0) > 0) n0 = vsc(n0, -1);
+    const inDir = vnorm(vsub(R, SRC));
+    if (vdot(inDir,n0) > 0) n0 = vsc(n0,-1);
     const r1 = vrefl(inDir, n0);
-
-    // Check if reflected beam hits a concave mirror
-    const cHit = checkConcaveHit(mirrorCenter, r1);
-    if (!cHit) {
-        const edge = toEdge(mirrorCenter, r1);
-        segs.push({s: mirrorCenter, e: edge, dur: vlen(vsub(edge, mirrorCenter)) / SIM_SPEED});
+    const dirToM = vnorm(vsub(CONCAVE, R));
+    if (vdot(r1,dirToM) < Math.cos(CONCAVE_ACCEPT)) {
+        const edge = toEdge(R, r1);
+        segs.push({s:R, e:edge, dur:vlen(vsub(edge,R))/SIM_SPEED});
         return segs;
     }
-
-    // Leg 3: Flat mirror → concave mirror
-    const leg3Dur = DIAG_DIST / SIM_SPEED;
-    segs.push({s: mirrorCenter, e: cHit.pt, dur: leg3Dur});
-
-    // Concave mirror reflects back toward flat mirror center
-    const returnDir = vnorm(vsub(mirrorCenter, cHit.pt));
-    const leg4Dur = DIAG_DIST / SIM_SPEED;
-
-    // Leg 4: Concave mirror → flat mirror center
-    segs.push({s: cHit.pt, e: mirrorCenter, dur: leg4Dur});
-
-    // Mirror angle at return time
-    const timeAtReturn = spawn + segs.reduce((s,seg) => s+seg.dur, 0);
-    const angleR = getMirrorAngle(timeAtReturn);
+    const hitM = vadd(R, vsc(r1, DIAG_DIST));
+    segs.push({s:R, e:hitM, dur:DIAG_DIST/SIM_SPEED});
+    const returnDir = vsc(r1,-1);
+    segs.push({s:hitM, e:R, dur:DIAG_DIST/SIM_SPEED});
     let nR = mirrorNormal(angleR);
-
-    // Double-sided mirror: flip normal if it faces away from return beam
-    if (vdot(returnDir, nR) > 0) nR = vsc(nR, -1);
+    if (vdot(returnDir,nR) > 0) nR = vsc(nR,-1);
     const r3 = vrefl(returnDir, nR);
-
-    // Leg 5: Flat mirror → beam splitter (only if beam actually hits the BS segment)
-    // BS is a 45° line segment: y = x + (HALFSIL_Y - HALFSIL_X), centered at (HALFSIL_X, HALFSIL_Y)
-    // Ray-line intersection: solve for t where ray hits the BS line
-    const bsDenom = r3.x - r3.y;
-    const bsHalfExt = BS_HALF_LEN * Math.SQRT1_2 + 3; // segment half-extent in x, with tolerance
-    let bsHitPt = null, bsDist = 0;
-    if (Math.abs(bsDenom) > 1e-6) {
-        const bsT = (MIRROR_CY - MIRROR_X + HALFSIL_X - HALFSIL_Y) / bsDenom;
-        if (bsT > 0) {
-            const hx = MIRROR_X + r3.x * bsT;
-            if (Math.abs(hx - HALFSIL_X) <= bsHalfExt) {
-                bsHitPt = v(hx, MIRROR_CY + r3.y * bsT);
-                bsDist = bsT;
-            }
-        }
-    }
-
-    if (bsHitPt) {
-        segs.push({s: mirrorCenter, e: bsHitPt, dur: bsDist / SIM_SPEED});
-
-        const hsN = vnorm(v(1, -1));  // normal of 45° mirror
-        const r4 = vrefl(r3, hsN);
-
-        if (r4.y > 0.05) {
-            // Beam goes downward toward screen
-            const tToScreen = (SCREEN_Y - bsHitPt.y) / r4.y;
-            const xAtScreen = bsHitPt.x + r4.x * tToScreen;
-            const screenPt = v(xAtScreen, SCREEN_Y);
-            segs.push({s: bsHitPt, e: screenPt, dur: tToScreen / SIM_SPEED, screen: segs.length >= 6});
+    const drs = vdot(r3, DIR_RS);
+    if (drs > 0.01) {
+        const t = DIAG_DIST/drs;
+        const hitPt = vadd(R, vsc(r3, t));
+        const offset = vdot(vsub(hitPt,SRC), SCREEN_DIR);
+        if (Math.abs(offset) <= SCREEN_HALF) {
+            segs.push({s:R, e:hitPt, dur:t/SIM_SPEED, screen:Math.abs(offset)>HOLE_HALF && segs.length>=2});
         } else {
-            const edge = toEdge(bsHitPt, r4);
-            segs.push({s: bsHitPt, e: edge, dur: vlen(vsub(edge, bsHitPt)) / SIM_SPEED});
+            const edge = toEdge(R, r3);
+            segs.push({s:R, e:edge, dur:vlen(vsub(edge,R))/SIM_SPEED});
         }
     } else {
-        const edge = toEdge(mirrorCenter, r3);
-        segs.push({s: mirrorCenter, e: edge, dur: vlen(vsub(edge, mirrorCenter)) / SIM_SPEED});
+        const edge = toEdge(R, r3);
+        segs.push({s:R, e:edge, dur:vlen(vsub(edge,R))/SIM_SPEED});
     }
     return segs;
+}
+
+function computePath(spawn) {
+    const angle0 = getMirrorAngle(spawn);
+    if (MODE === 'water') {
+        // Water mode: split each leg for the tube
+        const R = v(MIRROR_X, MIRROR_CY);
+        const leg1Split = splitSegForWater({s:v(SRC.x,SRC.y), e:R, dur:DIAG_DIST/SIM_SPEED});
+        const leg1Dur = segDur(leg1Split);
+        let n0 = mirrorNormal(angle0);
+        const inDir = vnorm(vsub(R, SRC));
+        if (vdot(inDir,n0) > 0) n0 = vsc(n0,-1);
+        const r1 = vrefl(inDir, n0);
+        const dirToM = vnorm(vsub(CONCAVE, R));
+        if (vdot(r1,dirToM) < Math.cos(CONCAVE_ACCEPT)) {
+            const edge = toEdge(R, r1);
+            return [...leg1Split, ...splitSegForWater({s:R, e:edge, dur:vlen(vsub(edge,R))/SIM_SPEED})];
+        }
+        const hitM = vadd(R, vsc(r1, DIAG_DIST));
+        const leg2Split = splitSegForWater({s:R, e:hitM, dur:DIAG_DIST/SIM_SPEED});
+        const leg3Split = splitSegForWater({s:hitM, e:R, dur:DIAG_DIST/SIM_SPEED});
+        const timeAtReturn = spawn + leg1Dur + segDur(leg2Split) + segDur(leg3Split);
+        const angleR = getMirrorAngle(timeAtReturn);
+        const returnDir = vsc(r1,-1);
+        let nR = mirrorNormal(angleR);
+        if (vdot(returnDir,nR) > 0) nR = vsc(nR,-1);
+        const r3 = vrefl(returnDir, nR);
+        let leg4Split;
+        const drs = vdot(r3, DIR_RS);
+        if (drs > 0.01) {
+            const t = DIAG_DIST/drs;
+            const hitPt = vadd(R, vsc(r3, t));
+            const offset = vdot(vsub(hitPt,SRC), SCREEN_DIR);
+            if (Math.abs(offset) <= SCREEN_HALF) {
+                leg4Split = splitSegForWater({s:R, e:hitPt, dur:t/SIM_SPEED, screen:Math.abs(offset)>HOLE_HALF});
+            } else {
+                const edge = toEdge(R, r3);
+                leg4Split = splitSegForWater({s:R, e:edge, dur:vlen(vsub(edge,R))/SIM_SPEED});
+            }
+        } else {
+            const edge = toEdge(R, r3);
+            leg4Split = splitSegForWater({s:R, e:edge, dur:vlen(vsub(edge,R))/SIM_SPEED});
+        }
+        return [...leg1Split, ...leg2Split, ...leg3Split, ...leg4Split];
+    } else {
+        // Rotate / spin: no water splitting
+        const timeAtReturn = spawn + LEG1_DUR * 3;
+        const angleR = getMirrorAngle(timeAtReturn);
+        const leg1 = {s:v(SRC.x,SRC.y), e:v(MIRROR_X,MIRROR_CY), dur:LEG1_DUR};
+        return [leg1, ...computePostMirror(angle0, angleR)];
+    }
 }
 
 // ── Photon tracking ──────────────────────────────────
@@ -411,15 +393,14 @@ function pPos(p, now) {
     let el = now - p.t0;
     for (const seg of p.segs) {
         if (el <= seg.dur + 0.0003) {
-            const f = Math.max(0, Math.min(1, seg.dur > 0 ? el / seg.dur : 1));
+            const f = Math.max(0, Math.min(1, seg.dur > 0 ? el/seg.dur : 1));
             return {x:seg.s.x+f*(seg.e.x-seg.s.x), y:seg.s.y+f*(seg.e.y-seg.s.y), ok:true};
         }
         el -= seg.dur;
     }
     if (hitsScreen(p)) {
-        const last = p.segs[p.segs.length - 1];
-        const overAge = now - p.t0 - tDur(p);
-        if (overAge < EYE_LINGER) return {x:last.e.x, y:last.e.y, ok:true};
+        const last = p.segs[p.segs.length-1];
+        if (now - p.t0 - tDur(p) < EYE_LINGER) return {x:last.e.x, y:last.e.y, ok:true};
     }
     return {ok:false};
 }
@@ -428,396 +409,468 @@ function hitsScreen(p) { return p.segs.length>0 && p.segs[p.segs.length-1].scree
 
 // ── Drawing ──────────────────────────────────────────
 function drawFlatMirror(angle) {
-    const halfLen = FLAT_MIRROR_LEN / 2;
+    const halfLen = FLAT_MIRROR_LEN/2;
     ctx.save();
     ctx.translate(MIRROR_X, MIRROR_CY);
     ctx.rotate(angle);
-    // Mirror body
-    ctx.fillStyle = '#b0b8c8';
-    ctx.fillRect(-3, -halfLen, 6, FLAT_MIRROR_LEN);
-    ctx.strokeStyle = '#d0d8e0';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-3, -halfLen, 6, FLAT_MIRROR_LEN);
-    // Both sides reflective
-    ctx.strokeStyle = '#e0e8f0';
-    ctx.lineWidth = 2;
-    ctx.beginPath();
-    ctx.moveTo(3, -halfLen); ctx.lineTo(3, halfLen);
-    ctx.moveTo(-3, -halfLen); ctx.lineTo(-3, halfLen);
-    ctx.stroke();
+    const gw = 3.6*S;
+    const g = ctx.createLinearGradient(-gw,0,gw,0);
+    g.addColorStop(0,'#e8eef6'); g.addColorStop(0.25,'#b0b8c8');
+    g.addColorStop(0.5,'#8890a0'); g.addColorStop(0.75,'#b0b8c8');
+    g.addColorStop(1,'#e8eef6');
+    ctx.fillStyle = g;
+    ctx.fillRect(-gw,-halfLen,gw*2,FLAT_MIRROR_LEN);
+    ctx.strokeStyle='#d0d8e0'; ctx.lineWidth=1;
+    ctx.strokeRect(-gw,-halfLen,gw*2,FLAT_MIRROR_LEN);
     ctx.restore();
 }
 
-function drawConcaveMirror(pos, color, highlight) {
-    // Arc of circle centered at flat mirror, at distance DIAG_DIST
-    const dx = pos.x - MIRROR_X, dy = pos.y - MIRROR_CY;
-    const centerAngle = Math.atan2(dy, dx);
-    const arcExtent = 12 * DEG;
+function drawConcaveMirror() {
+    const dx=CONCAVE.x-MIRROR_X, dy=CONCAVE.y-MIRROR_CY;
+    const centerAngle = Math.atan2(dy,dx);
     ctx.beginPath();
-    ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST, centerAngle - arcExtent, centerAngle + arcExtent);
-    ctx.strokeStyle = color || '#b0b8c8';
-    ctx.lineWidth = 4;
-    ctx.stroke();
-    // Reflective highlight
+    ctx.arc(MIRROR_X,MIRROR_CY,DIAG_DIST,centerAngle-CONCAVE_ACCEPT,centerAngle+CONCAVE_ACCEPT);
+    ctx.strokeStyle='#b0b8c8'; ctx.lineWidth=4.5*S; ctx.stroke();
     ctx.beginPath();
-    ctx.arc(MIRROR_X, MIRROR_CY, DIAG_DIST + 2, centerAngle - arcExtent * 0.7, centerAngle + arcExtent * 0.7);
-    ctx.strokeStyle = highlight || '#d0d8e0';
-    ctx.lineWidth = 1;
-    ctx.stroke();
-}
-
-function drawHalfSilveredMirror() {
-    const halfLen = BS_HALF_LEN;
-    ctx.save();
-    ctx.translate(HALFSIL_X, HALFSIL_Y);
-    ctx.rotate(-45 * DEG);
-    ctx.fillStyle = 'rgba(160,180,200,0.4)';
-    ctx.fillRect(-2, -halfLen, 4, halfLen * 2);
-    ctx.strokeStyle = 'rgba(200,210,220,0.6)';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(-2, -halfLen, 4, halfLen * 2);
-    ctx.setLineDash([3, 3]);
-    ctx.strokeStyle = 'rgba(180,200,220,0.5)';
-    ctx.beginPath();
-    ctx.moveTo(0, -halfLen); ctx.lineTo(0, halfLen);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    ctx.restore();
+    ctx.arc(MIRROR_X,MIRROR_CY,DIAG_DIST+1.8*S,centerAngle-CONCAVE_ACCEPT*0.7,centerAngle+CONCAVE_ACCEPT*0.7);
+    ctx.strokeStyle='#d0d8e0'; ctx.lineWidth=1; ctx.stroke();
 }
 
 function drawScreen() {
-    const halfW = SCREEN_W / 2;
-    ctx.fillStyle = 'rgba(60,60,80,0.8)';
-    ctx.fillRect(SCREEN_X - halfW, SCREEN_Y, SCREEN_W, 6);
-    ctx.strokeStyle = '#778899';
-    ctx.lineWidth = 1;
-    ctx.strokeRect(SCREEN_X - halfW, SCREEN_Y, SCREEN_W, 6);
-    if (screenGlow > 0.01) {
-        const gf = screenGlow / SCREEN_GLOW_DUR;
-        const g = ctx.createRadialGradient(SCREEN_X, SCREEN_Y, 0, SCREEN_X, SCREEN_Y, 25);
-        g.addColorStop(0, `rgba(255,253,220,${0.6*gf})`);
-        g.addColorStop(0.5, `rgba(255,240,180,${0.2*gf})`);
-        g.addColorStop(1, 'rgba(255,240,180,0)');
-        ctx.fillStyle = g;
-        ctx.fillRect(SCREEN_X - 30, SCREEN_Y - 25, 60, 30);
+    const s1a=vadd(SRC,vsc(SCREEN_DIR,-SCREEN_HALF)), s1b=vadd(SRC,vsc(SCREEN_DIR,-HOLE_HALF));
+    const s2a=vadd(SRC,vsc(SCREEN_DIR,HOLE_HALF)),   s2b=vadd(SRC,vsc(SCREEN_DIR,SCREEN_HALF));
+    ctx.strokeStyle='#778899'; ctx.lineWidth=3.6*S;
+    ctx.beginPath(); ctx.moveTo(s1a.x,s1a.y); ctx.lineTo(s1b.x,s1b.y); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(s2a.x,s2a.y); ctx.lineTo(s2b.x,s2b.y); ctx.stroke();
+    if (screenGlow > 0.01 && screenGlowPos) {
+        const gf = screenGlow/SCREEN_GLOW_DUR, gr = 22.5*S;
+        const g = ctx.createRadialGradient(screenGlowPos.x,screenGlowPos.y,0,screenGlowPos.x,screenGlowPos.y,gr);
+        g.addColorStop(0,`rgba(255,253,220,${0.6*gf})`);
+        g.addColorStop(0.5,`rgba(255,240,180,${0.2*gf})`);
+        g.addColorStop(1,'rgba(255,240,180,0)');
+        ctx.fillStyle=g; const gd=27*S;
+        ctx.fillRect(screenGlowPos.x-gd,screenGlowPos.y-gd,gd*2,gd*2);
     }
 }
 
+function drawRuler() {
+    const screenAngle = Math.atan2(SCREEN_DIR.y,SCREEN_DIR.x);
+    ctx.save();
+    const pxPer1cm = 0.01/M_PER_PX, pxPer10cm = 0.1/M_PER_PX;
+    const showCmTicks = MODE==='water' && zoom >= 3;
+    const step = showCmTicks ? pxPer1cm : pxPer10cm;
+    const maxSteps = Math.floor(SCREEN_HALF/step);
+    for (let i=-maxSteps; i<=maxSteps; i++) {
+        if (i===0) continue;
+        const offsetPx = i*step;
+        if (Math.abs(offsetPx) < HOLE_HALF+1) continue;
+        const pos = vadd(SRC, vsc(SCREEN_DIR,offsetPx));
+        const absCm = showCmTicks ? Math.abs(i) : Math.abs(i)*10;
+        const tickLen = absCm%100===0 ? 7*S : absCm%50===0 ? 5*S : absCm%10===0 ? 3*S : 1.5*S;
+        ctx.beginPath();
+        ctx.moveTo(pos.x,pos.y);
+        ctx.lineTo(pos.x+DIR_RS.x*tickLen, pos.y+DIR_RS.y*tickLen);
+        ctx.strokeStyle = absCm%50===0 ? 'rgba(150,170,190,0.75)' : absCm%10===0 ? 'rgba(120,140,160,0.45)' : 'rgba(120,140,160,0.25)';
+        ctx.lineWidth = absCm%100===0 ? 1.2 : 0.7;
+        ctx.stroke();
+        if (absCm%50===0) {
+            const labelPos = vadd(pos, vsc(DIR_RS,tickLen+6*S));
+            ctx.save();
+            ctx.translate(labelPos.x,labelPos.y); ctx.rotate(screenAngle);
+            ctx.font=`${7*S}px Arial,sans-serif`; ctx.fillStyle='rgba(150,170,190,0.7)';
+            ctx.textAlign='center'; ctx.textBaseline='middle';
+            const labelM = absCm/100;
+            ctx.fillText(Number.isInteger(labelM) ? labelM : labelM.toFixed(1), 0, 0);
+            ctx.restore();
+        }
+    }
+    const labelEndPos = vadd(vadd(SRC,vsc(SCREEN_DIR,-SCREEN_HALF-2*S)), vsc(DIR_RS,10*S));
+    ctx.save();
+    ctx.translate(labelEndPos.x,labelEndPos.y); ctx.rotate(screenAngle);
+    ctx.font=`${7*S}px Arial,sans-serif`; ctx.fillStyle='rgba(150,170,190,0.55)';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('m',0,0);
+    ctx.restore();
+    ctx.restore();
+}
+
+function drawTube(tube) {
+    ctx.save();
+    ctx.translate(tube.x,tube.y); ctx.rotate(tube.angle);
+    const halfL=TUBE_LENGTH_PX/2, halfW=TUBE_WIDTH_PX/2;
+    ctx.fillStyle='rgba(50,130,200,0.18)';
+    ctx.fillRect(-halfL,-halfW,TUBE_LENGTH_PX,TUBE_WIDTH_PX);
+    ctx.strokeStyle='rgba(140,190,230,0.6)'; ctx.lineWidth=1.5;
+    ctx.strokeRect(-halfL,-halfW,TUBE_LENGTH_PX,TUBE_WIDTH_PX);
+    ctx.strokeStyle='rgba(80,160,220,0.12)'; ctx.lineWidth=0.7;
+    for (let i=-2;i<=2;i++){
+        const yy=i*(TUBE_WIDTH_PX/6);
+        ctx.beginPath(); ctx.moveTo(-halfL+2,yy); ctx.lineTo(halfL-2,yy); ctx.stroke();
+    }
+    ctx.font=`${10*S}px Arial,sans-serif`; ctx.fillStyle='rgba(140,200,240,0.7)';
+    ctx.textAlign='center'; ctx.textBaseline='middle';
+    ctx.fillText('water',0,0);
+    ctx.restore();
+}
+
 function drawSource() {
-    const x = SOURCE_X, y = SOURCE_Y;
-    const g = ctx.createRadialGradient(x,y,2,x,y,14);
+    const x=SRC.x, y=SRC.y;
+    const g=ctx.createRadialGradient(x,y,1.8*S,x,y,12.6*S);
     g.addColorStop(0,'rgba(255,230,150,0.9)');
     g.addColorStop(0.5,'rgba(255,200,80,0.3)');
     g.addColorStop(1,'rgba(255,200,80,0)');
-    ctx.fillStyle = g; ctx.fillRect(x-16,y-16,32,32);
-    ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2);
+    ctx.fillStyle=g; const r3=14.4*S;
+    ctx.fillRect(x-r3,y-r3,r3*2,r3*2);
+    ctx.beginPath(); ctx.arc(x,y,4.5*S,0,Math.PI*2);
     ctx.fillStyle='#ffe090'; ctx.fill();
 }
 
 function drawBeamGuides() {
     ctx.save();
-    ctx.setLineDash([4, 6]);
-    ctx.strokeStyle = 'rgba(100,160,220,0.3)';
-    ctx.lineWidth = 1;
-    // Horizontal: source → flat mirror
-    ctx.beginPath();
-    ctx.moveTo(SOURCE_X, SOURCE_Y);
-    ctx.lineTo(MIRROR_X, MIRROR_CY);
-    ctx.stroke();
-    // Diagonals: flat mirror → concave mirrors
-    ctx.beginPath();
-    ctx.moveTo(MIRROR_X, MIRROR_CY);
-    ctx.lineTo(CONCAVE_TOP.x, CONCAVE_TOP.y);
-    ctx.stroke();
-    ctx.beginPath();
-    ctx.moveTo(MIRROR_X, MIRROR_CY);
-    ctx.lineTo(CONCAVE_BOT.x, CONCAVE_BOT.y);
-    ctx.stroke();
-    // Vertical: beam splitter → screen
-    ctx.beginPath();
-    ctx.moveTo(HALFSIL_X, HALFSIL_Y);
-    ctx.lineTo(SCREEN_X, SCREEN_Y);
-    ctx.stroke();
+    ctx.setLineDash([3.6*S,5.4*S]);
+    ctx.strokeStyle='rgba(100,160,220,0.3)'; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(SRC.x,SRC.y); ctx.lineTo(MIRROR_X,MIRROR_CY); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(MIRROR_X,MIRROR_CY); ctx.lineTo(CONCAVE.x,CONCAVE.y); ctx.stroke();
     ctx.setLineDash([]);
     ctx.restore();
 }
 
 function drawLabels() {
-    ctx.font = 'bold 12px Arial,sans-serif';
-    ctx.fillStyle = '#778899';
-    ctx.textAlign = 'center';
-    ctx.fillText('Rotating mirror', MIRROR_X, MIRROR_CY + FLAT_MIRROR_LEN/2 + 20);
-    ctx.fillText('Light source', SOURCE_X, SOURCE_Y + 20);
-
-    ctx.font = 'bold 11px Arial,sans-serif';
-    ctx.fillText('Concave', CONCAVE_TOP.x + 40, CONCAVE_TOP.y - 8);
-    ctx.fillText('mirror', CONCAVE_TOP.x + 40, CONCAVE_TOP.y + 5);
-    ctx.fillText('Concave', CONCAVE_BOT.x + 40, CONCAVE_BOT.y - 2);
-    ctx.fillText('mirror', CONCAVE_BOT.x + 40, CONCAVE_BOT.y + 11);
-
-    ctx.font = 'bold 12px Arial,sans-serif';
-    ctx.fillText('Beam', HALFSIL_X, HALFSIL_Y - 26);
-    ctx.fillText('splitter', HALFSIL_X, HALFSIL_Y - 14);
-    ctx.fillText('Screen', SCREEN_X, SCREEN_Y + 22);
+    ctx.font=`bold ${11*S}px Arial,sans-serif`; ctx.fillStyle='#778899'; ctx.textAlign='center';
+    ctx.fillText('Rotating mirror',MIRROR_X,MIRROR_CY+FLAT_MIRROR_LEN/2+18*S);
+    ctx.font=`bold ${13*S}px Arial,sans-serif`; ctx.fillStyle='#99aabb';
+    ctx.fillText('R',MIRROR_X,MIRROR_CY+FLAT_MIRROR_LEN/2+31.5*S);
+    ctx.font=`bold ${10*S}px Arial,sans-serif`; ctx.fillStyle='#778899';
+    ctx.fillText('Fixed mirror',CONCAVE.x+36*S,CONCAVE.y-4.5*S);
+    ctx.font=`bold ${13*S}px Arial,sans-serif`; ctx.fillStyle='#99aabb';
+    ctx.fillText('M',CONCAVE.x+36*S,CONCAVE.y+9*S);
+    ctx.font=`bold ${11*S}px Arial,sans-serif`; ctx.fillStyle='#778899';
+    const lblOff=vadd(SRC,vsc(DIR_RS,16.2*S));
+    ctx.fillText('Source',lblOff.x,lblOff.y+4.5*S);
+    ctx.font=`bold ${13*S}px Arial,sans-serif`; ctx.fillStyle='#99aabb';
+    ctx.fillText('S',lblOff.x,lblOff.y+4.5*S+13.5*S);
+    ctx.font=`bold ${10*S}px Arial,sans-serif`; ctx.fillStyle='#778899';
+    const scrLbl=vadd(SRC,vsc(SCREEN_DIR,-SCREEN_HALF-4.5*S));
+    ctx.save();
+    ctx.translate(scrLbl.x,scrLbl.y);
+    ctx.rotate(Math.atan2(SCREEN_DIR.y,SCREEN_DIR.x)+Math.PI);
+    ctx.textAlign='left';
+    ctx.fillText('Screen',0,5.4*S);
+    ctx.restore();
 }
 
 function drawScaleBar() {
-    const barM = 1;
-    const barPx = barM / M_PER_PX;
-    const x0 = 180, y0 = H - 18;
-    ctx.strokeStyle = '#778899';
-    ctx.lineWidth = 2;
+    const barPx = 1/M_PER_PX;
+    const x0=162*S, y0=H-16*S;
+    ctx.strokeStyle='#778899'; ctx.lineWidth=1.8*S;
     ctx.beginPath();
-    ctx.moveTo(x0, y0 - 4); ctx.lineTo(x0, y0 + 4);
-    ctx.moveTo(x0, y0); ctx.lineTo(x0 + barPx, y0);
-    ctx.moveTo(x0 + barPx, y0 - 4); ctx.lineTo(x0 + barPx, y0 + 4);
+    ctx.moveTo(x0,y0-3.6*S); ctx.lineTo(x0,y0+3.6*S);
+    ctx.moveTo(x0,y0); ctx.lineTo(x0+barPx,y0);
+    ctx.moveTo(x0+barPx,y0-3.6*S); ctx.lineTo(x0+barPx,y0+3.6*S);
     ctx.stroke();
-    ctx.font = '11px Arial,sans-serif';
-    ctx.fillStyle = '#778899';
-    ctx.textAlign = 'center';
-    ctx.fillText(barM + ' m', x0 + barPx / 2, y0 - 7);
-    ctx.textAlign = 'right';
-    ctx.fillStyle = '#6a8899';
-    ctx.fillText('Slow-motion: 1/50,000,000', W - 10, y0);
+    ctx.font=`${10*S}px Arial,sans-serif`; ctx.fillStyle='#778899';
+    ctx.textAlign='center';
+    ctx.fillText('1 m',x0+barPx/2,y0-6.3*S);
+    ctx.textAlign='right'; ctx.fillStyle='#6a8899';
+    ctx.fillText('Slow-motion: 1/50,000,000',W-9*S,y0);
 }
 
 function drawPhotons(now) {
     for (const p of photons) {
         const pos = pPos(p, now);
         if (!pos.ok) continue;
-        ctx.beginPath(); ctx.arc(pos.x,pos.y,1.8,0,Math.PI*2);
-        ctx.fillStyle='#fffde0'; ctx.fill();
-        const g = ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,4);
-        g.addColorStop(0,'rgba(255,253,220,0.45)');
-        g.addColorStop(1,'rgba(255,253,220,0)');
-        ctx.fillStyle = g; ctx.fillRect(pos.x-5,pos.y-5,10,10);
+        const r=Math.min(255,Math.max(200,255+p.hu));
+        const g_=Math.min(255,Math.max(200,253+p.sa));
+        const b=Math.min(240,Math.max(180,220-p.hu));
+        const rad=1.6*S*p.sz;
+        ctx.beginPath(); ctx.arc(pos.x,pos.y,rad,0,Math.PI*2);
+        ctx.fillStyle=`rgb(${r},${g_},${b})`; ctx.fill();
+        const gr=3.6*S*p.sz;
+        const g=ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,gr);
+        g.addColorStop(0,`rgba(${r},${g_},${b},0.45)`);
+        g.addColorStop(1,`rgba(${r},${g_},${b},0)`);
+        const gd=4.5*S*p.sz;
+        ctx.fillStyle=g; ctx.fillRect(pos.x-gd,pos.y-gd,gd*2,gd*2);
     }
-}
-
-function drawArrow(ax, ay, color) {
-    // Small upward-pointing arrow: triangle head + thin stem, ~15px tall
-    ctx.fillStyle = color;
-    ctx.strokeStyle = color;
-    ctx.lineWidth = 2;
-    // Stem
-    ctx.beginPath();
-    ctx.moveTo(ax, ay);
-    ctx.lineTo(ax, ay + 10);
-    ctx.stroke();
-    // Triangle head (pointing up)
-    ctx.beginPath();
-    ctx.moveTo(ax, ay - 5);
-    ctx.lineTo(ax - 4, ay + 2);
-    ctx.lineTo(ax + 4, ay + 2);
-    ctx.closePath();
-    ctx.fill();
-}
-
-function drawMarkerArrows() {
-    drawArrow(greenArrow.x, greenArrow.y, '#4caf50');
-    drawArrow(redArrow.x, redArrow.y, '#e05050');
 }
 
 // ── Simulation loop ──────────────────────────────────
 function update(dt) {
     simTime += dt;
-    photonAccum += 2.5 * dt;
+    photonAccum += 2.5*dt;
     const nNew = Math.floor(photonAccum);
     photonAccum -= nNew;
-    for (let i = 0; i < nNew; i++) {
-        photons.push({t0: simTime, segs: computePath(simTime)});
+    for (let i=0; i<nNew; i++) {
+        const segs = computePath(simTime);
+        const sz = 0.7+Math.random()*0.6;
+        const hu = Math.floor(Math.random()*30)-10;
+        const sa = Math.floor(Math.random()*40)-15;
+        const ph = {t0:simTime, segs, sz, hu, sa};
+        if (MODE==='rotate') { ph.a1=getMirrorAngle(0); ph.a2=getMirrorAngle(0); }
+        photons.push(ph);
     }
+
+    if (MODE==='rotate') {
+        const curAngle = getMirrorAngle(0);
+        for (const p of photons) {
+            const age = simTime-p.t0;
+            if (age < LEG1_DUR && p.a1 !== curAngle) {
+                p.segs = [p.segs[0], ...computePostMirror(curAngle, curAngle)];
+                p.a1=curAngle; p.a2=curAngle;
+            } else if (age >= LEG1_DUR && age < LEG1_DUR*3 && p.a2 !== curAngle && p.segs.length >= 4) {
+                const r1Dir = vnorm(vsub(p.segs[1].e, p.segs[1].s));
+                const returnDir = vsc(r1Dir,-1);
+                let nR = mirrorNormal(curAngle);
+                if (vdot(returnDir,nR) > 0) nR = vsc(nR,-1);
+                const r3 = vrefl(returnDir, nR);
+                const R = v(MIRROR_X,MIRROR_CY), drs = vdot(r3,DIR_RS);
+                let leg4;
+                if (drs > 0.01) {
+                    const t=DIAG_DIST/drs, hitPt=vadd(R,vsc(r3,t));
+                    const offset=vdot(vsub(hitPt,SRC),SCREEN_DIR);
+                    if (Math.abs(offset)<=SCREEN_HALF) {
+                        leg4={s:R,e:hitPt,dur:t/SIM_SPEED,screen:Math.abs(offset)>HOLE_HALF};
+                    } else {
+                        const edge=toEdge(R,r3);
+                        leg4={s:R,e:edge,dur:vlen(vsub(edge,R))/SIM_SPEED};
+                    }
+                } else {
+                    const edge=toEdge(R,r3);
+                    leg4={s:R,e:edge,dur:vlen(vsub(edge,R))/SIM_SPEED};
+                }
+                p.segs=[p.segs[0],p.segs[1],p.segs[2],leg4];
+                p.a2=curAngle;
+            }
+        }
+    }
+
     const alive = [];
     for (const p of photons) {
-        const td = tDur(p), age = simTime - p.t0;
-        if (hitsScreen(p) && age >= td && age - dt < td) screenGlow = SCREEN_GLOW_DUR;
-        const keepFor = hitsScreen(p) ? td + EYE_LINGER : td + 0.05;
-        if (age < keepFor) alive.push(p);
+        const td=tDur(p), age=simTime-p.t0;
+        if (hitsScreen(p) && age>=td && age-dt<td) {
+            screenGlow=SCREEN_GLOW_DUR;
+            const last=p.segs[p.segs.length-1];
+            screenGlowPos={x:last.e.x, y:last.e.y};
+        }
+        if (age < (hitsScreen(p) ? td+EYE_LINGER : td+0.05)) alive.push(p);
     }
     photons = alive;
-    screenGlow = Math.max(0, screenGlow - dt);
+    screenGlow = Math.max(0, screenGlow-dt);
 }
 
 function draw() {
-    ctx.clearRect(0, 0, W, H);
-    const angle = mode === 'rotate' ? getMirrorAngle(0) : getMirrorAngle(simTime);
+    ctx.save();
+    ctx.setTransform(1,0,0,1,0,0);
+    ctx.clearRect(0,0,canvas.width,canvas.height);
+    ctx.setTransform(dpr,0,0,dpr,0,0);
+    if (MODE==='water') { ctx.translate(panX,panY); ctx.scale(zoom,zoom); }
+    const angle = MODE==='rotate' ? getMirrorAngle(0) : getMirrorAngle(simTime);
     drawBeamGuides();
+    if (MODE==='water' && waterUpper) drawTube(UPPER_TUBE);
     drawFlatMirror(angle);
-    drawConcaveMirror(CONCAVE_TOP, '#4caf50', '#66cc6a');
-    drawConcaveMirror(CONCAVE_BOT, '#e05050', '#f06060');
-    drawHalfSilveredMirror();
+    drawConcaveMirror();
     drawScreen();
+    if (MODE!=='rotate') drawRuler();
     drawSource();
     drawPhotons(simTime);
     drawLabels();
     drawScaleBar();
-    drawMarkerArrows();
+    ctx.restore();
 }
 
-function loop() {
-    const now = performance.now();
-    if (prevTS === null) prevTS = now;
-    const dt = Math.min((now - prevTS) / 1000, 0.05);
-    prevTS = now;
-    if (!paused) update(dt);
-    draw();
-    setTimeout(loop, 16);
+function loop(ts) {
+    if (prevTS===null) prevTS=ts;
+    const dt = Math.min((ts-prevTS)/1000, 0.05);
+    prevTS = ts;
+    if (dt > 0) { if (!paused) update(dt); draw(); }
+    requestAnimationFrame(loop);
 }
 
-// ── Controls ─────────────────────────────────────────
+// ── Controls setup ───────────────────────────────────
 function resetSim() {
-    simTime = 0; photons = []; screenGlow = 0;
-    photonAccum = 0; prevTS = null;
+    simTime=0; photons=[]; screenGlow=0;
+    screenGlowPos=null; photonAccum=0; prevTS=null;
 }
-function setMode(m) {
-    mode = m;
-    document.getElementById('tabRotate').classList.toggle('active', m === 'rotate');
-    document.getElementById('tabSpin').classList.toggle('active', m === 'spin');
-    document.getElementById('rotCtrl').style.display = m === 'rotate' ? 'flex' : 'none';
-    document.getElementById('speedCtrl').style.display = m === 'spin' ? 'flex' : 'none';
-    document.getElementById('speedLbl').style.display = m === 'spin' ? 'block' : 'none';
-    resetSim();
-}
-document.getElementById('tabRotate').addEventListener('click', () => setMode('rotate'));
-document.getElementById('tabSpin').addEventListener('click', () => setMode('spin'));
 
-// Rotate controls
-const rotSlider = document.getElementById('rotSlider');
-const rotValEl = document.getElementById('rotVal');
-function updateRotDisplay() {
-    const total = discreteAngleDeg + fineAngleDeg;
-    rotValEl.innerHTML = total.toFixed(1) + '&deg;';
-}
-function recomputePhotonPaths() {
-    for (const p of photons) {
-        p.segs = computePath(p.t0);
+const ctrlW = 170;
+const ctrlLeft = Math.max(4, MIRROR_X - ctrlW/2);
+
+if (MODE==='rotate') {
+    const rotCtrl=document.getElementById('rotCtrl');
+    rotCtrl.style.display='flex';
+    rotCtrl.style.left=ctrlLeft+'px';
+    rotCtrl.style.top=(MIRROR_CY-FLAT_MIRROR_LEN/2-42)+'px';
+} else {
+    const speedCtrl=document.getElementById('speedCtrl');
+    const speedLbl=document.getElementById('speedLbl');
+    speedCtrl.style.display='flex';
+    speedLbl.style.display='block';
+    speedLbl.style.left=ctrlLeft+'px';
+    speedLbl.style.top=(MIRROR_CY-FLAT_MIRROR_LEN/2-50)+'px';
+    speedCtrl.style.left=ctrlLeft+'px';
+    speedCtrl.style.top=(MIRROR_CY-FLAT_MIRROR_LEN/2-38)+'px';
+    const aimBtn=document.getElementById('aimBtn');
+    aimBtn.style.display='block';
+    aimBtn.style.left=(CONCAVE.x+36*S-5)+'px';
+    aimBtn.style.top=(CONCAVE.y+9*S+8)+'px';
+    if (MODE==='water') {
+        const waterLabel=document.getElementById('waterLabel');
+        waterLabel.style.display='flex';
+        const dir=vnorm(vsub(CONCAVE,R_PT));
+        const perp=v(-dir.y,dir.x);
+        const center=vsc(vadd(R_PT,CONCAVE),0.5);
+        waterLabel.style.left=(center.x-perp.x*50)+'px';
+        waterLabel.style.top=(center.y-perp.y*50)+'px';
+        document.getElementById('zoomCtrl').style.display='flex';
     }
 }
+
+// Rotate controls
+const rotSlider=document.getElementById('rotSlider');
+function updateRotDisplay() {
+    document.getElementById('rotVal').innerHTML=(discreteAngleDeg+fineAngleDeg).toFixed(1)+'&deg;';
+}
 rotSlider.addEventListener('input', () => {
-    discreteAngleDeg = parseFloat(rotSlider.value);
-    recomputePhotonPaths(); updateRotDisplay();
+    discreteAngleDeg=parseFloat(rotSlider.value); updateRotDisplay();
 });
 document.getElementById('fineUp').addEventListener('click', () => {
-    fineAngleDeg = Math.round((fineAngleDeg + 0.1) * 10) / 10;
-    recomputePhotonPaths(); updateRotDisplay();
+    fineAngleDeg=Math.round((fineAngleDeg+0.1)*10)/10; updateRotDisplay();
 });
 document.getElementById('fineDown').addEventListener('click', () => {
-    fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
-    recomputePhotonPaths(); updateRotDisplay();
+    fineAngleDeg=Math.round((fineAngleDeg-0.1)*10)/10; updateRotDisplay();
 });
 
 // Spin controls
 function updateSpeedDisplay() {
-    document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '\u2212';
-    for (let i=0;i<3;i++) document.getElementById('d'+i).textContent = digits[i];
+    document.getElementById('signBtn').textContent=speedSign>=0?'+':'−';
+    for (let i=0;i<3;i++) document.getElementById('d'+i).textContent=digits[i];
 }
 document.getElementById('signBtn').addEventListener('click', () => {
-    speedSign *= -1; resetSim(); updateSpeedDisplay();
+    speedSign*=-1; resetSim(); updateSpeedDisplay();
 });
 document.querySelectorAll('.digit-col button').forEach(btn => {
     btn.addEventListener('click', () => {
-        const i = parseInt(btn.dataset.digit);
-        const place = [100, 10, 1][i];
-        const dir = btn.dataset.dir === 'up' ? 1 : -1;
-        if (i === 0 && dir === 1 && digits[0] === 9) return;
-        let val = speedSign * (digits[0]*100 + digits[1]*10 + digits[2]);
-        val += dir * place;
-        speedSign = val < 0 ? -1 : 1;
-        let absVal = Math.abs(val);
-        if (absVal > 999) absVal = 999;
-        digits[0] = Math.floor(absVal / 100);
-        digits[1] = Math.floor((absVal % 100) / 10);
-        digits[2] = absVal % 10;
+        const i=parseInt(btn.dataset.digit), place=[100,10,1][i];
+        const dir=btn.dataset.dir==='up'?1:-1;
+        if (i===0 && dir===1 && digits[0]===9) return;
+        let val=speedSign*(digits[0]*100+digits[1]*10+digits[2]);
+        val+=dir*place; speedSign=val<0?-1:1;
+        let absVal=Math.min(999,Math.abs(val));
+        digits[0]=Math.floor(absVal/100);
+        digits[1]=Math.floor((absVal%100)/10);
+        digits[2]=absVal%10;
         resetSim(); updateSpeedDisplay();
     });
 });
-document.getElementById('pauseBtn').addEventListener('click', () => {
-    paused = !paused;
-    document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+
+document.getElementById('aimBtn').addEventListener('click', () => {
+    const revPerSec=speedSign*(digits[0]*100000+digits[1]*10000+digits[2]*1000);
+    const omega=(revPerSec/SLOW_FACTOR)*2*Math.PI;
+    if (Math.abs(omega)>1e-12) {
+        simTime=Math.round(simTime*omega/Math.PI)*Math.PI/omega;
+    }
+    photons=[]; screenGlow=0; screenGlowPos=null; photonAccum=0;
 });
 
+// Water toggle
+document.getElementById('waterUpper').addEventListener('change', (e) => {
+    waterUpper=e.target.checked;
+});
+
+// Pan/zoom (water mode only)
+if (MODE==='water') {
+    canvas.addEventListener('mousedown', (e) => {
+        const rect=canvas.getBoundingClientRect();
+        panStartX=(e.clientX-rect.left)*W/rect.width;
+        panStartY=(e.clientY-rect.top)*H/rect.height;
+        panStartPX=panX; panStartPY=panY;
+        panDragging=true; canvas.style.cursor='grabbing';
+        e.preventDefault();
+    });
+    canvas.addEventListener('mousemove', (e) => {
+        if (!panDragging) { canvas.style.cursor='grab'; return; }
+        const rect=canvas.getBoundingClientRect();
+        panX=panStartPX+(e.clientX-rect.left)*W/rect.width-panStartX;
+        panY=panStartPY+(e.clientY-rect.top)*H/rect.height-panStartY;
+        canvas.style.cursor='grabbing';
+    });
+    canvas.addEventListener('mouseup', () => { panDragging=false; canvas.style.cursor='grab'; });
+    canvas.addEventListener('mouseleave', () => { panDragging=false; canvas.style.cursor='default'; });
+    canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    canvas.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const rect=canvas.getBoundingClientRect();
+        const sx=(e.clientX-rect.left)*W/rect.width, sy=(e.clientY-rect.top)*H/rect.height;
+        const oldZoom=zoom, factor=e.deltaY<0?1.15:1/1.15;
+        zoom=Math.max(0.5,Math.min(20,zoom*factor));
+        panX=sx-(sx-panX)*(zoom/oldZoom);
+        panY=sy-(sy-panY)*(zoom/oldZoom);
+    }, {passive:false});
+    function zoomAt(factor) {
+        const oldZoom=zoom;
+        zoom=Math.max(0.5,Math.min(20,zoom*factor));
+        panX=W/2-(W/2-panX)*(zoom/oldZoom);
+        panY=H/2-(H/2-panY)*(zoom/oldZoom);
+    }
+    document.getElementById('zoomIn').addEventListener('click', () => zoomAt(1.4));
+    document.getElementById('zoomOut').addEventListener('click', () => zoomAt(1/1.4));
+    document.getElementById('zoomReset').addEventListener('click', () => { zoom=1; panX=0; panY=0; });
+}
+
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    paused=!paused;
+    document.getElementById('pauseBtn').textContent=paused?'Resume':'Pause';
+});
 document.getElementById('resetBtn').addEventListener('click', () => {
-    speedSign=1; digits=[0,0,0];
-    discreteAngleDeg=0; fineAngleDeg=0;
+    speedSign=1; digits=[0,0,0]; discreteAngleDeg=0; fineAngleDeg=0;
+    waterUpper=false; zoom=1; panX=0; panY=0;
+    document.getElementById('waterUpper').checked=false;
     rotSlider.value=0; updateRotDisplay();
     resetSim(); updateSpeedDisplay();
 });
 
-// ── Aim buttons ──────────────────────────────────────
-function aimAt(angleDeg) {
-    setMode('rotate');
-    discreteAngleDeg = angleDeg;
-    fineAngleDeg = 0;
-    rotSlider.value = angleDeg;
-    recomputePhotonPaths();
-    updateRotDisplay();
-}
-document.getElementById('aimTop').addEventListener('click', () => aimAt(-DIAG_ANGLE / DEG / 2));
-document.getElementById('aimBot').addEventListener('click', () => aimAt(DIAG_ANGLE / DEG / 2));
-
-// ── Arrow dragging ───────────────────────────────────
-canvas.addEventListener('mousedown', e => {
-    const rect = canvas.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * W / rect.width, my = (e.clientY - rect.top) * H / rect.height;
-    const dg = Math.hypot(mx - greenArrow.x, my - greenArrow.y);
-    const dr = Math.hypot(mx - redArrow.x, my - redArrow.y);
-    if (dg < 10 && dg <= dr) dragging = 'green';
-    else if (dr < 10) dragging = 'red';
-});
-canvas.addEventListener('mousemove', e => {
-    if (!dragging) return;
-    const rect = canvas.getBoundingClientRect();
-    const mx = (e.clientX - rect.left) * W / rect.width, my = (e.clientY - rect.top) * H / rect.height;
-    if (dragging === 'green') { greenArrow.x = mx; greenArrow.y = my; }
-    else { redArrow.x = mx; redArrow.y = my; }
-});
-canvas.addEventListener('mouseup', () => { dragging = null; });
-canvas.addEventListener('mouseleave', () => { dragging = null; });
-
-setMode('rotate');
+updateRotDisplay();
 updateSpeedDisplay();
-loop();
+requestAnimationFrame(loop);
+
+window.addEventListener('load', () => {
+    window.parent.postMessage({type:'resize', height:document.body.scrollHeight}, '*');
+});
 </script>
 <script>
-// responsive-scale-to-fit v1 -- replaces the fixed-size embed + height report.
-// Scales the whole sim (the document body) to fit the iframe/sticky it is
-// given: preserve aspect ratio, centre, cap the zoom. The transform is
-// presentation only. Tunable per embed: ?maxscale= (zoom cap), ?maxw= (px
-// width cap), ?h= (exact reported height), ?maxh= (anti-spill ceiling).
-// NOTE: the AoPS live-chat embed sizes the iframe from its height= attribute
-// and ignores the reported height; set height= there.
-(function () {
-  var DOC = document.documentElement;
-  var Q = new URLSearchParams(location.search);
-  var num = function (k, d) { return Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d; };
-  var MAXSCALE = num('maxscale', 2.4), MAXW = num('maxw', 0);
-  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 320), REPORT_MIN = 140;
-  var lastH = 0;
-  function fit() {
-    var b = document.body; if (!b) return;
-    var natW = b.offsetWidth, natH = b.offsetHeight;
-    if (!natW || !natH) return;
-    var vw = DOC.clientWidth, vh = DOC.clientHeight;
-    var cap = MAXW > 0 ? Math.min(MAXSCALE, MAXW / natW) : MAXSCALE;
-    var s = Math.min(vw / natW, vh / natH, cap);
-    if (!isFinite(s) || s <= 0) s = Math.min(vw / natW, cap);
-    b.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
-    var rh = FIXED_H > 0 ? Math.max(80, Math.min(2000, FIXED_H))
-      : Math.max(REPORT_MIN, Math.min(REPORT_MAX, Math.round(natH * Math.min(vw / natW, cap))));
-    if (Math.abs(rh - lastH) >= 2) { lastH = rh; try { window.parent.postMessage({ type: 'resize', height: rh }, '*'); } catch (e) {} }
+// responsive-scale-to-fit v1
+(function(){
+  var DOC=document.documentElement;
+  var Q=new URLSearchParams(location.search);
+  var num=function(k,d){return Q.has(k)&&isFinite(+Q.get(k))?+Q.get(k):d;};
+  var MAXSCALE=num('maxscale',2.4),MAXW=num('maxw',0);
+  var FIXED_H=num('h',0),REPORT_MAX=num('maxh',320),REPORT_MIN=140;
+  var lastH=0;
+  function fit(){
+    var b=document.body; if(!b)return;
+    var natW=b.offsetWidth,natH=b.offsetHeight;
+    if(!natW||!natH)return;
+    var vw=DOC.clientWidth,vh=DOC.clientHeight;
+    var cap=MAXW>0?Math.min(MAXSCALE,MAXW/natW):MAXSCALE;
+    var s=Math.min(vw/natW,vh/natH,cap);
+    if(!isFinite(s)||s<=0)s=Math.min(vw/natW,cap);
+    b.style.transform='translate(-50%,-50%) scale('+s+')';
+    var rh=FIXED_H>0?Math.max(80,Math.min(2000,FIXED_H))
+      :Math.max(REPORT_MIN,Math.min(REPORT_MAX,Math.round(natH*Math.min(vw/natW,cap))));
+    if(Math.abs(rh-lastH)>=2){lastH=rh;try{window.parent.postMessage({type:'resize',height:rh},'*');}catch(e){}}
   }
-  function boot() {
-    var b = document.body; if (!b) return;
-    DOC.style.cssText += ';width:100%;height:100%;margin:0;overflow:hidden;background:transparent;';
-    b.style.position = 'absolute'; b.style.top = '50%'; b.style.left = '50%';
-    b.style.margin = '0'; b.style.transformOrigin = 'center center'; b.style.willChange = 'transform';
+  function boot(){
+    var b=document.body; if(!b)return;
+    DOC.style.cssText+=';width:100%;height:100%;margin:0;overflow:hidden;background:transparent;';
+    b.style.position='absolute'; b.style.top='50%'; b.style.left='50%';
+    b.style.margin='0'; b.style.transformOrigin='center center'; b.style.willChange='transform';
     fit();
-    addEventListener('resize', fit); addEventListener('orientationchange', fit);
-    if (window.ResizeObserver) new ResizeObserver(fit).observe(DOC);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+    addEventListener('resize',fit); addEventListener('orientationchange',fit);
+    if(window.ResizeObserver)new ResizeObserver(fit).observe(DOC);
+    if(document.fonts&&document.fonts.ready)document.fonts.ready.then(fit);
   }
-  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
-  addEventListener('load', fit);
+  if(document.body)boot(); else addEventListener('DOMContentLoaded',boot);
+  addEventListener('load',fit);
 })();
 </script>
 </body>
