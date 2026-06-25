@@ -7,103 +7,438 @@
     <meta name="eigennode-aspect" content="3/2" />
     <title>Two Microphones</title>
 
-    <!-- Responsive sizing: override Vite defaults so iframe never scrolls -->
     <style>
+      /* ── iframe base reset ─────────────────────────────────────────── */
       html, body {
-        width: 100% !important;
-        height: 100% !important;
-        min-width: 0 !important;
-        min-height: 0 !important;
-        overflow: hidden !important;
-        margin: 0 !important;
-        padding: 0 !important;
+        width: 100% !important; height: 100% !important;
+        min-width: 0 !important; min-height: 0 !important;
+        overflow: hidden !important; margin: 0 !important; padding: 0 !important;
       }
       body {
-        display: flex !important;
-        align-items: center !important;
-        justify-content: center !important;
-        background: #f0f0f0;
+        display: flex !important; align-items: center !important;
+        justify-content: center !important; background: #f0f0f0;
       }
-      /* React root: act as a pass-through flex container */
-      #root {
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        width: 100%;
-        height: 100%;
-      }
+      #root { display: flex; align-items: center; justify-content: center; width: 100%; height: 100%; }
+
       /*
-        Canvas aspect ratio is 800:560 = 10:7.
-        Fit inside the iframe without stretching:
-          - height: min(iframe height, height-if-full-width)
-          - width: auto (driven by aspect-ratio)
-       */
-      canvas {
+        Canvas wrapper — takes the sizing that canvas used to have.
+        Canvas ratio is 800:560 (10:7). The iframe is 3:2, so the canvas
+        will letterbox slightly; body background fills the strips.
+      */
+      .tm-wrap {
+        position: relative;
+        aspect-ratio: 800 / 560;
+        height: min(100%, calc(100vw * 560 / 800));
+        width: auto; max-width: 100%;
+        display: block; overflow: hidden;
+      }
+
+      /* srcCanvas: invisible but in-layout so React's ref and getBCR work */
+      .tm-wrap > canvas {
+        position: absolute !important; inset: 0 !important;
+        width: 100% !important; height: 100% !important;
         display: block !important;
-        aspect-ratio: 800 / 560 !important;
-        height: min(100%, calc(100vw * 560 / 800)) !important;
-        width: auto !important;
-        max-width: 100% !important;
+        opacity: 0 !important; pointer-events: none !important;
+      }
+
+      /* dstCanvas: the visible, interactive display layer */
+      #tm-dst {
+        position: absolute; inset: 0;
+        width: 100%; height: 100%; display: block;
+        cursor: default;
+      }
+
+      /* ── zoom control strip ────────────────────────────────────────── */
+      #tm-zoom {
+        position: absolute; top: 7px; right: 7px;
+        display: flex; align-items: center; gap: 4px; z-index: 10;
+        user-select: none;
+      }
+      .tm-btn {
+        min-width: 26px; height: 26px; border-radius: 4px; border: none;
+        background: rgba(76,175,80,0.88); color: #fff;
+        font: bold 15px/1 Arial, sans-serif; cursor: pointer;
+        padding: 0 6px; display: flex; align-items: center; justify-content: center;
+      }
+      .tm-btn:hover { background: rgba(50,150,55,0.95); }
+      #tm-zoom-lbl {
+        height: 26px; padding: 0 7px; border-radius: 4px;
+        background: rgba(255,255,255,0.82);
+        font: bold 12px Arial, sans-serif; color: #333;
+        display: flex; align-items: center;
+      }
+
+      /* ── cheat panel ───────────────────────────────────────────────── */
+      #tm-cheat {
+        position: fixed; bottom: 0; left: 0; right: 0; z-index: 200;
+        background: rgba(16,16,28,0.96); color: #ddd;
+        font: 13px 'Courier New', monospace;
+        padding: 8px 12px 10px; max-height: 55vh; overflow-y: auto;
+        border-top: 1px solid #444;
+      }
+      #tm-cheat h3 { margin: 0 0 7px; font-size: 13px; color: #9cf; letter-spacing: .03em; }
+      #tm-cheat table { border-collapse: collapse; width: 100%; }
+      #tm-cheat td { padding: 3px 8px; vertical-align: middle; }
+      #tm-cheat td:first-child { color: #fd9; min-width: 70px; }
+      #tm-cheat td:last-child  { color: #999; font-size: 11px; }
+      #tm-cheat input[type=number] {
+        background: #2a2a3a; color: #eee; border: 1px solid #555;
+        border-radius: 3px; padding: 2px 5px; width: 70px;
+      }
+      #tm-cheat input[type=range] { width: 110px; accent-color: #4caf50; }
+      #tm-embed-lbl { color: #9cf; font-size: 11px; margin: 8px 0 3px; }
+      #tm-embed-url {
+        display: block; width: 100%; box-sizing: border-box;
+        background: #111; color: #8f8; border: 1px solid #333;
+        border-radius: 3px; padding: 4px 8px;
+        font: 11px 'Courier New', monospace; cursor: text; user-select: all;
       }
     </style>
 
-    <!--
-      Mouse-coordinate fix for CSS-scaled canvas.
-
-      The React draw + hit-test code uses fixed constants canvasWidth=800,
-      canvasHeight=560 when converting getBoundingClientRect()-relative clientX/Y
-      into simulation coordinates. That math is correct only when the canvas CSS
-      display size equals 800×560. When we let CSS shrink the canvas, the
-      displayed width W < 800, so every coordinate is off by factor 800/W.
-
-      Fix: intercept mousedown and mousemove in the CAPTURE phase (before React
-      sees them), scale clientX/Y from display-pixel space to logical-800×560
-      space, then re-dispatch a corrected event on the canvas. React's bubble-
-      phase listeners on div#root receive the corrected event. The _patched flag
-      prevents infinite re-entry.
-    -->
     <script>
+    /* =================================================================
+       Two-Microphones zoom / pan / cheat-panel wrapper
+       Injected into the compiled Vite/React bundle's host page.
+       ================================================================= */
     (function () {
-      var CANVAS_W = 800, CANVAS_H = 560;
+      'use strict';
 
-      function patchCanvas(canvas) {
-        ['mousedown', 'mousemove'].forEach(function (type) {
-          window.addEventListener(type, function (e) {
-            if (e._patched) return;
-            if (e.target !== canvas && !canvas.contains(e.target)) return;
+      /* ── query-param helpers ───────────────────────────────────────── */
+      var Q    = new URLSearchParams(location.search);
+      var num  = function (k, d, lo, hi) {
+        var v = +Q.get(k);
+        return (Q.has(k) && isFinite(v)) ? Math.max(lo, Math.min(hi, v)) : d;
+      };
+      var bool = function (k, d) { return Q.has(k) ? Q.get(k) !== '0' : d; };
 
-            var rect = Element.prototype.getBoundingClientRect.call(canvas);
-            var scaleX = rect.width  / CANVAS_W;
-            var scaleY = rect.height / CANVAS_H;
-            /* Skip if canvas is already at natural size (< 0.5% difference) */
-            if (Math.abs(scaleX - 1) < 0.005 && Math.abs(scaleY - 1) < 0.005) return;
+      /* ── sim constants ─────────────────────────────────────────────── */
+      var CW = 800, CH = 560; /* srcCanvas logical dimensions */
 
-            e.stopPropagation();
+      /* ── zoom / pan state ─────────────────────────────────────────── */
+      var zoom, panX, panY, isPanning, panData;
 
-            /* Map display-pixel offset → logical-800×560 offset */
-            var corrX = rect.left + (e.clientX - rect.left) / scaleX;
-            var corrY = rect.top  + (e.clientY - rect.top)  / scaleY;
+      /* ── cheat-panel definitions ──────────────────────────────────── */
+      var CHEAT_DEFS = [
+        { name: 'zoom', type: 'number', min: 1, max: 5, step: 0.1, def: 1,
+          desc: 'Initial zoom level (1 = no zoom, 5 = max)' }
+      ];
+      var EMBED_KEYS = ['cheat']; /* stripped from the copyable embed URL */
 
-            var newEvt = new MouseEvent(e.type, {
-              bubbles: true,
-              cancelable: e.cancelable,
-              clientX: corrX,
-              clientY: corrY,
-              button: e.button,
-              buttons: e.buttons
-            });
-            newEvt._patched = true;
-            canvas.dispatchEvent(newEvt);
-          }, true /* capture */);
+      /* ── wait for React canvas, then wire everything up ───────────── */
+      var obs = new MutationObserver(function () {
+        var c = document.querySelector('canvas');
+        if (c) { obs.disconnect(); setup(c); }
+      });
+      obs.observe(document.documentElement, { childList: true, subtree: true });
+
+      /* ================================================================
+         setup(srcCanvas)
+         Called once after React renders its <canvas>. Wraps it in a
+         container, creates a visible dstCanvas on top, sets up the
+         zoom/pan draw loop, and wires mouse events.
+         ================================================================ */
+      function setup(src) {
+
+        /* Init state */
+        zoom = num('zoom', 1, 1, 5);
+        panX = 0; panY = 0;
+        isPanning = false; panData = null;
+
+        /* Wrap srcCanvas in a positioned container */
+        var wrap = document.createElement('div');
+        wrap.className = 'tm-wrap';
+        src.parentNode.insertBefore(wrap, src);
+        wrap.appendChild(src);
+
+        /* Create display canvas */
+        var dst = document.createElement('canvas');
+        dst.id = 'tm-dst';
+        dst.width = CW; dst.height = CH;
+        wrap.appendChild(dst);
+        var dCtx = dst.getContext('2d');
+
+        /* Build zoom controls */
+        var zoomDiv = document.createElement('div');
+        zoomDiv.id = 'tm-zoom';
+        var btnM = mkBtn('&#8722;', function () { adjustZoom(zoom - 0.5); });
+        var lbl  = document.createElement('span'); lbl.id = 'tm-zoom-lbl';
+        var btnP = mkBtn('+',       function () { adjustZoom(zoom + 0.5); });
+        var btnR = mkBtn('&#8635;', function () { resetZoom(); });
+        btnR.title = 'Reset zoom';
+        zoomDiv.appendChild(btnM); zoomDiv.appendChild(lbl);
+        zoomDiv.appendChild(btnP); zoomDiv.appendChild(btnR);
+        wrap.appendChild(zoomDiv);
+        updateLabel();
+
+        /* ── draw loop ──────────────────────────────────────────────── */
+        (function loop() {
+          dCtx.clearRect(0, 0, CW, CH);
+          dCtx.save();
+          /* Transform so that srcCanvas pixel (panX,panY) maps to (0,0)
+             and the visible region (CW/zoom × CH/zoom) fills the canvas. */
+          dCtx.translate(-panX * zoom, -panY * zoom);
+          dCtx.scale(zoom, zoom);
+          dCtx.drawImage(src, 0, 0);
+          dCtx.restore();
+          requestAnimationFrame(loop);
+        })();
+
+        /* ── coordinate helpers ─────────────────────────────────────── */
+
+        /* dstCanvas CSS bounding rect */
+        function dstRect() { return Element.prototype.getBoundingClientRect.call(dst); }
+        /* srcCanvas CSS bounding rect (opacity:0 but still laid out) */
+        function srcRect() { return Element.prototype.getBoundingClientRect.call(src); }
+
+        /*
+          Forward a mouse event to srcCanvas with coordinates corrected for
+          both CSS-scale (iframe shrinks the canvas) and zoom/pan.
+
+          React's hit-test: zl = e.clientX - getBCR().left  then  dt(zl) = zl/800*10
+          We need zl = srcLogicalX ∈ [0, 800], so we set:
+              corrClientX = srcRect.left + srcLogicalX
+        */
+        function fwd(e) {
+          var dr  = dstRect();
+          var sr  = srcRect();
+          /* dstCanvas logical coords [0,CW] × [0,CH] */
+          var dx  = (e.clientX - dr.left) / dr.width  * CW;
+          var dy  = (e.clientY - dr.top)  / dr.height * CH;
+          /* srcCanvas logical coords (zoom/pan applied) */
+          var sx  = panX + dx / zoom;
+          var sy  = panY + dy / zoom;
+          var evt = new MouseEvent(e.type, {
+            bubbles: true, cancelable: e.cancelable,
+            clientX: sr.left + sx,
+            clientY: sr.top  + sy,
+            button: e.button, buttons: e.buttons
+          });
+          src.dispatchEvent(evt);
+        }
+
+        /* Sync dst cursor from srcCanvas one frame after React re-renders */
+        function syncCursor() {
+          requestAnimationFrame(function () {
+            if (!isPanning) dst.style.cursor = src.style.cursor || 'default';
+          });
+        }
+
+        /* ── mouse events on dstCanvas ──────────────────────────────── */
+
+        dst.addEventListener('mousedown', function (e) {
+          /*
+            src.style.cursor is 'grab' when React detects the pointer is
+            hovering over a draggable object (mic or source).  In that case
+            let React handle the drag.  Otherwise, if zoomed in, start pan.
+          */
+          if (dst.style.cursor === 'grab') {
+            fwd(e);
+          } else if (zoom > 1) {
+            var dr = dstRect();
+            panData = { cx: e.clientX, cy: e.clientY, px: panX, py: panY,
+                        dw: dr.width, dh: dr.height };
+            isPanning = true;
+            dst.style.cursor = 'grabbing';
+            e.preventDefault();
+          } else {
+            fwd(e); /* zoom=1, empty space — forward anyway for completeness */
+          }
+        });
+
+        dst.addEventListener('mousemove', function (e) {
+          if (isPanning) {
+            panX = panData.px - (e.clientX - panData.cx) / panData.dw * CW / zoom;
+            panY = panData.py - (e.clientY - panData.cy) / panData.dh * CH / zoom;
+            clampPan();
+            dst.style.cursor = 'grabbing';
+            return;
+          }
+          fwd(e);
+          syncCursor();
+        });
+
+        dst.addEventListener('mouseup', function (e) {
+          if (isPanning) { endPan(); return; }
+          fwd(e);
+        });
+
+        dst.addEventListener('mouseleave', function (e) {
+          if (isPanning) endPan();
+          fwd(e);
+        });
+
+        /* Release pan if mouse leaves the iframe entirely */
+        window.addEventListener('mouseup', function () {
+          if (isPanning) endPan();
+        });
+
+        function endPan() {
+          isPanning = false; panData = null;
+          dst.style.cursor = src.style.cursor || 'default';
+        }
+
+        /* Scroll-to-zoom (toward pointer) */
+        dst.addEventListener('wheel', function (e) {
+          e.preventDefault();
+          var dr = dstRect();
+          var dx = (e.clientX - dr.left) / dr.width  * CW;
+          var dy = (e.clientY - dr.top)  / dr.height * CH;
+          adjustZoom(zoom + (e.deltaY > 0 ? -0.25 : 0.25), dx, dy);
+        }, { passive: false });
+
+        /* ── zoom helpers ───────────────────────────────────────────── */
+
+        function clampPan() {
+          if (zoom <= 1) { panX = 0; panY = 0; return; }
+          panX = Math.max(0, Math.min(panX, CW * (1 - 1 / zoom)));
+          panY = Math.max(0, Math.min(panY, CH * (1 - 1 / zoom)));
+        }
+
+        /*
+          adjustZoom(newZoom [, pivotDstX, pivotDstY])
+          If pivot is supplied, zoom toward that point in dstCanvas logical
+          coords so the content under the pointer stays stationary.
+        */
+        function adjustZoom(nz, pivotDx, pivotDy) {
+          nz = Math.max(1, Math.min(5, nz));
+          if (pivotDx !== undefined) {
+            var sx = panX + pivotDx / zoom;
+            var sy = panY + pivotDy / zoom;
+            zoom = nz;
+            panX = sx - pivotDx / zoom;
+            panY = sy - pivotDy / zoom;
+          } else {
+            /* Zoom toward canvas center */
+            var cx = panX + CW / 2 / zoom;
+            var cy = panY + CH / 2 / zoom;
+            zoom = nz;
+            panX = cx - CW / 2 / zoom;
+            panY = cy - CH / 2 / zoom;
+          }
+          clampPan();
+          updateLabel();
+          onZoomChange();
+        }
+
+        function resetZoom() {
+          zoom = 1; panX = 0; panY = 0;
+          updateLabel();
+          onZoomChange();
+        }
+
+        function updateLabel() {
+          var el = document.getElementById('tm-zoom-lbl');
+          if (el) el.textContent = zoom.toFixed(1) + '×';
+        }
+
+        /* Called whenever zoom changes — lets cheat panel stay in sync */
+        function onZoomChange() {
+          refreshEmbedUrl();
+          /* sync cheat number input */
+          var inp = document.getElementById('tm-ctrl-zoom');
+          if (inp) inp.value = zoom.toFixed(1);
+        }
+
+        /* ── cheat panel ────────────────────────────────────────────── */
+        if (bool('cheat', false)) {
+          buildCheatPanel(adjustZoom, resetZoom);
+        }
+
+      } /* end setup() */
+
+      /* ── button factory ─────────────────────────────────────────── */
+      function mkBtn(html, fn) {
+        var b = document.createElement('button');
+        b.className = 'tm-btn';
+        b.innerHTML = html;
+        b.addEventListener('click', fn);
+        return b;
+      }
+
+      /* ================================================================
+         buildCheatPanel(adjustZoom, resetZoom)
+         Standard AoPS developer panel — only visible when ?cheat=1.
+         Shows controls for every query parameter and a copyable embed URL.
+         ================================================================ */
+      function buildCheatPanel(adjustZoom, resetZoom) {
+        var panel = document.createElement('div');
+        panel.id = 'tm-cheat';
+        panel.innerHTML = '<h3>&#129489; Developer Cheat Panel &mdash; <em>?cheat=1</em></h3>';
+
+        var tbl = document.createElement('table');
+
+        CHEAT_DEFS.forEach(function (d) {
+          var cur = num(d.name, d.def, d.min, d.max);
+          var tr = document.createElement('tr');
+          var ctrl = '';
+
+          if (d.type === 'number') {
+            ctrl = '<input id="tm-ctrl-' + d.name + '" type="number"'
+              + ' min="' + d.min + '" max="' + d.max + '" step="' + d.step + '"'
+              + ' value="' + cur.toFixed(1) + '" style="width:65px">'
+              + ' <input type="range" min="' + d.min + '" max="' + d.max
+              + '" step="' + d.step + '" value="' + cur + '" data-mirror="tm-ctrl-' + d.name + '">';
+          }
+
+          tr.innerHTML = '<td>' + d.name + '</td><td>' + ctrl + '</td>'
+            + '<td>' + d.desc + '</td>';
+          tbl.appendChild(tr);
+        });
+
+        panel.appendChild(tbl);
+
+        /* Embed URL */
+        var embedLbl = document.createElement('div');
+        embedLbl.id = 'tm-embed-lbl';
+        embedLbl.textContent = 'Embed URL (copy into EigenNode — cheat=1 stripped):';
+        var embedInp = document.createElement('input');
+        embedInp.type = 'text'; embedInp.id = 'tm-embed-url';
+        embedInp.readOnly = true;
+        panel.appendChild(embedLbl);
+        panel.appendChild(embedInp);
+
+        document.body.appendChild(panel);
+        refreshEmbedUrl();
+
+        /* Wire controls */
+        tbl.addEventListener('input', function (e) {
+          var t = e.target;
+          /* Range → mirror to paired number input */
+          if (t.dataset.mirror) {
+            var paired = document.getElementById(t.dataset.mirror);
+            if (paired) paired.value = t.value;
+          }
+          /* Number input → mirror to paired range */
+          if (t.id && t.id.startsWith('tm-ctrl-')) {
+            var ranges = tbl.querySelectorAll('input[data-mirror="' + t.id + '"]');
+            ranges.forEach(function (r) { r.value = t.value; });
+          }
+          /* Apply changes */
+          var zEl = document.getElementById('tm-ctrl-zoom');
+          if (zEl) {
+            var nz = Math.max(1, Math.min(5, parseFloat(zEl.value) || 1));
+            adjustZoom(nz);
+          }
+          refreshEmbedUrl();
         });
       }
 
-      /* Watch for the React canvas to appear, then patch it */
-      var obs = new MutationObserver(function () {
-        var c = document.querySelector('canvas');
-        if (c) { obs.disconnect(); patchCanvas(c); }
-      });
-      obs.observe(document.documentElement, { childList: true, subtree: true });
+      /* Rebuild the embed URL from current control values */
+      function refreshEmbedUrl() {
+        var el = document.getElementById('tm-embed-url');
+        if (!el) return;
+        var base = location.origin + location.pathname;
+        var qp = new URLSearchParams();
+        CHEAT_DEFS.forEach(function (d) {
+          if (EMBED_KEYS.indexOf(d.name) !== -1) return;
+          var inp = document.getElementById('tm-ctrl-' + d.name);
+          var v = inp ? parseFloat(inp.value) : num(d.name, d.def, d.min, d.max);
+          if (v !== d.def) qp.set(d.name, v);
+        });
+        var qs = qp.toString();
+        el.value = base + (qs ? '?' + qs : '');
+      }
+
     })();
     </script>
 
