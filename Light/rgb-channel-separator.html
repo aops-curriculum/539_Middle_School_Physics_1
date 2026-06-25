@@ -512,6 +512,83 @@
   addEventListener('resize', report);
   if (window.ResizeObserver) new ResizeObserver(report).observe(document.documentElement);
 })();
+</script><!-- @include shared/zoom-overlay.js -->
+<script>
+(function () {
+  /* Zoom/pan overlay — activated by ?zoom=1, hidden by default (?zoom=0 or absent). */
+  var Q = new URLSearchParams(location.search);
+  if (!Q.has('zoom') || Q.get('zoom') === '0') return;
+
+  var css = document.createElement('style');
+  css.textContent =
+    '#_zui{position:fixed;top:8px;right:8px;display:flex;align-items:center;' +
+    'gap:4px;background:rgba(0,0,0,.6);border-radius:8px;padding:5px 10px;' +
+    'z-index:99999;font-family:Arial,sans-serif;user-select:none}' +
+    '#_zui button{width:28px;height:28px;border:none;border-radius:4px;' +
+    'background:rgba(255,255,255,.2);color:#fff;font-size:18px;' +
+    'cursor:pointer;display:flex;align-items:center;justify-content:center}' +
+    '#_zui button:hover{background:rgba(255,255,255,.35)}' +
+    '#_zlab{color:#fff;font-size:13px;min-width:34px;text-align:center}';
+  document.head.appendChild(css);
+
+  /* Attach to <html> so position:fixed stays viewport-relative even when body has a transform. */
+  var ui = document.createElement('div');
+  ui.id = '_zui';
+  ui.innerHTML =
+    '<button id="_zo">&#8722;</button>' +
+    '<span id="_zlab">1.0&#215;</span>' +
+    '<button id="_zi">+</button>' +
+    '<button id="_zr" title="Reset view">&#8634;</button>';
+  document.documentElement.appendChild(ui);
+
+  var Z = 1, tx = 0, ty = 0, drag = null;
+  var body = document.body;
+  var lab  = document.getElementById('_zlab');
+  var rst  = document.getElementById('_zr');
+
+  function apply() {
+    /* window._userZoom signals the old-style scale-to-fit controller to stand down. */
+    window._userZoom = Z > 1 ? Z : undefined;
+    var s = window._scalerFitScale || 1;
+    if (Z <= 1 && !tx && !ty) {
+      body.style.transform = '';
+      body.style.cursor    = '';
+      window.dispatchEvent(new Event('resize')); /* let the scaler re-fit if present */
+    } else {
+      body.style.transformOrigin = '0 0';
+      body.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (s * Z) + ')';
+      body.style.cursor    = 'grab';
+    }
+    lab.innerHTML         = Z.toFixed(1) + '&#215;';
+    rst.style.opacity     = (Z > 1 || tx || ty) ? '1' : '0.4';
+  }
+
+  document.getElementById('_zi').onclick = function () {
+    Z = Math.min(4, parseFloat((Z * 1.25).toFixed(2))); apply();
+  };
+  document.getElementById('_zo').onclick = function () {
+    Z = Math.max(1, parseFloat((Z / 1.25).toFixed(2))); apply();
+  };
+  rst.onclick = function () { Z = 1; tx = 0; ty = 0; apply(); };
+
+  document.documentElement.addEventListener('pointerdown', function (e) {
+    if (Z <= 1 || (e.target.closest && e.target.closest('#_zui'))) return;
+    drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+    body.style.cursor = 'grabbing';
+  });
+  document.documentElement.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    tx = drag.tx + (e.clientX - drag.x);
+    ty = drag.ty + (e.clientY - drag.y);
+    body.style.transform =
+      'translate(' + tx + 'px,' + ty + 'px) scale(' + ((window._scalerFitScale || 1) * Z) + ')';
+  });
+  document.documentElement.addEventListener('pointerup', function () {
+    drag = null;
+    if (Z > 1) body.style.cursor = 'grab';
+  });
+})();
 </script>
+<!-- @end-include shared/zoom-overlay.js -->
 </body>
 </html>
