@@ -573,13 +573,6 @@
       "category": "light"
     },
     {
-      "path": "Light/foucault_simple.html",
-      "title": "Foucault Speed of Light — Simplified",
-      "description": "A streamlined version of Foucault's rotating-mirror light-speed experiment. Helps students find the spin speed that steers the reflected beam back to the observer.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
       "path": "Sound/sound-meter.html",
       "title": "Sound Pressure Meter",
       "description": "A sound pressure meter visualization with a draggable microphone that reads off the pressure level at different distances from a source. Illustrates how sound pressure decreases with distance.",
@@ -590,27 +583,6 @@
       "path": "Light/MarioRotate.html",
       "title": "Mario Mirror Rotation",
       "description": "Rotate a familiar sprite image at adjustable speed to explore how a reflected image in a rotating mirror changes. Used to build intuition for image rotation in the Michelson experiment.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/foucault_rotate.html",
-      "title": "Foucault Speed of Light — Rotate",
-      "description": "Compact version of the Foucault mirror apparatus focused on the rotation phase; adjust the deflection angle and see where the return ray lands.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/foucault_spin.html",
-      "title": "Foucault Speed of Light — Spin",
-      "description": "Compact spinning-mirror sub-simulation for the Foucault experiment; adjust spin speed in steps to align the return beam with the observer. Isolates the relationship between spin rate and angular beam deflection.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/foucault_water.html",
-      "title": "Foucault Speed of Light — Water Tube",
-      "description": "Foucault spinning-mirror simulation with an optional water tube that slows light, recreating Fizeau's 1851 water experiment. Demonstrates that light travels slower in water than in air.",
       "emoji": "💡",
       "category": "light"
     },
