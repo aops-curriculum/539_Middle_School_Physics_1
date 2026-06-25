@@ -69,18 +69,21 @@
         background: rgba(42,42,74,0.85); color: #d0d8e0;
     }
     .aim-btn:hover { filter: brightness(1.3); }
-    /* Water-mode-only controls */
+    /* Zoom controls — fixed top-right overlay, matches shared overlay style */
     .zoom-ctrl {
-        position: absolute; right: 7px; bottom: 7px;
-        display: flex; gap: 2px;
+        position: fixed; top: 8px; right: 8px;
+        display: flex; align-items: center; gap: 4px;
+        background: rgba(0,0,0,.6); border-radius: 8px;
+        padding: 5px 10px; z-index: 99999;
+        font-family: Arial, sans-serif; user-select: none;
     }
     .zoom-btn {
-        width: 24px; height: 24px; background: rgba(42,42,74,0.85);
-        border: 1px solid #445; border-radius: 3px; color: #ccc;
-        font-size: 16px; cursor: pointer; display: flex;
-        align-items: center; justify-content: center; padding: 0;
+        width: 28px; height: 28px; border: none; border-radius: 4px;
+        background: rgba(255,255,255,.2); color: #fff; font-size: 18px;
+        cursor: pointer; display: flex; align-items: center; justify-content: center;
     }
-    .zoom-btn:hover { background: #4a4a6a; color: #fff; }
+    .zoom-btn:hover { background: rgba(255,255,255,.35); }
+    #zoomLbl { color: #fff; font-size: 13px; min-width: 34px; text-align: center; }
     .water-toggle {
         position: absolute;
         background: rgba(42,42,74,0.85);
@@ -125,9 +128,10 @@
     <!-- Water-mode-only controls -->
     <label class="water-toggle" id="waterLabel" style="display:none;"><input type="checkbox" id="waterUpper">Add water</label>
     <div class="zoom-ctrl" id="zoomCtrl" style="display:none;">
-        <button class="zoom-btn" id="zoomOut">&minus;</button>
-        <button class="zoom-btn" id="zoomReset" style="font-size:10px;">1:1</button>
+        <button class="zoom-btn" id="zoomOut">&#8722;</button>
+        <span id="zoomLbl">1.0&#215;</span>
         <button class="zoom-btn" id="zoomIn">+</button>
+        <button class="zoom-btn" id="zoomReset" title="Reset view">&#8634;</button>
     </div>
 </div>
 
@@ -725,6 +729,8 @@ if (MODE==='rotate') {
     }
     if (ZOOM_ENABLED) {
         document.getElementById('zoomCtrl').style.display='flex';
+        document.getElementById('zoomLbl').textContent = zoom.toFixed(1) + '×';
+        document.getElementById('zoomReset').style.opacity = (zoom !== 1 || panX || panY) ? '1' : '0.4';
     }
 }
 

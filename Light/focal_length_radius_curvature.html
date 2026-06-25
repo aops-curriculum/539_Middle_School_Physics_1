@@ -558,6 +558,20 @@ window.addEventListener('load', () => {
     drag = null;
     if (Z > 1) body.style.cursor = 'grab';
   });
+
+  document.documentElement.addEventListener('wheel', function (e) {
+    if (Z <= 1 && e.deltaY > 0) return;
+    e.preventDefault();
+    var factor = e.deltaY < 0 ? 1.1 : (1 / 1.1);
+    var newZ   = Math.max(1, Math.min(4, parseFloat((Z * factor).toFixed(3))));
+    if (newZ === Z) return;
+    var px = e.clientX, py = e.clientY;
+    tx = px + (tx - px) * (newZ / Z);
+    ty = py + (ty - py) * (newZ / Z);
+    if (newZ === 1) { tx = 0; ty = 0; }
+    Z = newZ;
+    apply();
+  }, { passive: false });
 })();
 </script>
 <!-- @end-include shared/zoom-overlay.js -->
