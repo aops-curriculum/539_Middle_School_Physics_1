@@ -837,6 +837,186 @@ window.addEventListener('load', () => {
     window.parent.postMessage({type:'resize', height:document.body.scrollHeight}, '*');
 });
 </script>
+
+<!-- CHEAT PANEL — visible only when ?cheat=1 is in the URL -->
+<script>
+(function () {
+  var _cpQ = new URLSearchParams(location.search);
+  if (_cpQ.get('cheat') !== '1') return;
+
+  var CHEAT_DEFS = [
+    {name:'mode', type:'select', values:['rotate','spin','water'], default:'spin', desc:'Simulation mode'}
+  ];
+  var EMBED_KEYS = ['cheat'];
+
+  function buildCleanUrl(overrides) {
+    var p = new URLSearchParams(location.search);
+    EMBED_KEYS.forEach(function(k){p.delete(k);});
+    for (var k in overrides) {
+      var v = overrides[k];
+      if (v===null||v==='') p.delete(k); else p.set(k,v);
+    }
+    var qs = p.toString();
+    return location.origin+location.pathname+(qs?'?'+qs:'');
+  }
+  function buildCheatUrl(overrides) {
+    var base = buildCleanUrl(overrides);
+    return base+(base.indexOf('?')>=0?'&':'?')+'cheat=1';
+  }
+
+  var urlLinkEl = null;
+  function updateUrlDisplay() {
+    if (!urlLinkEl) return;
+    var u = buildCleanUrl({});
+    urlLinkEl.href=u; urlLinkEl.textContent=u;
+  }
+  function getEffective(def) {
+    var raw=_cpQ.get(def.name);
+    return raw===null?(def['default']!==undefined?String(def['default']):''):raw;
+  }
+  function isTruthy(v){return v!=='0'&&v!=='false'&&v!=='no'&&v!=='off'&&v!=='';}
+
+  function makeControl(def) {
+    var effective = getEffective(def);
+    if (def.type==='toggle') {
+      var on=isTruthy(effective);
+      var btn=document.createElement('button');
+      btn.textContent=on?'1 (on)':'0 (off)';
+      btn.style.cssText='background:'+(on?'#1b3d1b':'#3d1b1b')+';color:'+(on?'#6dca80':'#e07070')+
+        ';border:1px solid '+(on?'#2a7a3a':'#8a2a2a')+
+        ';border-radius:3px;padding:3px 10px;cursor:pointer;font-size:12px;font-family:inherit;min-width:70px';
+      btn.addEventListener('click',function(){var u={};u[def.name]=on?'0':'1';window.location.href=buildCheatUrl(u);});
+      return btn;
+    }
+    if (def.type==='select') {
+      var sel=document.createElement('select');
+      sel.style.cssText='background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
+        'border-radius:3px;padding:3px 8px;font-size:12px;font-family:inherit;cursor:pointer';
+      def.values.forEach(function(v){
+        var opt=document.createElement('option');
+        opt.value=v;opt.textContent=v;
+        if(effective===String(v))opt.selected=true;
+        sel.appendChild(opt);
+      });
+      sel.addEventListener('change',function(){var u={};u[def.name]=sel.value;window.location.href=buildCheatUrl(u);});
+      return sel;
+    }
+    if (def.type==='number') {
+      var inp=document.createElement('input');
+      inp.type='number';inp.value=effective;
+      if(def.min!==undefined)inp.min=String(def.min);
+      if(def.max!==undefined)inp.max=String(def.max);
+      if(def.step!==undefined)inp.step=String(def.step);
+      inp.style.cssText='background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
+        'border-radius:3px;padding:3px 6px;width:90px;font-size:12px;font-family:inherit';
+      inp.addEventListener('change',function(){var u={};u[def.name]=inp.value;window.location.href=buildCheatUrl(u);});
+      return inp;
+    }
+    var inp2=document.createElement('input');
+    inp2.type='text';inp2.value=effective;
+    inp2.style.cssText='background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
+      'border-radius:3px;padding:3px 6px;width:220px;font-size:12px;font-family:inherit';
+    inp2.addEventListener('change',function(){var u={};u[def.name]=inp2.value;window.location.href=buildCheatUrl(u);});
+    return inp2;
+  }
+
+  function typeLabel(def) {
+    if(def.type==='toggle')return '0 | 1';
+    if(def.type==='select')return def.values.join(' | ');
+    if(def.type==='number'){
+      if(def.min!==undefined&&def.max!==undefined)return def.min+'–'+def.max;
+      if(def.min!==undefined)return '≥'+def.min;
+      if(def.max!==undefined)return '≤'+def.max;
+      return 'number';
+    }
+    return 'text';
+  }
+
+  function render() {
+    var panel=document.createElement('div');
+    panel.id='cheat-panel';
+    panel.style.cssText=[
+      'position:fixed','bottom:0','left:0','right:0',
+      'background:rgba(12,18,32,0.97)','color:#c8d8e8',
+      'font-family:"Segoe UI",system-ui,monospace','font-size:13px',
+      'border-top:2px solid #3a7bd5','z-index:2147483647',
+      'max-height:48vh','overflow-y:auto','padding:10px 16px 14px',
+      'box-sizing:border-box','box-shadow:0 -4px 24px rgba(0,0,0,0.6)'
+    ].join(';');
+
+    var title=document.createElement('div');
+    title.style.cssText='font-weight:bold;font-size:13px;color:#7ab8f5;margin-bottom:8px;'+
+      'display:flex;align-items:center;justify-content:space-between';
+    var titleText=document.createElement('span');
+    titleText.textContent='🔑 Cheat Panel — '+location.pathname.split('/').pop();
+    var closeBtn=document.createElement('button');
+    closeBtn.textContent='×';
+    closeBtn.title='Close cheat panel (reload to restore)';
+    closeBtn.style.cssText='background:none;border:none;color:#7ab8f5;font-size:18px;cursor:pointer;padding:0 4px;line-height:1';
+    closeBtn.addEventListener('click',function(){panel.remove();});
+    title.appendChild(titleText);title.appendChild(closeBtn);
+    panel.appendChild(title);
+
+    var table=document.createElement('table');
+    table.style.cssText='border-collapse:collapse;width:100%;margin-bottom:10px';
+    var thead=table.createTHead(),hrow=thead.insertRow();
+    ['Parameter','Type / Values','Control','Description'].forEach(function(h){
+      var th=document.createElement('th');
+      th.textContent=h;
+      th.style.cssText='text-align:left;padding:4px 10px;border-bottom:1px solid #1e3050;'+
+        'color:#5a8fc0;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;white-space:nowrap';
+      hrow.appendChild(th);
+    });
+    var tbody=table.createTBody();
+    CHEAT_DEFS.forEach(function(def){
+      var row=tbody.insertRow();
+      var isSet=_cpQ.has(def.name);
+      row.style.cssText='border-bottom:1px solid #131f30;'+(isSet?'background:rgba(58,123,213,0.08)':'');
+      var nc=row.insertCell();
+      nc.style.cssText='padding:5px 10px;font-weight:bold;font-size:12px;color:'+(isSet?'#a8d4ff':'#7fa8d0')+';white-space:nowrap;font-family:monospace';
+      nc.textContent=def.name;
+      var tc=row.insertCell();
+      tc.style.cssText='padding:5px 10px;color:#5a7a90;font-size:11px;max-width:200px;font-family:monospace';
+      tc.textContent=typeLabel(def);
+      var cc=row.insertCell();
+      cc.style.cssText='padding:4px 10px;white-space:nowrap';
+      cc.appendChild(makeControl(def));
+      var dc=row.insertCell();
+      dc.style.cssText='padding:5px 10px;color:#8aa0b0;font-size:12px';
+      dc.textContent=(def.desc||'')+(def['default']!==undefined?' (default: '+def['default']+')':'');
+    });
+    panel.appendChild(table);
+
+    var urlBox=document.createElement('div');
+    urlBox.style.cssText='background:#080d1a;border:1px solid #1e3050;border-radius:4px;'+
+      'padding:7px 12px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap';
+    var urlLabel=document.createElement('span');
+    urlLabel.style.cssText='color:#5a8fc0;font-size:11px;text-transform:uppercase;letter-spacing:0.06em;white-space:nowrap;flex-shrink:0';
+    urlLabel.textContent='Embed URL:';
+    urlLinkEl=document.createElement('a');
+    urlLinkEl.style.cssText='color:#5fba7d;word-break:break-all;font-size:12px;font-family:monospace;text-decoration:none';
+    urlLinkEl.addEventListener('click',function(e){e.preventDefault();window.location.href=buildCheatUrl({});});
+    var copyBtn=document.createElement('button');
+    copyBtn.textContent='copy';
+    copyBtn.style.cssText='background:#1a3050;color:#7ab8f5;border:1px solid #2a4a70;'+
+      'border-radius:3px;padding:2px 8px;font-size:11px;font-family:inherit;cursor:pointer;white-space:nowrap;flex-shrink:0;margin-left:4px';
+    copyBtn.addEventListener('click',function(){
+      navigator.clipboard.writeText(urlLinkEl?urlLinkEl.href:buildCleanUrl({})).then(function(){
+        copyBtn.textContent='copied!';copyBtn.style.color='#6dca80';
+        setTimeout(function(){copyBtn.textContent='copy';copyBtn.style.color='#7ab8f5';},1500);
+      }).catch(function(){copyBtn.textContent='failed';setTimeout(function(){copyBtn.textContent='copy';},1500);});
+    });
+    updateUrlDisplay();
+    urlBox.appendChild(urlLabel);urlBox.appendChild(urlLinkEl);urlBox.appendChild(copyBtn);
+    panel.appendChild(urlBox);
+    document.body.appendChild(panel);
+  }
+
+  if (document.readyState==='loading') document.addEventListener('DOMContentLoaded',render);
+  else render();
+})();
+</script>
+
 <script>
 // responsive-scale-to-fit v1
 (function(){
