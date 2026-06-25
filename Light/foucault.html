@@ -135,6 +135,7 @@
 // ── Mode from query param ────────────────────────────
 const Q = new URLSearchParams(location.search);
 const MODE = ['rotate','spin','water'].includes(Q.get('mode')) ? Q.get('mode') : 'spin';
+const ZOOM_ENABLED = Q.has('zoom') ? Q.get('zoom') !== '0' : false;
 document.title = 'Foucault Speed of Light — ' + {rotate:'Rotate', spin:'Spin', water:'Water'}[MODE];
 
 const S = 0.8;
@@ -457,7 +458,7 @@ function drawRuler() {
     const screenAngle = Math.atan2(SCREEN_DIR.y,SCREEN_DIR.x);
     ctx.save();
     const pxPer1cm = 0.01/M_PER_PX, pxPer10cm = 0.1/M_PER_PX;
-    const showCmTicks = MODE==='water' && zoom >= 3;
+    const showCmTicks = ZOOM_ENABLED && zoom >= 3;
     const step = showCmTicks ? pxPer1cm : pxPer10cm;
     const maxSteps = Math.floor(SCREEN_HALF/step);
     for (let i=-maxSteps; i<=maxSteps; i++) {
@@ -663,7 +664,7 @@ function draw() {
     ctx.setTransform(1,0,0,1,0,0);
     ctx.clearRect(0,0,canvas.width,canvas.height);
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    if (MODE==='water') { ctx.translate(panX,panY); ctx.scale(zoom,zoom); }
+    if (ZOOM_ENABLED) { ctx.translate(panX,panY); ctx.scale(zoom,zoom); }
     const angle = MODE==='rotate' ? getMirrorAngle(0) : getMirrorAngle(simTime);
     drawBeamGuides();
     if (MODE==='water' && waterUpper) drawTube(UPPER_TUBE);
@@ -721,6 +722,8 @@ if (MODE==='rotate') {
         const center=vsc(vadd(R_PT,CONCAVE),0.5);
         waterLabel.style.left=(center.x-perp.x*50)+'px';
         waterLabel.style.top=(center.y-perp.y*50)+'px';
+    }
+    if (ZOOM_ENABLED) {
         document.getElementById('zoomCtrl').style.display='flex';
     }
 }
@@ -777,8 +780,8 @@ document.getElementById('waterUpper').addEventListener('change', (e) => {
     waterUpper=e.target.checked;
 });
 
-// Pan/zoom (water mode only)
-if (MODE==='water') {
+// Pan/zoom
+if (ZOOM_ENABLED) {
     canvas.addEventListener('mousedown', (e) => {
         const rect=canvas.getBoundingClientRect();
         panStartX=(e.clientX-rect.left)*W/rect.width;
@@ -845,7 +848,8 @@ window.addEventListener('load', () => {
   if (_cpQ.get('cheat') !== '1') return;
 
   var CHEAT_DEFS = [
-    {name:'mode', type:'select', values:['rotate','spin','water'], default:'spin', desc:'Simulation mode'}
+    {name:'mode', type:'select', values:['rotate','spin','water'], default:'spin', desc:'Simulation mode'},
+    {name:'zoom', type:'toggle', default:0, desc:'Enable zoom/pan controls'}
   ];
   var EMBED_KEYS = ['cheat'];
 
