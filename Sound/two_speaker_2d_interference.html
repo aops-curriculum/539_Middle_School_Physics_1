@@ -28,14 +28,16 @@ body {
 canvas { display: block; flex: 1; min-height: 0; cursor: default; }
 
 #ui {
-  height: 46px;
+  min-height: 46px;
+  height: auto;
   flex-shrink: 0;
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  padding: 0 8px;
+  padding: 4px 8px;
   background: #f4f5fa;
   border-top: 1px solid #ccd;
-  gap: 0;
+  gap: 4px 0;
 }
 .grp {
   display: flex;
@@ -43,7 +45,8 @@ canvas { display: block; flex: 1; min-height: 0; cursor: default; }
   gap: 5px;
   padding: 0 8px;
 }
-.freq-grp { flex: 1; min-width: 0; }
+.freq-grp { flex: 1 1 140px; min-width: 0; }
+.right-grp { display: flex; align-items: center; flex-shrink: 0; }
 .sep { width: 1px; height: 22px; background: #ccd; flex-shrink: 0; }
 
 .lbl { font-size: .68rem; color: #778; white-space: nowrap; }
@@ -103,23 +106,26 @@ canvas { display: block; flex: 1; min-height: 0; cursor: default; }
     <input type="range" id="fr" min="1" max="8" step=".5" value="2">
     <span id="frv">2.0 Hz</span>
   </div>
-  <div class="sep"></div>
-  <!-- Speaker toggles -->
-  <div class="grp">
-    <label class="chk"><input type="checkbox" id="s1" checked><span class="dot1">●</span> Spk 1</label>
-    <label class="chk"><input type="checkbox" id="s2"><span class="dot2">●</span> Spk 2</label>
-  </div>
-  <div class="sep"></div>
-  <!-- Display mode -->
-  <div class="grp btns">
-    <button class="mbt on" data-m="1">Fronts</button>
-    <button class="mbt" data-m="2">Dots</button>
-    <button class="mbt" data-m="3">Curves</button>
-  </div>
-  <div class="sep"></div>
-  <!-- Play/pause -->
-  <div class="grp">
-    <button id="play">⏸ Pause</button>
+  <!-- Right-side controls stay together when wrapping -->
+  <div class="right-grp">
+    <div class="sep"></div>
+    <!-- Speaker toggles -->
+    <div class="grp">
+      <label class="chk"><input type="checkbox" id="s1" checked><span class="dot1">●</span> Spk 1</label>
+      <label class="chk"><input type="checkbox" id="s2"><span class="dot2">●</span> Spk 2</label>
+    </div>
+    <div class="sep"></div>
+    <!-- Display mode -->
+    <div class="grp btns">
+      <button class="mbt on" data-m="1">Fronts</button>
+      <button class="mbt" data-m="2">Dots</button>
+      <button class="mbt" data-m="3">Curves</button>
+    </div>
+    <div class="sep"></div>
+    <!-- Play/pause -->
+    <div class="grp">
+      <button id="play">⏸ Pause</button>
+    </div>
   </div>
 </div>
 </div>
