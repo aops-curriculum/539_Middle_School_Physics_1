@@ -2,22 +2,20 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
+<meta name="eigennode-aspect" content="6/5">
 <title>Two-Speaker Interference</title>
 <style>
 * { box-sizing: border-box; margin: 0; padding: 0; }
-html, body {
-  width: 600px;
-  height: 500px;
-  overflow: hidden;
-}
+html, body { width: 100%; height: 100%; overflow: hidden; }
 body {
   background: #eef0f4;
   color: #334;
   font-family: 'Segoe UI', sans-serif;
   display: flex;
   flex-direction: column;
+  user-select: none;
 }
-canvas { display: block; flex-shrink: 0; }
+canvas { display: block; flex: 1; min-height: 0; cursor: default; }
 
 #ui {
   height: 46px;
@@ -85,7 +83,7 @@ canvas { display: block; flex-shrink: 0; }
 </head>
 <body>
 
-<canvas id="c" width="600" height="454"></canvas>
+<canvas id="c"></canvas>
 
 <div id="ui">
   <!-- Frequency -->
@@ -117,23 +115,23 @@ canvas { display: block; flex-shrink: 0; }
 <script>
 const cv  = document.getElementById('c');
 const ctx = cv.getContext('2d');
-const W = 600, H = 454, TAU = Math.PI * 2;
-const dpr = window.devicePixelRatio || 1;
-canvas.width = W * dpr; canvas.height = H * dpr;
-canvas.style.width = W + 'px'; canvas.style.height = H + 'px';
-ctx.scale(dpr, dpr);
+const TAU = Math.PI * 2;
+
+// Logical canvas dimensions — updated on resize
+let CW = 600, CH = 454;
 
 // Wave propagation speed (px/s). λ = SPEED / freq.
 const SPEED = 120;
 
 // ── Simulation state ─────────────────────────────────────────────
-const sp     = [{ x: 200, y: 227 }, { x: 400, y: 227 }]; // world coords
-let freq     = 2;
-let active   = [true, false];
-let mode     = 1;
-let playing  = true;
-let time     = 0;
-let lastTs   = null;
+const sp    = [{ x: 200, y: 227 }, { x: 400, y: 227 }];
+let freq    = 2;
+let active  = [true, false];
+let mode    = 1;
+let playing = true;
+let time    = 0;
+let lastTs  = null;
+let firstFit = true;
 
 // ── Viewport state ───────────────────────────────────────────────
 let zoom = 1.0;
@@ -149,6 +147,25 @@ let pinchDist0 = null;
 let curveCache = null;
 const wl = () => SPEED / freq;
 
+// ── Canvas resize ────────────────────────────────────────────────
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const cw = cv.clientWidth, ch = cv.clientHeight;
+  if (!cw || !ch) return;
+  cv.width  = Math.round(cw * dpr);
+  cv.height = Math.round(ch * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (firstFit) {
+    sp[0].x = cw / 3;     sp[0].y = ch / 2;
+    sp[1].x = cw * 2 / 3; sp[1].y = ch / 2;
+    firstFit = false;
+  }
+  CW = cw; CH = ch;
+  invalidateCurves();
+}
+new ResizeObserver(fit).observe(cv);
+fit();
+
 // ── Coordinate helpers ───────────────────────────────────────────
 function worldToCanvas(wx, wy) {
   return { x: wx * zoom + panX, y: wy * zoom + panY };
@@ -158,11 +175,11 @@ function canvasToWorld(cx, cy) {
 }
 function cvPos(e) {
   const r = cv.getBoundingClientRect();
-  return { x: (e.clientX - r.left) * cv.clientWidth / r.width, y: (e.clientY - r.top) * cv.clientHeight / r.height };
+  return { x: (e.clientX - r.left) * CW / r.width, y: (e.clientY - r.top) * CH / r.height };
 }
 function cvPosT(t) {
   const r = cv.getBoundingClientRect();
-  return { x: (t.clientX - r.left) * cv.clientWidth / r.width, y: (t.clientY - r.top) * cv.clientHeight / r.height };
+  return { x: (t.clientX - r.left) * CW / r.width, y: (t.clientY - r.top) * CH / r.height };
 }
 
 function zoomAt(cx, cy, factor) {
@@ -190,9 +207,9 @@ function loop(ts) {
 }
 
 function render() {
-  ctx.clearRect(0, 0, W, H);
+  ctx.clearRect(0, 0, CW, CH);
   ctx.fillStyle = '#ffffff';
-  ctx.fillRect(0, 0, W, H);
+  ctx.fillRect(0, 0, CW, CH);
 
   if (mode === 1) {
     drawFronts(1.0);
@@ -211,8 +228,8 @@ function getRadii(si) {
   if (!active[si]) return [];
   const lambda = wl();
   const corners = [
-    canvasToWorld(0, 0), canvasToWorld(W, 0),
-    canvasToWorld(0, H), canvasToWorld(W, H)
+    canvasToWorld(0, 0), canvasToWorld(CW, 0),
+    canvasToWorld(0, CH), canvasToWorld(CW, CH)
   ];
   const maxR = Math.max(...corners.map(c => Math.hypot(c.x - sp[si].x, c.y - sp[si].y)));
   const phase = (freq * time) % 1;
@@ -266,7 +283,7 @@ function drawDots() {
 
       for (const sg of [1, -1]) {
         const sc = worldToCanvas(bx + sg * h * px, by + sg * h * py);
-        if (sc.x > 2 && sc.x < W - 2 && sc.y > 2 && sc.y < H - 2) {
+        if (sc.x > 2 && sc.x < CW - 2 && sc.y > 2 && sc.y < CH - 2) {
           ctx.beginPath();
           ctx.arc(sc.x, sc.y, 3.5, 0, TAU);
           ctx.fill();
@@ -279,21 +296,27 @@ function drawDots() {
 // ── Mode 3: constructive loci via pixel scan ─────────────────────
 function drawCurves() {
   if (!curveCache) curveCache = computeCurves();
+  // putImageData ignores the transform and writes to physical pixels directly
   ctx.putImageData(curveCache, 0, 0);
 }
 
 function computeCurves() {
   const [s1, s2] = sp;
   const lambda   = wl();
-  const id       = ctx.createImageData(W, H);
+  const dpr      = window.devicePixelRatio || 1;
+  const pw       = cv.width, ph = cv.height;
+  const id       = ctx.createImageData(pw, ph);
   const data     = id.data;
 
   if (!active[0] || !active[1]) return id;
 
   const thr = 4 / lambda;
 
-  for (let cy = 0; cy < H; cy++) {
-    for (let cx = 0; cx < W; cx++) {
+  for (let py = 0; py < ph; py++) {
+    for (let ppx = 0; ppx < pw; ppx++) {
+      // Map physical pixel → logical canvas coords → world coords
+      const cx = ppx / dpr;
+      const cy = py / dpr;
       const wx = (cx - panX) / zoom;
       const wy = (cy - panY) / zoom;
 
@@ -305,7 +328,7 @@ function computeCurves() {
 
       if (t < 1) {
         const b = Math.cos(t * Math.PI / 2);
-        const i = (cy * W + cx) * 4;
+        const i = (py * pw + ppx) * 4;
         data[i]     = Math.round(10  * b);
         data[i + 1] = Math.round(180 * b);
         data[i + 2] = Math.round(60  * b);
@@ -318,7 +341,7 @@ function computeCurves() {
 
 function invalidateCurves() { curveCache = null; }
 
-// ── Speaker icons (always drawn in canvas-px space) ──────────────
+// ── Speaker icons ─────────────────────────────────────────────────
 function drawSpeakers() {
   const fillColors = ['#2255cc', '#cc3311'];
   const glowColors = ['rgba(34,85,200,.15)', 'rgba(200,50,20,.15)'];
@@ -440,8 +463,8 @@ cv.addEventListener('touchmove', e => {
       e.touches[0].clientY - e.touches[1].clientY
     );
     const rect = cv.getBoundingClientRect();
-    const midX = ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left) * cv.clientWidth / rect.width;
-    const midY = ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top) * cv.clientHeight / rect.height;
+    const midX = ((e.touches[0].clientX + e.touches[1].clientX) / 2 - rect.left) * CW / rect.width;
+    const midY = ((e.touches[0].clientY + e.touches[1].clientY) / 2 - rect.top) * CH / rect.height;
     zoomAt(midX, midY, dist / pinchDist0);
     pinchDist0 = dist;
     return;
@@ -496,48 +519,6 @@ playBtn.addEventListener('click', () => {
 
 // ── Start ────────────────────────────────────────────────────────
 requestAnimationFrame(loop);
-</script>
-<script>
-// responsive-scale-to-fit v1 -- replaces the fixed-size embed + height report.
-// Scales the whole sim (the document body) to fit the iframe/sticky it is
-// given: preserve aspect ratio, centre, cap the zoom. The transform is
-// presentation only. Tunable per embed: ?maxscale= (zoom cap), ?maxw= (px
-// width cap), ?h= (exact reported height), ?maxh= (anti-spill ceiling).
-// NOTE: the AoPS live-chat embed sizes the iframe from its height= attribute
-// and ignores the reported height; set height= there.
-(function () {
-  var DOC = document.documentElement;
-  var Q = new URLSearchParams(location.search);
-  var num = function (k, d) { return Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d; };
-  var MAXSCALE = num('maxscale', 2.4), MAXW = num('maxw', 0);
-  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 320), REPORT_MIN = 140;
-  var lastH = 0;
-  function fit() {
-    var b = document.body; if (!b) return;
-    var natW = b.offsetWidth, natH = b.offsetHeight;
-    if (!natW || !natH) return;
-    var vw = DOC.clientWidth, vh = DOC.clientHeight;
-    var cap = MAXW > 0 ? Math.min(MAXSCALE, MAXW / natW) : MAXSCALE;
-    var s = Math.min(vw / natW, vh / natH, cap);
-    if (!isFinite(s) || s <= 0) s = Math.min(vw / natW, cap);
-    b.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
-    var rh = FIXED_H > 0 ? Math.max(80, Math.min(2000, FIXED_H))
-      : Math.max(REPORT_MIN, Math.min(REPORT_MAX, Math.round(natH * Math.min(vw / natW, cap))));
-    if (Math.abs(rh - lastH) >= 2) { lastH = rh; try { window.parent.postMessage({ type: 'resize', height: rh }, '*'); } catch (e) {} }
-  }
-  function boot() {
-    var b = document.body; if (!b) return;
-    DOC.style.cssText += ';width:100%;height:100%;margin:0;overflow:hidden;background:transparent;';
-    b.style.position = 'absolute'; b.style.top = '50%'; b.style.left = '50%';
-    b.style.margin = '0'; b.style.transformOrigin = 'center center'; b.style.willChange = 'transform';
-    fit();
-    addEventListener('resize', fit); addEventListener('orientationchange', fit);
-    if (window.ResizeObserver) new ResizeObserver(fit).observe(DOC);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-  }
-  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
-  addEventListener('load', fit);
-})();
 </script>
 </body>
 </html>
