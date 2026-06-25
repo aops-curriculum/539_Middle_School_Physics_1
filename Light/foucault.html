@@ -727,11 +727,11 @@ if (MODE==='rotate') {
         waterLabel.style.left=(center.x-perp.x*50)+'px';
         waterLabel.style.top=(center.y-perp.y*50)+'px';
     }
-    if (ZOOM_ENABLED) {
-        document.getElementById('zoomCtrl').style.display='flex';
-        document.getElementById('zoomLbl').textContent = zoom.toFixed(1) + '×';
-        document.getElementById('zoomReset').style.opacity = (zoom !== 1 || panX || panY) ? '1' : '0.4';
-    }
+}
+if (ZOOM_ENABLED) {
+    document.getElementById('zoomCtrl').style.display='flex';
+    document.getElementById('zoomLbl').textContent = zoom.toFixed(1) + '×';
+    document.getElementById('zoomReset').style.opacity = (zoom !== 1 || panX || panY) ? '1' : '0.4';
 }
 
 // Rotate controls
