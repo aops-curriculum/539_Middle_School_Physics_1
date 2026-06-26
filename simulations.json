@@ -195,34 +195,6 @@
       "category": "sound"
     },
     {
-      "path": "Sound/wave-beating-adjustable.html",
-      "title": "Wave Beating (Adjustable)",
-      "description": "Adjust frequencies to explore the beating phenomenon.",
-      "emoji": "💓",
-      "category": "sound"
-    },
-    {
-      "path": "Sound/wave-beating-on-off.html",
-      "title": "Wave Beating (On/Off)",
-      "description": "Toggle waves on and off to observe beating effects.",
-      "emoji": "🔛",
-      "category": "sound"
-    },
-    {
-      "path": "Sound/test single-wave-sim.html",
-      "title": "Displacement vs Time Waveform",
-      "description": "Single wave displacement-time simulation.",
-      "emoji": "📉",
-      "category": "sound"
-    },
-    {
-      "path": "Sound/test Wave_Simulation.html",
-      "title": "Sound Wave Simulation",
-      "description": "General sound wave simulation and visualization.",
-      "emoji": "🌊",
-      "category": "sound"
-    },
-    {
       "path": "Newton-Speed-of-Sound-Measurement.html",
       "title": "Speed of Sound Measurement",
       "description": "Newton's method for measuring the speed of sound.",
@@ -261,27 +233,6 @@
       "path": "Light/DepthPerceptionQuarter.html",
       "title": "Depth Perception – Quarter",
       "description": "See how two eyes perceive depth by dragging a quarter between two illustrated eyes and watching the sight lines converge. Illustrates binocular parallax as the basis of depth perception.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/DepthPerceptionQuarter2.html",
-      "title": "Depth Perception – Quarter",
-      "description": "See how two eyes perceive depth by dragging a quarter between two illustrated eyes and watching the sight lines converge, with instructional text explaining how binocular parallax works.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/DepthPerceptionQuarter3.html",
-      "title": "Depth Perception – Quarter",
-      "description": "See how two eyes perceive depth by dragging a quarter between two illustrated eyes and watching the sight lines converge. A taller variant that adds a mirror at the scene bottom.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/DepthPerceptionQuarter4.html",
-      "title": "Depth Perception – Quarter",
-      "description": "Drag a quarter around the scene and observe how the two sight lines from two eyes change angle to reveal the coin's distance. Explores the geometry of binocular depth cues.",
       "emoji": "💡",
       "category": "light"
     },
@@ -440,13 +391,6 @@
       "category": "light"
     },
     {
-      "path": "Light/cyclops_mirrors.html",
-      "title": "Cyclops Mirrors",
-      "description": "See how a cyclops character views its own face via a flat mirror and a convex cylindrical mirror. Compares image location and field of view for flat versus curved mirrors.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
       "path": "Light/cylinder_reflection_eye.html",
       "title": "Cylindrical Anamorphic Art Generator (with Observer Eye)",
       "description": "Cylindrical anamorphic art generator with a movable observer eye to preview how the corrected image looks from the designated viewpoint. Connects the distorted flat drawing to the recovered image seen in the cylinder.",
@@ -464,13 +408,6 @@
       "path": "Light/focal_length_radius_curvature.html",
       "title": "Concave Mirror",
       "description": "Slide a control to change the radius of curvature R of a concave mirror and see the focal length f = R/2 update live. Builds intuition for the geometric relationship between mirror shape and focal point.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/little_mirrors_small.html",
-      "title": "Little Mirrors (Small)",
-      "description": "A compact version of the mirror-steering puzzle where students place mirrors to redirect a light cone to a screen. Practices reflection angles in a smaller layout.",
       "emoji": "💡",
       "category": "light"
     },
@@ -522,20 +459,6 @@
       "description": "Drag a hanging weight to shorten or lengthen a vibrating string, then pluck it to hear the resulting frequency. Demonstrates how string length controls pitch at fixed tension.",
       "emoji": "🔊",
       "category": "sound"
-    },
-    {
-      "path": "Light/telescope_mirror_grid.html",
-      "title": "Telescope Mirror Comparison",
-      "description": "A 2×2 grid comparing how parabolic, spherical, elliptical, and hyperbolic mirrors focus parallel rays. Provides a side-by-side comparison of conic mirror aberrations.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/_test_iframe.html",
-      "title": " Test Iframe",
-      "description": "An iframe test page that embeds a shadow-puppet simulation. Used for development and layout testing.",
-      "emoji": "💡",
-      "category": "light"
     },
     {
       "path": "Light/measure_light_speed.html",
@@ -758,13 +681,6 @@
       "path": "Light/refraction_game.html",
       "title": "Refraction Game",
       "description": "A light ray hits a glass interface — click which of two candidate refracted rays is correct. A streak game that drills the rule 'denser material, closer to normal' through rapid randomized problems.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/refraction_game_normal.html",
-      "title": "Refraction Game (with normal)",
-      "description": "Same choose-the-correct-refracted-ray game but with the surface normal drawn. Adds the explicit normal line to help students measure angles and apply Snell's law visually.",
       "emoji": "💡",
       "category": "light"
     },
