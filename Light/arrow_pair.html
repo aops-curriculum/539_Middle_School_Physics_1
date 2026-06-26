@@ -9,11 +9,21 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { width: 100%; height: 100%; overflow: hidden; }
         body {
-            position: relative;
-            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;   /* match canvas scene bg so letterbox strips are invisible */
             color: #333;
             font-family: Arial, sans-serif;
             user-select: none;
+        }
+        /* #stage holds the aspect ratio and is centred by the flex body, so the
+           canvas never stretches; overlays positioned within it stay aligned. */
+        #stage {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            height: min(100%, 100vw);   /* 100vw = (H/W)*100 for 1:1 */
+            width: auto;
         }
         /* Overlay the instructions on the canvas so the body stays a single
            full-bleed canvas (aspect 1/1) — no DOM chrome to throw off sizing. */
@@ -40,8 +50,10 @@
     </style>
 </head>
 <body>
-    <p id="instructions">Drag to move. Scroll wheel to rotate. Right-click to flip.</p>
-    <canvas id="canvas" width="600" height="600"></canvas>
+    <div id="stage">
+        <p id="instructions">Drag to move. Scroll wheel to rotate. Right-click to flip.</p>
+        <canvas id="canvas" width="600" height="600"></canvas>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
