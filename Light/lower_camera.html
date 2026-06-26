@@ -9,16 +9,17 @@
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html, body { width: 100%; height: 100%; overflow: hidden; }
 body {
-  position: relative;
-  background: #f0f0f0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #ffffff;   /* match the white canvas scene so letterbox strips are invisible */
   font-family: Arial, sans-serif;
   user-select: none;
 }
 canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
+  aspect-ratio: 4 / 3;
+  height: min(100%, 75vw);
+  width: auto;
   display: block;
   cursor: default;
 }
