@@ -3,22 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="eigennode-aspect" content="3/2">
     <title>Angle of Reflection Game</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { width: 100%; height: 100%; overflow: hidden; }
         body {
             background: #1a1a2e;
             font-family: Arial, sans-serif;
-            max-width: 600px;
-            margin: 0 auto;
             user-select: none;
             display: flex;
             flex-direction: column;
             align-items: center;
+            justify-content: center;
         }
-        #canvas-container { position: relative; display: inline-block; }
-        canvas { display: block; border: 1px solid #333; border-radius: 6px; }
+        #canvas-container {
+            position: relative;
+            flex: 1 1 auto;
+            min-height: 0;
+            width: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        canvas { display: block; max-width: 100%; max-height: 100%; }
         #controls {
+            flex: 0 0 auto;
             display: flex; align-items: center; justify-content: center;
             gap: 8px; padding: 7px 0; width: 100%;
         }
@@ -39,6 +49,7 @@
         #action-btn.next { background: rgba(33,150,243,0.9); }
         #action-btn.next:hover { background: rgba(33,150,243,1); }
         #feedback {
+            flex: 0 0 auto;
             font-size: 13px; font-weight: bold; min-height: 18px;
             text-align: center; color: #aaa; padding: 0 6px;
         }
@@ -89,7 +100,6 @@
     const dpr = window.devicePixelRatio || 1;
     const logW = canvas.width, logH = canvas.height;
     canvas.width = logW * dpr; canvas.height = logH * dpr;
-    canvas.style.width = logW + 'px'; canvas.style.height = logH + 'px';
     ctx.scale(dpr, dpr);
     const W = logW, H = logH;
 
@@ -485,48 +495,7 @@
     // ── Init ─────────────────────────────────────────────────────────────────
     newRound();
     </script>
-<script>
-// responsive-scale-to-fit v1 -- replaces the fixed-size embed + height report.
-// Scales the whole sim (the document body) to fit the iframe/sticky it is
-// given: preserve aspect ratio, centre, cap the zoom. The transform is
-// presentation only. Tunable per embed: ?maxscale= (zoom cap), ?maxw= (px
-// width cap), ?h= (exact reported height), ?maxh= (anti-spill ceiling).
-// NOTE: the AoPS live-chat embed sizes the iframe from its height= attribute
-// and ignores the reported height; set height= there.
-(function () {
-  var DOC = document.documentElement;
-  var Q = new URLSearchParams(location.search);
-  var num = function (k, d) { return Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d; };
-  var MAXSCALE = num('maxscale', 2.4), MAXW = num('maxw', 0);
-  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 320), REPORT_MIN = 140;
-  var lastH = 0;
-  function fit() {
-    var b = document.body; if (!b) return;
-    var natW = b.offsetWidth, natH = b.offsetHeight;
-    if (!natW || !natH) return;
-    var vw = DOC.clientWidth, vh = DOC.clientHeight;
-    var cap = MAXW > 0 ? Math.min(MAXSCALE, MAXW / natW) : MAXSCALE;
-    var s = Math.min(vw / natW, vh / natH, cap);
-    if (!isFinite(s) || s <= 0) s = Math.min(vw / natW, cap);
-    b.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
-    var rh = FIXED_H > 0 ? Math.max(80, Math.min(2000, FIXED_H))
-      : Math.max(REPORT_MIN, Math.min(REPORT_MAX, Math.round(natH * Math.min(vw / natW, cap))));
-    if (Math.abs(rh - lastH) >= 2) { lastH = rh; try { window.parent.postMessage({ type: 'resize', height: rh }, '*'); } catch (e) {} }
-  }
-  function boot() {
-    var b = document.body; if (!b) return;
-    DOC.style.cssText += ';width:100%;height:100%;margin:0;overflow:hidden;background:transparent;';
-    b.style.position = 'absolute'; b.style.top = '50%'; b.style.left = '50%';
-    b.style.margin = '0'; b.style.transformOrigin = 'center center'; b.style.willChange = 'transform';
-    fit();
-    addEventListener('resize', fit); addEventListener('orientationchange', fit);
-    if (window.ResizeObserver) new ResizeObserver(fit).observe(DOC);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-  }
-  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
-  addEventListener('load', fit);
-})();
-</script><!-- @include shared/zoom-overlay.js -->
+<!-- @include shared/zoom-overlay.js -->
 <script>
 (function () {
   /* Zoom/pan overlay — activated by ?zoom=1, hidden by default (?zoom=0 or absent). */
