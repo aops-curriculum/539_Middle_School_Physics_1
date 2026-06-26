@@ -9,11 +9,19 @@
         * { margin: 0; padding: 0; box-sizing: border-box; }
         html, body { width: 100%; height: 100%; overflow: hidden; }
         body {
-            position: relative;
-            background: #f0f0f0;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: #ffffff;   /* match the white canvas scene so letterbox strips are invisible */
             color: #333;
             font-family: Arial, sans-serif;
             user-select: none;
+        }
+        #stage {
+            position: relative;
+            aspect-ratio: 1 / 1;
+            height: min(100%, 100vw);
+            width: auto;
         }
         #instructions {
             position: absolute;
@@ -38,8 +46,10 @@
     </style>
 </head>
 <body>
+    <div id="stage">
     <p id="instructions">Drag to move. Scroll wheel to rotate. Right-click to flip.</p>
     <canvas id="canvas" width="600" height="600"></canvas>
+    </div>
 
     <script>
         const canvas = document.getElementById('canvas');
