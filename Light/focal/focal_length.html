@@ -8,11 +8,21 @@
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: 100%; height: 100%; overflow: hidden; background: #000; }
-    body { font-family: Arial, sans-serif; user-select: none; }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: Arial, sans-serif;
+      user-select: none;
+    }
+    /* .photo-wrap holds the 150:113 aspect ratio and is centred by the flex body
+       on the black background, so the photo letterboxes (black strips) instead of
+       stretching when the iframe shape differs. */
     .photo-wrap {
       position: relative;
-      width: 100%;
-      height: 100%;
+      aspect-ratio: 150 / 113;
+      height: min(100%, 75.333vw);   /* (113/150)*100 */
+      width: auto;
     }
     canvas {
       display: block;
