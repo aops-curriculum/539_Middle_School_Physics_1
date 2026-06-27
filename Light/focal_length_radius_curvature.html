@@ -440,10 +440,6 @@ document.getElementById('btnClear').addEventListener('click', () => {
 });
 
 draw();
-
-window.addEventListener('load', () => {
-  window.parent.postMessage({ type: 'resize', height: document.body.scrollHeight }, '*');
-});
 </script>
 <!-- @include shared/zoom-overlay.js -->
 <script>

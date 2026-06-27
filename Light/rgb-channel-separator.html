@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="eigennode-aspect" content="5/4">
   <title>RGB Channel Separator - Color Addition Experiment Tool</title>
   <meta name="description" content="Separate images into RGB channels with distance-compensating scaling for color addition experiments using CD jewel case reflections.">
   
@@ -17,6 +18,11 @@
   <script src="https://unpkg.com/@babel/standalone@7.29.7/babel.min.js"></script>
   
   <style>
+    /* Responsive v2: rem-based Tailwind utilities scale with the root font, so
+       this scales the whole tool to fit the iframe — no transform, no postMessage. */
+    html, body { width: 100%; height: 100%; margin: 0; overflow: hidden; }
+    html { font-size: min(1.2vw, 1.45vh); }
+
     /* Custom range slider styling */
     input[type="range"] {
       -webkit-appearance: none;
@@ -433,21 +439,17 @@
               </div>
             )}
 
-            <div className="bg-white p-2 rounded-lg overflow-auto">
-              <canvas
-                ref={canvasRef}
-                className="max-w-full"
-                style={{ imageRendering: 'auto' }}
-              />
-            </div>
-            
-            <canvas ref={hiddenCanvasRef} className="hidden" />
-            
-            {!imageData && (
-              <div className="text-center py-20 text-gray-500">
-                Upload an image to see the RGB channel separation
+            {imageData && (
+              <div className="bg-white p-2 rounded-lg overflow-auto">
+                <canvas
+                  ref={canvasRef}
+                  className="max-w-full"
+                  style={{ imageRendering: 'auto' }}
+                />
               </div>
             )}
+
+            <canvas ref={hiddenCanvasRef} className="hidden" />
 
             <div className="mt-6 p-4 bg-gray-800 rounded-lg text-sm text-gray-400">
               <h3 className="font-medium text-white mb-2">How to use:</h3>
@@ -478,41 +480,7 @@
     const root = ReactDOM.createRoot(document.getElementById('root'));
     root.render(<RGBChannelSeparator />);
   </script>
-<script>
-// auto-height: report content height to parent iframe; no scaling, scrolls naturally.
-(function () {
-  var BUFFER = 4, H_SCROLLBAR = 18, last = 0;
-  function measure() {
-    var b = document.body, h = document.documentElement;
-    if (!b) return 0;
-    var max = Math.max(b.scrollHeight || 0, b.offsetHeight || 0,
-      (h && h.scrollHeight) || 0, (h && h.offsetHeight) || 0);
-    var minTop = 0, maxBot = 0, br = b.getBoundingClientRect();
-    for (var i = 0; i < b.children.length; i++) {
-      var r = b.children[i].getBoundingClientRect();
-      var top = r.top - br.top, bot = top + r.height;
-      if (top < minTop) minTop = top;
-      if (bot > maxBot) maxBot = bot;
-    }
-    var span = maxBot - minTop;
-    if (span > max) max = span;
-    var hOverflow = h && (h.scrollWidth - h.clientWidth) >= 4;
-    return Math.ceil(max) + BUFFER + (hOverflow ? H_SCROLLBAR : 0);
-  }
-  function report() {
-    var h = measure();
-    if (h > 0 && Math.abs(h - last) >= 2) {
-      last = h;
-      try { window.parent.postMessage({ type: 'resize', height: h }, '*'); } catch (e) {}
-    }
-  }
-  function boot() { report(); }
-  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
-  addEventListener('load', report);
-  addEventListener('resize', report);
-  if (window.ResizeObserver) new ResizeObserver(report).observe(document.documentElement);
-})();
-</script><!-- @include shared/zoom-overlay.js -->
+<!-- @include shared/zoom-overlay.js -->
 <script>
 (function () {
   /* Zoom/pan overlay — activated by ?zoom=1, hidden by default (?zoom=0 or absent). */
