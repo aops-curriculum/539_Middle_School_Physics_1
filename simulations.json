@@ -781,6 +781,13 @@
       "description": "Vary the sun angle and building curve to see how concentrated sunlight can reflect from glass skyscrapers. Explore the relationship between surface geometry and reflected light patterns.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "Sound/wave_speed_fit.html",
+      "title": "Wave Speed Fit",
+      "description": "New simulation - description pending.",
+      "emoji": "🔊",
+      "category": "sound"
     }
   ]
 }
