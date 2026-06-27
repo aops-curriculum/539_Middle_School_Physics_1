@@ -771,14 +771,14 @@
     {
       "path": "Sound/pipe_end_correction.html",
       "title": "Pipe End Correction",
-      "description": "New simulation - description pending.",
+      "description": "Explore how the effective acoustic length of a pipe exceeds its physical length due to end correction, which depends on the pipe's radius.",
       "emoji": "🔊",
       "category": "sound"
     },
     {
       "path": "Light/building_mirror_car.html",
       "title": "Sun Reflection off Glass Skyscraper",
-      "description": "New simulation - description pending.",
+      "description": "Vary the sun angle and building curve to see how concentrated sunlight can reflect from glass skyscrapers. Explore the relationship between surface geometry and reflected light patterns.",
       "emoji": "💡",
       "category": "light"
     }
