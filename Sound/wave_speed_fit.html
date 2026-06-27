@@ -1,0 +1,422 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Wave Speed Fit</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background: #fff;
+  }
+  body {
+    width: min(600px, 100vw);
+    height: min(500px, calc(100vw * 500 / 600));
+    max-height: 100vh;
+    margin: 0 auto;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    position: relative;
+  }
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+  #overlay {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 56px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    padding: 6px 12px 8px;
+    gap: 5px;
+    background: linear-gradient(transparent, rgba(255, 255, 255, 0.94));
+    border-top: 1px solid rgba(0, 0, 0, 0.06);
+    pointer-events: none;
+  }
+  #overlay > * { pointer-events: auto; }
+  .row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .row label {
+    color: #333;
+    font-size: 11px;
+    white-space: nowrap;
+    width: 72px;
+    flex-shrink: 0;
+  }
+  .row input[type="range"] {
+    flex: 1;
+    accent-color: #c0392b;
+    min-width: 0;
+  }
+  .row .val {
+    color: #222;
+    font-size: 11px;
+    font-weight: 600;
+    width: 48px;
+    text-align: right;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+  }
+</style>
+</head>
+<body>
+<canvas id="canvas"></canvas>
+<div id="overlay">
+  <div class="row">
+    <label for="coefSlider">Coefficient</label>
+    <input type="range" id="coefSlider" min="0" max="3" value="0.50" step="0.01">
+    <span class="val" id="coefVal">0.50</span>
+  </div>
+  <div class="row">
+    <label for="powerSlider">Exponent</label>
+    <input type="range" id="powerSlider" min="0" max="10" value="6" step="1">
+    <span class="val" id="powerVal">1</span>
+  </div>
+</div>
+
+<script>
+(function () {
+'use strict';
+
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+
+const LOGICAL_W = 600;
+const LOGICAL_H = 500;
+const CTRL_H = 56;
+
+const XMIN = 0, XMAX = 10;
+const YMIN = 0, YMAX = 5;
+const X_TICK = 1, X_SUBTICK = 0.5;
+const Y_TICK = 1, Y_SUBTICK = 0.5;
+
+const XDATA = [0.8, 1.6, 4.0, 8.0];
+const YDATA = [1.28, 1.44, 2.8, 3.5];
+
+const PAD = {
+  left: 54,
+  right: 14,
+  top: 34,
+  bottom: 36,
+};
+
+const POWER_STOPS = [
+  { value: 0,     label: '0' },
+  { value: 0.25,  label: '1/4' },
+  { value: 1 / 3, label: '1/3' },
+  { value: 0.5,   label: '1/2' },
+  { value: 2 / 3, label: '2/3' },
+  { value: 0.75,  label: '3/4' },
+  { value: 1,     label: '1' },
+  { value: 1.25,  label: '5/4' },
+  { value: 1.5,   label: '3/2' },
+  { value: 1.75,  label: '7/4' },
+  { value: 2,     label: '2' },
+];
+
+const DEFAULT_POWER_INDEX = POWER_STOPS.findIndex(s => s.value === 1);
+
+let W = LOGICAL_W;
+let H = LOGICAL_H;
+let dpr = 1;
+
+const OFFSET_C = 0;
+
+let coefA = 0.50;
+let powerP = 1.00;
+
+const coefSlider = document.getElementById('coefSlider');
+const powerSlider = document.getElementById('powerSlider');
+const coefVal = document.getElementById('coefVal');
+const powerVal = document.getElementById('powerVal');
+
+function formatNum(n) {
+  return (+n.toFixed(2)).toString();
+}
+
+function powerTermText(p) {
+  if (p === 0) return '';
+  if (p === 1) return 'λ';
+  if (p === 2) return 'λ²';
+  if (Math.abs(p - 0.5) < 1e-9) return '√λ';
+  const stop = POWER_STOPS.find(s => Math.abs(s.value - p) < 1e-9);
+  const label = stop ? stop.label : formatNum(p);
+  return `λ^(${label})`;
+}
+
+function equationText() {
+  const a = formatNum(coefA);
+  const c = formatNum(OFFSET_C);
+  const term = powerTermText(powerP);
+
+  if (powerP === 0) {
+    const constant = formatNum(coefA + OFFSET_C);
+    return `v = ${constant}`;
+  }
+
+  let lhs = `v = ${a}${term}`;
+  if (OFFSET_C > 0) lhs += ` + ${c}`;
+  else if (OFFSET_C < 0) lhs += ` − ${formatNum(Math.abs(OFFSET_C))}`;
+  return lhs;
+}
+
+function drawEquation() {
+  const r = plotRect();
+  const text = equationText();
+  ctx.font = '13px Segoe UI, Arial, sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  const tw = ctx.measureText(text).width;
+  const cx = r.left + r.width / 2;
+  const cy = r.top - 14;
+
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(cx - tw / 2 - 6, cy - 9, tw + 12, 18);
+  ctx.fillStyle = '#000';
+  ctx.fillText(text, cx, cy);
+}
+
+function curve(x) {
+  if (x <= 0 && powerP > 0) return OFFSET_C;
+  return coefA * Math.pow(Math.max(x, 0), powerP) + OFFSET_C;
+}
+
+function plotRect() {
+  const top = PAD.top;
+  const left = PAD.left;
+  const right = W - PAD.right;
+  const bottom = H - CTRL_H - PAD.bottom;
+  return { left, top, right, bottom, width: right - left, height: bottom - top };
+}
+
+function dataToCanvas(x, y) {
+  const r = plotRect();
+  return {
+    x: r.left + (x - XMIN) / (XMAX - XMIN) * r.width,
+    y: r.top + (YMAX - y) / (YMAX - YMIN) * r.height,
+  };
+}
+
+function resizeCanvas() {
+  const rect = canvas.getBoundingClientRect();
+  dpr = Math.min(window.devicePixelRatio || 1, 2);
+  W = rect.width || LOGICAL_W;
+  H = rect.height || LOGICAL_H;
+  canvas.width = Math.round(W * dpr);
+  canvas.height = Math.round(H * dpr);
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  draw();
+}
+
+function drawGrid(step, color) {
+  const r = plotRect();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+
+  for (let x = XMIN; x <= XMAX + 1e-9; x += step) {
+    const p1 = dataToCanvas(x, YMIN);
+    const p2 = dataToCanvas(x, YMAX);
+    ctx.beginPath();
+    ctx.moveTo(p1.x, r.top);
+    ctx.lineTo(p2.x, r.bottom);
+    ctx.stroke();
+  }
+
+  for (let y = YMIN; y <= YMAX + 1e-9; y += step) {
+    const p1 = dataToCanvas(XMIN, y);
+    const p2 = dataToCanvas(XMAX, y);
+    ctx.beginPath();
+    ctx.moveTo(r.left, p1.y);
+    ctx.lineTo(r.right, p2.y);
+    ctx.stroke();
+  }
+}
+
+function drawTicks() {
+  const r = plotRect();
+  const tickMajor = 6;
+  const tickMinor = 3;
+
+  ctx.strokeStyle = '#000';
+  ctx.fillStyle = '#000';
+  ctx.lineWidth = 1;
+  ctx.font = '12px Segoe UI, Arial, sans-serif';
+  ctx.textBaseline = 'middle';
+
+  for (let x = XMIN; x <= XMAX + 1e-9; x += X_SUBTICK) {
+    const p = dataToCanvas(x, YMIN);
+    const major = Math.abs(x / X_TICK - Math.round(x / X_TICK)) < 1e-9;
+    const len = major ? tickMajor : tickMinor;
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, r.bottom);
+    ctx.lineTo(p.x, r.bottom + len);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(p.x, r.top);
+    ctx.lineTo(p.x, r.top - len);
+    ctx.stroke();
+
+    if (major) {
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(p.x - 14, r.bottom + len + 2, 28, 14);
+      ctx.fillStyle = '#000';
+      ctx.fillText(String(Math.round(x)), p.x, r.bottom + len + 10);
+    }
+  }
+
+  for (let y = YMIN; y <= YMAX + 1e-9; y += Y_SUBTICK) {
+    const p = dataToCanvas(XMIN, y);
+    const major = Math.abs(y / Y_TICK - Math.round(y / Y_TICK)) < 1e-9;
+    const len = major ? tickMajor : tickMinor;
+
+    ctx.beginPath();
+    ctx.moveTo(r.right, p.y);
+    ctx.lineTo(r.right + len, p.y);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(r.left, p.y);
+    ctx.lineTo(r.left - len, p.y);
+    ctx.stroke();
+
+    if (major) {
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#fff';
+      ctx.fillRect(r.right + len + 2, p.y - 7, 22, 14);
+      ctx.fillStyle = '#000';
+      ctx.fillText(String(Math.round(y)), r.right + len + 22, p.y);
+    }
+  }
+}
+
+function drawAxes() {
+  const r = plotRect();
+  ctx.strokeStyle = '#000';
+  ctx.lineWidth = 1;
+
+  ctx.strokeRect(r.left, r.top, r.width, r.height);
+}
+
+function drawAxisLabels() {
+  const r = plotRect();
+  ctx.fillStyle = '#000';
+  ctx.font = '12px Segoe UI, Arial, sans-serif';
+
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(r.left + r.width / 2 - 70, r.bottom + 24, 140, 16);
+  ctx.fillStyle = '#000';
+  ctx.fillText('Wavelength (m)', r.left + r.width / 2, r.bottom + 26);
+
+  ctx.save();
+  ctx.translate(r.left - 38, r.top + r.height / 2);
+  ctx.rotate(-Math.PI / 2);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'top';
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(-60, -8, 120, 16);
+  ctx.fillStyle = '#000';
+  ctx.fillText('Wave Speed (m/s)', 0, 0);
+  ctx.restore();
+}
+
+function drawCurve() {
+  const r = plotRect();
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(r.left, r.top, r.width, r.height);
+  ctx.clip();
+
+  ctx.strokeStyle = 'red';
+  ctx.lineWidth = 1.5;
+  ctx.setLineDash([6, 4]);
+  ctx.beginPath();
+
+  const steps = Math.max(200, Math.round(r.width));
+  let started = false;
+  for (let i = 0; i <= steps; i++) {
+    const x = XMIN + (XMAX - XMIN) * i / steps;
+    const y = curve(x);
+    if (!Number.isFinite(y)) continue;
+    const p = dataToCanvas(x, y);
+    if (!started) {
+      ctx.moveTo(p.x, p.y);
+      started = true;
+    } else {
+      ctx.lineTo(p.x, p.y);
+    }
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.restore();
+}
+
+function drawPoints() {
+  const dotR = 5;
+  ctx.fillStyle = 'blue';
+  ctx.strokeStyle = 'blue';
+  for (let i = 0; i < XDATA.length; i++) {
+    const p = dataToCanvas(XDATA[i], YDATA[i]);
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, dotR, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(0, 0, W, H);
+
+  drawGrid(Y_SUBTICK, '#d3d3d3');
+  drawGrid(Y_TICK, '#808080');
+  drawAxes();
+  drawTicks();
+  drawAxisLabels();
+  drawEquation();
+  drawCurve();
+  drawPoints();
+}
+
+function bindControls() {
+  coefSlider.addEventListener('input', () => {
+    coefA = +coefSlider.value;
+    coefVal.textContent = coefA.toFixed(2);
+    draw();
+  });
+  powerSlider.addEventListener('input', () => {
+    const stop = POWER_STOPS[+powerSlider.value];
+    powerP = stop.value;
+    powerVal.textContent = stop.label;
+    draw();
+  });
+}
+
+bindControls();
+powerSlider.max = POWER_STOPS.length - 1;
+powerSlider.value = DEFAULT_POWER_INDEX;
+powerVal.textContent = POWER_STOPS[DEFAULT_POWER_INDEX].label;
+window.addEventListener('resize', resizeCanvas);
+if (window.ResizeObserver) {
+  new ResizeObserver(resizeCanvas).observe(canvas);
+}
+resizeCanvas();
+})();
+</script>
+</body>
+</html>
