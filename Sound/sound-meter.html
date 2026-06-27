@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="eigennode-aspect" content="1/1">
     <title>Sound Pressure Meter</title>
     <style>
         * {
@@ -11,11 +12,10 @@
             box-sizing: border-box;
         }
 
+        html, body { width: 100%; height: 100%; }
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             background: #e9ecf0;
-            width: 600px;
-            height: 600px;
             display: flex;
             align-items: center;
             justify-content: center;
@@ -24,8 +24,10 @@
 
         .simulation-container {
             position: relative;
-            width: 600px;
-            height: 600px;
+            aspect-ratio: 1 / 1;
+            height: min(100%, 100vw);
+            width: auto;
+            max-width: 100%;
             background: #f4f6f9;
             overflow: hidden;
         }
@@ -82,15 +84,15 @@
 
         @keyframes pulse {
             0%   { width: 56px; height: 56px; opacity: 0.5; }
-            100% { width: 520px; height: 520px; opacity: 0; }
+            100% { width: 86.67%; height: 86.67%; opacity: 0; }
         }
 
         /* ── SVG overlay for arrow ── */
         .arrow-layer {
             position: absolute;
             top: 0; left: 0;
-            width: 600px;
-            height: 600px;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
             z-index: 5;
         }
@@ -102,9 +104,9 @@
             cursor: grab;
             z-index: 20;
             user-select: none;
-            /* start position: upper-right area */
-            top: 120px;
-            left: 380px;
+            /* start position: upper-right area (% of the square stage) */
+            top: 20%;
+            left: 63.33%;
         }
 
         .spl-meter:active { cursor: grabbing; }
@@ -246,6 +248,7 @@
         // ── Drag state ──
         let isDragging = false;
         let offsetX, offsetY;
+        let micFrac = null;   // mic centre as a fraction of the stage (for resize re-anchoring)
 
         // ── Physics constants (same model as original) ──
         //
@@ -257,13 +260,17 @@
         //  Then convert dB → Pascals:  P = P_ref · 10^(SPL_dB / 20)
         //  Finally display in μPa or mPa.
 
-        const CONTAINER_R       = 300;          // radius in pixels
-        const CENTER_X          = 300;          // container centre x
-        const CENTER_Y          = 300;          // container centre y
-        const METERS_PER_PIXEL  = 10 / 300;     // 300 px = 10 m  →  0.0333 m / px
         const SOURCE_SPL        = 60;           // dB SPL at 1 m reference distance
-        const REF_DIST_PX       = 30;           // reference distance in pixels = 1 m
         const P_REF             = 20e-6;        // 20 μPa — standard reference pressure
+
+        // Geometry is derived from the LIVE container size so the sim stays
+        // responsive without a transform. At the 600 px design size these reduce
+        // to the originals: CX=CY=R=300, REF=30 px (=1 m), MPP=10/300 m/px.
+        function dims() {
+            const W = container.clientWidth, H = container.clientHeight;
+            const R = Math.min(W, H) / 2;
+            return { W: W, H: H, CX: W / 2, CY: H / 2, R: R, REF: R / 10, MPP: 10 / R };
+        }
 
         // ── Helpers ──
 
@@ -284,16 +291,17 @@
 
         /** Pixel distance from mic dot to source centre. */
         function pixelDistance() {
+            const D = dims();
             const mic = micPosition();
-            const dx  = mic.x - CENTER_X;
-            const dy  = mic.y - CENTER_Y;
+            const dx  = mic.x - D.CX;
+            const dy  = mic.y - D.CY;
             return Math.sqrt(dx * dx + dy * dy);
         }
 
         /** dB SPL from pixel distance (inverse square law). */
         function calcSPL(dPx) {
             const safe = Math.max(dPx, 0.01);
-            return Math.max(20, Math.min(100, SOURCE_SPL - 20 * Math.log10(safe / REF_DIST_PX)));
+            return Math.max(20, Math.min(100, SOURCE_SPL - 20 * Math.log10(safe / dims().REF)));
         }
 
         /** dB → Pascals. */
@@ -337,30 +345,31 @@
 
         /** Keep the mic dot inside the circular boundary. */
         function constrainToCircle(meterLeft, meterTop) {
+            const D = dims();
             // Mic dot centre relative to meter element
             const micOffX = 45;   // half of meter width (90 / 2)
             const micOffY = 10;   // approx centre of mic dot from top of meter
 
             const micX = meterLeft + micOffX;
             const micY = meterTop  + micOffY;
-            const dx   = micX - CENTER_X;
-            const dy   = micY - CENTER_Y;
+            const dx   = micX - D.CX;
+            const dy   = micY - D.CY;
             const dist = Math.sqrt(dx * dx + dy * dy);
 
-            const maxR = CONTAINER_R - 12;       // small margin
-            const minR = REF_DIST_PX;            // 1 m minimum distance
+            const maxR = D.R - 12;               // small margin
+            const minR = D.REF;                  // 1 m minimum distance
             if (dist > maxR) {
                 const angle = Math.atan2(dy, dx);
                 return {
-                    x: CENTER_X + maxR * Math.cos(angle) - micOffX,
-                    y: CENTER_Y + maxR * Math.sin(angle) - micOffY
+                    x: D.CX + maxR * Math.cos(angle) - micOffX,
+                    y: D.CY + maxR * Math.sin(angle) - micOffY
                 };
             }
             if (dist < minR) {
                 const angle = Math.atan2(dy, dx) || 0;
                 return {
-                    x: CENTER_X + minR * Math.cos(angle) - micOffX,
-                    y: CENTER_Y + minR * Math.sin(angle) - micOffY
+                    x: D.CX + minR * Math.cos(angle) - micOffX,
+                    y: D.CY + minR * Math.sin(angle) - micOffY
                 };
             }
             return { x: meterLeft, y: meterTop };
@@ -369,8 +378,9 @@
         // ── Update readout + arrow ──
 
         function updateDisplay() {
+            const D        = dims();
             const dPx      = pixelDistance();
-            const dMeters  = dPx * METERS_PER_PIXEL;
+            const dMeters  = dPx * D.MPP;
             const spl      = calcSPL(dPx);
             const pa       = dBtoPa(spl);
             const fmt      = formatPressure(pa);
@@ -390,17 +400,17 @@
 
             // Arrow from source to mic
             const mic = micPosition();
-            arrowLine.setAttribute('x1', CENTER_X);
-            arrowLine.setAttribute('y1', CENTER_Y);
+            arrowLine.setAttribute('x1', D.CX);
+            arrowLine.setAttribute('y1', D.CY);
             arrowLine.setAttribute('x2', mic.x);
             arrowLine.setAttribute('y2', mic.y);
 
             // Distance label at midpoint of arrow
-            const midX = (CENTER_X + mic.x) / 2;
-            const midY = (CENTER_Y + mic.y) / 2;
+            const midX = (D.CX + mic.x) / 2;
+            const midY = (D.CY + mic.y) / 2;
 
             // Offset the label perpendicular to the line so it doesn't overlap
-            const angle  = Math.atan2(mic.y - CENTER_Y, mic.x - CENTER_X);
+            const angle  = Math.atan2(mic.y - D.CY, mic.x - D.CX);
             const perpX  = -Math.sin(angle) * 14;
             const perpY  =  Math.cos(angle) * 14;
 
@@ -416,6 +426,10 @@
             distLabel.style.left = (midX + perpX) + 'px';
             distLabel.style.top  = (midY + perpY) + 'px';
             distLabel.style.transform = 'translate(-50%, -50%)';
+
+            // Remember the mic position as a fraction of the stage so it can be
+            // restored proportionally if the iframe is resized.
+            micFrac = { x: mic.x / D.W, y: mic.y / D.H };
         }
 
         // ── Mouse drag ──
@@ -474,48 +488,17 @@
 
         // ── Initial draw ──
         updateDisplay();
+
+        // Re-anchor the mic proportionally when the stage is resized (keeps the
+        // meter at the same physical spot relative to the source after a resize).
+        function applyFrac() {
+            if (!micFrac) return;
+            const D = dims();
+            splMeter.style.left = (micFrac.x * D.W - 45) + 'px';
+            splMeter.style.top  = (micFrac.y * D.H - 10) + 'px';
+            updateDisplay();
+        }
+        if (window.ResizeObserver) new ResizeObserver(applyFrac).observe(container);
     </script>
-<script>
-// responsive-scale-to-fit v1 -- replaces the fixed-size embed + height report.
-// Scales the whole sim (the document body) to fit the iframe/sticky it is
-// given: preserve aspect ratio, centre, cap the zoom. The transform is
-// presentation only. Tunable per embed: ?maxscale= (zoom cap), ?maxw= (px
-// width cap), ?h= (exact reported height), ?maxh= (anti-spill ceiling).
-// NOTE: the AoPS live-chat embed sizes the iframe from its height= attribute
-// and ignores the reported height; set height= there.
-(function () {
-  var DOC = document.documentElement;
-  var Q = new URLSearchParams(location.search);
-  var num = function (k, d) { return Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d; };
-  var MAXSCALE = num('maxscale', 2.4), MAXW = num('maxw', 0);
-  var FIXED_H = num('h', 0), REPORT_MAX = num('maxh', 320), REPORT_MIN = 140;
-  var lastH = 0;
-  function fit() {
-    var b = document.body; if (!b) return;
-    var natW = b.offsetWidth, natH = b.offsetHeight;
-    if (!natW || !natH) return;
-    var vw = DOC.clientWidth, vh = DOC.clientHeight;
-    var cap = MAXW > 0 ? Math.min(MAXSCALE, MAXW / natW) : MAXSCALE;
-    var s = Math.min(vw / natW, vh / natH, cap);
-    if (!isFinite(s) || s <= 0) s = Math.min(vw / natW, cap);
-    b.style.transform = 'translate(-50%, -50%) scale(' + s + ')';
-    var rh = FIXED_H > 0 ? Math.max(80, Math.min(2000, FIXED_H))
-      : Math.max(REPORT_MIN, Math.min(REPORT_MAX, Math.round(natH * Math.min(vw / natW, cap))));
-    if (Math.abs(rh - lastH) >= 2) { lastH = rh; try { window.parent.postMessage({ type: 'resize', height: rh }, '*'); } catch (e) {} }
-  }
-  function boot() {
-    var b = document.body; if (!b) return;
-    DOC.style.cssText += ';width:100%;height:100%;margin:0;overflow:hidden;background:transparent;';
-    b.style.position = 'absolute'; b.style.top = '50%'; b.style.left = '50%';
-    b.style.margin = '0'; b.style.transformOrigin = 'center center'; b.style.willChange = 'transform';
-    fit();
-    addEventListener('resize', fit); addEventListener('orientationchange', fit);
-    if (window.ResizeObserver) new ResizeObserver(fit).observe(DOC);
-    if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
-  }
-  if (document.body) boot(); else addEventListener('DOMContentLoaded', boot);
-  addEventListener('load', fit);
-})();
-</script>
 </body>
 </html>
