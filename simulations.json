@@ -785,7 +785,7 @@
     {
       "path": "Sound/wave_speed_fit.html",
       "title": "Wave Speed Fit",
-      "description": "New simulation - description pending.",
+      "description": "Fit a power-law model to experimental wave speed data by adjusting coefficient and exponent sliders, discovering the quantitative relationship between wave speed and physical properties like tension or medium density.",
       "emoji": "🔊",
       "category": "sound"
     }
