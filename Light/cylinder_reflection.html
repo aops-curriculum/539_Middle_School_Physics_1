@@ -339,6 +339,989 @@
     </div>
   </div>
 </div>
+<script>
+'use strict';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Constants & state
+// ─────────────────────────────────────────────────────────────────────────────
+const PX_PER_CM = 38;
+
+let sourceImage  = null;
+let zoomFactor   = 1.0;
+let renderTimer  = null;
+
+// Image overlay positioning
+let showSource   = false;
+let srcOffsetX   = 0.0;   // physical cm, positive = right
+let srcOffsetY   = 0.0;   // physical cm, positive = up
+let srcScaleMult = 1.0;   // multiplier on top of the default "max dim = 2R" scaling
+
+// Warp cache for instant overlay repaints without re-running the heavy math
+let warpCacheData = null; // Uint8ClampedArray, warpSizePx × warpSizePx × 4
+let warpSizePx    = 0;
+
+// Grid overlay
+let showGrid = false;
+
+// Morph display toggle
+let showMorph = true;
+
+// Buffer around cylinder edge (mm)
+let bufferMm = 0;
+
+// Hide the semi-transparent directly-visible region
+let hideDirectView = false;
+
+// Observer at infinity
+let observerAtInfinity = false;
+
+// Canvas drag state
+let isDraggingCanvas = false;
+let dragLastX = 0, dragLastY = 0;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// DOM refs
+// ─────────────────────────────────────────────────────────────────────────────
+const dropZone         = document.getElementById('drop-zone');
+const fileInput        = document.getElementById('file-input');
+const urlInput         = document.getElementById('url-input');
+const urlLoadBtn       = document.getElementById('url-load-btn');
+const thumbPreview     = document.getElementById('thumb-preview');
+const thumbImg         = document.getElementById('thumb-img');
+const radiusSlider     = document.getElementById('radius-slider');
+const observerSlider   = document.getElementById('observer-slider');
+const rVal             = document.getElementById('r-val');
+const eVal             = document.getElementById('e-val');
+const pdfBtn           = document.getElementById('pdf-btn');
+const outputCanvas     = document.getElementById('output-canvas');
+const placeholder      = document.getElementById('placeholder');
+const canvasInfo       = document.getElementById('canvas-info');
+const zoomLabel        = document.getElementById('zoom-label');
+const canvasScroll     = document.getElementById('canvas-scroll');
+const showMorphToggle  = document.getElementById('show-morph-toggle');
+const showSourceToggle = document.getElementById('show-source-toggle');
+const overlayControls  = document.getElementById('overlay-controls');
+const imgScaleSlider   = document.getElementById('img-scale-slider');
+const imgScaleVal      = document.getElementById('img-scale-val');
+const offsetDisplay    = document.getElementById('offset-display');
+const resetPosBtn      = document.getElementById('reset-pos-btn');
+const pasteBtn            = document.getElementById('paste-btn');
+const showGridToggle      = document.getElementById('show-grid-toggle');
+const bufferSlider        = document.getElementById('buffer-slider');
+const bufferVal           = document.getElementById('buffer-val');
+const hideDirectViewToggle  = document.getElementById('hide-direct-view-toggle');
+const observerInfToggle     = document.getElementById('observer-inf-toggle');
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image loading
+// ─────────────────────────────────────────────────────────────────────────────
+function setSourceImage(img) {
+  sourceImage = img;
+  thumbImg.src = img.src;
+  thumbPreview.style.display = 'flex';
+  scheduleRender();
+}
+
+function loadFromFile(file) {
+  if (!file) return;
+  if (!file.type.startsWith('image/')) return;
+  const reader = new FileReader();
+  reader.onload = e => {
+    const img = new Image();
+    img.onload = () => setSourceImage(img);
+    img.src = e.target.result;
+  };
+  reader.readAsDataURL(file);
+}
+
+function loadFromURL(url) {
+  if (!url.trim()) return;
+  const img = new Image();
+  img.crossOrigin = 'anonymous';
+  img.onload = () => setSourceImage(img);
+  img.onerror = () => alert('Could not load image from that URL.\n(CORS restrictions may apply.)');
+  img.src = url.trim();
+}
+
+dropZone.addEventListener('click', () => fileInput.click());
+fileInput.addEventListener('change', e => loadFromFile(e.target.files[0]));
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault(); dropZone.classList.remove('drag-over');
+  const file = e.dataTransfer.files[0];
+  if (file) { loadFromFile(file); return; }
+  const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+  if (url) loadFromURL(url);
+});
+document.body.addEventListener('dragover', e => e.preventDefault());
+document.body.addEventListener('drop', e => {
+  e.preventDefault();
+  const file = e.dataTransfer.files[0];
+  if (file) { loadFromFile(file); return; }
+  const url = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain');
+  if (url) loadFromURL(url);
+});
+urlLoadBtn.addEventListener('click', () => loadFromURL(urlInput.value));
+urlInput.addEventListener('keydown', e => { if (e.key === 'Enter') loadFromURL(urlInput.value); });
+
+pasteBtn.addEventListener('click', async () => {
+  try {
+    const items = await navigator.clipboard.read();
+    let found = false;
+    for (const item of items) {
+      const imageType = item.types.find(t => t.startsWith('image/'));
+      if (imageType) {
+        const blob = await item.getType(imageType);
+        const url = URL.createObjectURL(blob);
+        const img = new Image();
+        img.onload = () => setSourceImage(img);
+        img.src = url;
+        found = true;
+        break;
+      }
+    }
+    if (!found) alert('No image found on the clipboard.');
+  } catch (err) {
+    alert('Could not read clipboard.\n' + err.message);
+  }
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Slider display & scheduling
+// ─────────────────────────────────────────────────────────────────────────────
+radiusSlider.addEventListener('input', () => {
+  rVal.textContent = parseFloat(radiusSlider.value).toFixed(1) + ' cm';
+});
+observerSlider.addEventListener('input', () => {
+  if (!observerAtInfinity)
+    eVal.textContent = parseFloat(observerSlider.value).toFixed(1) + ' cm';
+});
+
+observerInfToggle.addEventListener('change', () => {
+  observerAtInfinity = observerInfToggle.checked;
+  observerSlider.disabled = observerAtInfinity;
+  eVal.textContent = observerAtInfinity ? '∞' : parseFloat(observerSlider.value).toFixed(1) + ' cm';
+  scheduleRender();
+});
+
+// Use 'change' or debounced inputs for full redraw to keep UI responsive
+radiusSlider.addEventListener('change', scheduleRender);
+observerSlider.addEventListener('change', scheduleRender);
+
+function getE() {
+  return observerAtInfinity ? 1e5 : parseFloat(observerSlider.value);
+}
+
+function scheduleRender() {
+  if (!sourceImage && !showGrid) return;
+  clearTimeout(renderTimer);
+  canvasInfo.innerHTML = '<span class="rendering-dot"></span>Rendering…';
+  renderTimer = setTimeout(doRender, 40);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Image positioning
+// ─────────────────────────────────────────────────────────────────────────────
+showMorphToggle.addEventListener('change', () => {
+  showMorph = showMorphToggle.checked;
+  // Yield to the browser so the toggle visually updates before any computation.
+  requestAnimationFrame(() => {
+    if (showMorph) {
+      scheduleRender();   // warp was not computed while morph was off
+    } else {
+      repaintFromCache(); // instant — just swap to white background
+    }
+  });
+});
+
+showSourceToggle.addEventListener('change', () => {
+  showSource = showSourceToggle.checked;
+  overlayControls.style.display = showSource ? 'block' : 'none';
+  outputCanvas.classList.toggle('can-drag', showSource);
+  repaintFromCache();
+});
+
+showGridToggle.addEventListener('change', () => {
+  showGrid = showGridToggle.checked;
+  if (!sourceImage) {
+    if (showGrid) {
+      renderGridOnly();
+    } else {
+      outputCanvas.style.display = 'none';
+      placeholder.style.display = 'flex';
+      warpSizePx = 0;
+      pdfBtn.disabled = true;
+      outputCanvas.dataset.zoomed = '';
+    }
+    return;
+  }
+  repaintFromCache();
+});
+
+bufferSlider.addEventListener('input', () => {
+  bufferMm = parseFloat(bufferSlider.value);
+  bufferVal.textContent = bufferMm.toFixed(1) + ' mm';
+});
+bufferSlider.addEventListener('change', scheduleRender);
+
+hideDirectViewToggle.addEventListener('change', () => {
+  hideDirectView = hideDirectViewToggle.checked;
+  repaintFromCache();
+});
+
+imgScaleSlider.addEventListener('input', () => {
+  srcScaleMult = parseFloat(imgScaleSlider.value);
+  imgScaleVal.textContent = srcScaleMult.toFixed(2) + '×';
+  repaintFromCache();  // instant overlay preview; no warp recalc while sliding
+});
+imgScaleSlider.addEventListener('change', scheduleRender);  // full recalc on release
+
+resetPosBtn.addEventListener('click', () => {
+  srcOffsetX = 0; srcOffsetY = 0; srcScaleMult = 1.0;
+  imgScaleSlider.value = 1.0;
+  imgScaleVal.textContent = '1.00×';
+  updateOffsetDisplay();
+  scheduleRender();
+});
+
+function updateOffsetDisplay() {
+  offsetDisplay.textContent =
+    `(${srcOffsetX >= 0 ? '+' : ''}${srcOffsetX.toFixed(1)}, ${srcOffsetY >= 0 ? '+' : ''}${srcOffsetY.toFixed(1)}) cm`;
+}
+
+// Canvas drag
+outputCanvas.addEventListener('pointerdown', e => {
+  if (!showSource) return;
+  isDraggingCanvas = true;
+  outputCanvas.setPointerCapture(e.pointerId);
+  dragLastX = e.clientX;
+  dragLastY = e.clientY;
+  outputCanvas.classList.add('is-dragging');
+  e.preventDefault();
+});
+
+outputCanvas.addEventListener('pointermove', e => {
+  if (!isDraggingCanvas) return;
+  const dx = (e.clientX - dragLastX) / zoomFactor;
+  const dy = (e.clientY - dragLastY) / zoomFactor;
+  dragLastX = e.clientX;
+  dragLastY = e.clientY;
+  srcOffsetX += dx / PX_PER_CM;
+  srcOffsetY -= dy / PX_PER_CM;  // canvas y is inverted vs physical y
+  updateOffsetDisplay();
+  repaintFromCache();  // instant: restore warp pixels + redraw overlay at new position
+});
+
+outputCanvas.addEventListener('pointerup', e => {
+  if (!isDraggingCanvas) return;
+  isDraggingCanvas = false;
+  outputCanvas.classList.remove('is-dragging');
+  scheduleRender();  // full warp recalc now that drag is done
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Backward Mapping Math
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returns true if virtual point V=(vx,vy) is directly visible from the observer
+// at O=(0,-(E+R)), i.e. the line segment OV does NOT pass through the cylinder.
+// Points that are directly visible should NOT be projected into the anamorphic warp.
+function isDirectlyVisible(vx, vy, R, E) {
+    // If V is inside or on the cylinder, it's always blocked
+    if (vx * vx + vy * vy <= R * R) return false;
+
+    // Parameterise segment O→V as P(t) = O + t*(V-O), t∈[0,1]
+    // |P(t)|² = R²  →  a·t² + b·t + c = 0
+    const Oy = -(E + R);
+    const dx = vx;           // vx - 0
+    const dy = vy - Oy;      // vy + E + R
+    const a  = dx*dx + dy*dy;
+    const b  = 2 * Oy * dy;  // 2*(0·dx + Oy·dy)
+    const c  = Oy*Oy - R*R;  // |O|² - R²  (always > 0 since E>0)
+
+    const disc = b*b - 4*a*c;
+    if (disc <= 0) return true;  // No real intersections → visible
+
+    const sq = Math.sqrt(disc);
+    const t1 = (-b - sq) / (2*a);
+    const t2 = (-b + sq) / (2*a);
+
+    // Both O and V are outside the cylinder, so if the segment crosses the
+    // cylinder it enters at t1 and exits at t2 with 0 < t1 < t2 < 1.
+    return !(t1 > 0 && t2 < 1);
+}
+
+// Solves Alhazen's problem per-pixel using a 20-step binary search
+function findReflectionPhi(dx, dy, R, E) {
+    const sign = dx < 0 ? -1 : 1;
+    const ax = Math.abs(dx);
+    let low = 0;
+    let high = Math.PI / 2;
+
+    const evalPhi = (phi) => {
+        const Px = R * Math.sin(phi);
+        const Py = -R * Math.cos(phi);
+        const Tx = Math.cos(phi);
+        const Ty = Math.sin(phi);
+        
+        // Vector from Point to Observer O=(0, -E-R)
+        const vOx = -Px, vOy = -E - R - Py;
+        const lenO = Math.hypot(vOx, vOy);
+        
+        // Vector from Point to Canvas Destination D=(ax, dy)
+        const vDx = ax - Px, vDy = dy - Py;
+        const lenD = Math.hypot(vDx, vDy);
+        
+        // Sum of normalized vectors projected onto the tangent
+        return (vOx / lenO + vDx / lenD) * Tx + (vOy / lenO + vDy / lenD) * Ty;
+    };
+
+    let fLow = evalPhi(low);
+    if (fLow * evalPhi(high) > 0) return null; // Ray misses the cylinder
+
+    let mid;
+    for (let i = 0; i < 20; i++) {
+        mid = (low + high) / 2;
+        let fMid = evalPhi(mid);
+        if ((fLow > 0 && fMid > 0) || (fLow < 0 && fMid < 0)) {
+            low = mid;
+            fLow = fMid;
+        } else {
+            high = mid;
+        }
+    }
+    return mid * sign;
+}
+
+function renderBackwardMapping(srcPx, srcW, srcH, R, E, outPx, outW, outH, scaleMult, offsetX, offsetY, bufferCm) {
+    const effectiveScale = ((2 * R) / Math.max(srcW, srcH)) * scaleMult;
+    const cx = outW / 2;
+    const cy = outH / 2;
+    const innerR = R + bufferCm;  // skip pixels within buffer of cylinder edge
+
+    // Loop over every pixel on the physical output canvas
+    for (let py = 0; py < outH; py++) {
+        for (let px = 0; px < outW; px++) {
+            const dx = (px - cx) / PX_PER_CM;
+            const dy = -(py - cy) / PX_PER_CM;
+
+            if (dx * dx + dy * dy <= innerR * innerR) continue; // Skip interior + buffer
+
+            const phi = findReflectionPhi(dx, dy, R, E);
+            if (phi === null) continue; 
+
+            // Calculate exact intersection P
+            const Px = R * Math.sin(phi);
+            const Py = -R * Math.cos(phi);
+            
+            // Because reflection is symmetric, the math to find V is the same as D
+            const vx_D = dx - Px;
+            const vy_D = dy - Py;
+            const nx = Px / R;
+            const ny = Py / R;
+            
+            const vDotN = vx_D * nx + vy_D * ny;
+            
+            // Virtual point V on the table
+            const vx = Px + vx_D - 2 * vDotN * nx;
+            const vy = Py + vy_D - 2 * vDotN * ny;
+
+            // Skip virtual points the observer can see directly — those regions
+            // of the source image are visible without the mirror and should not
+            // be warped into the anamorphic print.
+            if (isDirectlyVisible(vx, vy, R, E)) continue;
+
+            // Map physical table coordinates back to source image pixels
+            const upx = (vx - offsetX) / effectiveScale + srcW * 0.5;
+            const vpx = srcH * 0.5 - (vy - offsetY) / effectiveScale;
+
+            if (upx >= 0 && upx < srcW - 1 && vpx >= 0 && vpx < srcH - 1) {
+                // Bilinear interpolation for perfectly crisp images
+                const x0 = Math.floor(upx), y0 = Math.floor(vpx);
+                const fx = upx - x0, fy = vpx - y0;
+                
+                const idx00 = (y0 * srcW + x0) * 4;
+                const idx10 = (y0 * srcW + x0 + 1) * 4;
+                const idx01 = ((y0 + 1) * srcW + x0) * 4;
+                const idx11 = ((y0 + 1) * srcW + x0 + 1) * 4;
+
+                const w00 = (1 - fx) * (1 - fy), w10 = fx * (1 - fy);
+                const w01 = (1 - fx) * fy,       w11 = fx * fy;
+
+                const idx = (py * outW + px) * 4;
+                outPx[idx]   = srcPx[idx00]*w00 + srcPx[idx10]*w10 + srcPx[idx01]*w01 + srcPx[idx11]*w11;
+                outPx[idx+1] = srcPx[idx00+1]*w00 + srcPx[idx10+1]*w10 + srcPx[idx01+1]*w01 + srcPx[idx11+1]*w11;
+                outPx[idx+2] = srcPx[idx00+2]*w00 + srcPx[idx10+2]*w10 + srcPx[idx01+2]*w01 + srcPx[idx11+2]*w11;
+                // Leave Alpha as 255 (Background is pre-filled white)
+            }
+        }
+    }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Forward mapping (used for grid warp visualization)
+// ─────────────────────────────────────────────────────────────────────────────
+function findMirrorPoint(vx, vy, R, E) {
+  if (Math.abs(vx) < 1e-9) return { Px: 0.0, Py: -R };
+  const b = -(E + R);
+  const m = (E + R + vy) / vx;
+  const A = 1 + m * m, B = 2 * m * b, C = b * b - R * R;
+  const disc = B * B - 4 * A * C;
+  if (disc < 0) return null;
+  const sq = Math.sqrt(disc);
+  const Px1 = (-B + sq) / (2*A), Py1 = m*Px1 + b;
+  const Px2 = (-B - sq) / (2*A), Py2 = m*Px2 + b;
+  const t1 = Px1/vx, t2 = Px2/vx;
+  let best = null, bestT = Infinity;
+  if (Py1 <= 0 && t1 > 1e-9 && t1 < bestT) { best = {Px:Px1,Py:Py1}; bestT=t1; }
+  if (Py2 <= 0 && t2 > 1e-9 && t2 < bestT) { best = {Px:Px2,Py:Py2}; }
+  return best;
+}
+
+function forwardMap(vx, vy, R, E) {
+  const P = findMirrorPoint(vx, vy, R, E);
+  if (!P) return null;
+  const {Px, Py} = P;
+  const nx=Px/R, ny=Py/R, tx=-Py/R, ty=Px/R;
+  const wx=vx-Px, wy=vy-Py;
+  const wDotT=wx*tx+wy*ty, wDotN=wx*nx+wy*ny;
+  return { dx: Px+wDotT*tx-wDotN*nx, dy: Py+wDotT*ty-wDotN*ny };
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Drawing helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function drawCylinderRing(ctx, cx, cy, R) {
+  ctx.save();
+  ctx.strokeStyle = 'rgba(20,50,180,0.95)';
+  ctx.lineWidth   = 2.5;
+  ctx.setLineDash([6, 5]);
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * PX_PER_CM, 0, 2 * Math.PI);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.fillStyle = 'rgba(50,100,220,0.7)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, 3, 0, 2 * Math.PI);
+  ctx.fill();
+  ctx.restore();
+}
+
+function drawGrid(ctx, cx, cy, R, E) {
+  const step    = R / 4;   // grid spacing in cm (~8 cells across diameter)
+  const SAMPLES = 80;      // polyline samples per warped grid line
+  const rPx     = R * PX_PER_CM;
+  const outW    = warpSizePx, outH = warpSizePx;
+
+  ctx.save();
+  ctx.strokeStyle = 'rgba(0, 110, 220, 0.80)';
+  ctx.lineWidth   = 1;
+
+  // ── Inside circle: regular rectangular grid, clipped to circle ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);
+  ctx.clip();
+  for (let vx = -R; vx <= R + 1e-9; vx += step) {
+    const canX = cx + vx * PX_PER_CM;
+    ctx.beginPath(); ctx.moveTo(canX, cy - rPx); ctx.lineTo(canX, cy + rPx); ctx.stroke();
+  }
+  for (let vy = -R; vy <= R + 1e-9; vy += step) {
+    const canY = cy - vy * PX_PER_CM;
+    ctx.beginPath(); ctx.moveTo(cx - rPx, canY); ctx.lineTo(cx + rPx, canY); ctx.stroke();
+  }
+  ctx.restore();
+
+  // ── Outside circle: forward-mapped (warped) grid, clipped to outside ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, 0, outW, outH);
+  ctx.arc(cx, cy, rPx, 0, 2 * Math.PI);  // hole
+  ctx.clip('evenodd');
+
+  // Vertical grid lines (constant vx, varying vy)
+  for (let vx = -R; vx <= R + 1e-9; vx += step) {
+    ctx.beginPath();
+    let pen = false;
+    for (let t = 0; t <= SAMPLES; t++) {
+      const vy = -R + 2 * R * t / SAMPLES;
+      const m = forwardMap(vx, vy, R, E);
+      if (!m) { pen = false; continue; }
+      const px = cx + m.dx * PX_PER_CM, py = cy - m.dy * PX_PER_CM;
+      if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  // Horizontal grid lines (constant vy, varying vx)
+  for (let vy = -R; vy <= R + 1e-9; vy += step) {
+    ctx.beginPath();
+    let pen = false;
+    for (let t = 0; t <= SAMPLES; t++) {
+      const vx = -R + 2 * R * t / SAMPLES;
+      const m = forwardMap(vx, vy, R, E);
+      if (!m) { pen = false; continue; }
+      const px = cx + m.dx * PX_PER_CM, py = cy - m.dy * PX_PER_CM;
+      if (!pen) { ctx.moveTo(px, py); pen = true; } else ctx.lineTo(px, py);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+
+  ctx.restore();
+}
+
+function drawSourceOverlay(ctx, cx, cy, R, E, canvasSize) {
+  if (!sourceImage) return;
+  const origW = sourceImage.width, origH = sourceImage.height;
+  const effectiveScale = (2 * R / Math.max(origW, origH)) * srcScaleMult;
+  const imgW = origW * effectiveScale * PX_PER_CM;
+  const imgH = origH * effectiveScale * PX_PER_CM;
+  const imgX = cx + srcOffsetX * PX_PER_CM - imgW * 0.5;
+  const imgY = cy - srcOffsetY * PX_PER_CM - imgH * 0.5;
+
+  // ── Shadow-cone geometry ──
+  // Observer at O=(0,-(E+R)). Tangent angle: cos(phi_t) = R/(E+R).
+  // The shadow cone is the region behind the cylinder the observer cannot see directly.
+  const phi_t = Math.acos(R / (E + R));
+  const sinPt = Math.sin(phi_t), cosPt = Math.cos(phi_t);
+
+  // Tangent points in canvas coords  (canvas y = cy − phys_y × PX_PER_CM)
+  const T_R_cx = cx + R * sinPt * PX_PER_CM;
+  const T_R_cy = cy + R * cosPt * PX_PER_CM;   // cy − (−R·cosPt)·PX
+  const T_L_cx = cx - R * sinPt * PX_PER_CM;
+  const T_L_cy = cy + R * cosPt * PX_PER_CM;
+
+  // Direction of the right tangent line extended beyond T_R (in canvas coords).
+  // Physical direction: T_R − O = (R·sinPt,  E + R·(1−cosPt)).  Canvas y is negated.
+  const tDirX = R * sinPt;
+  const tDirY = -(E + R * (1 - cosPt));    // upward in canvas (negative y)
+  const tLen  = Math.hypot(tDirX, tDirY);
+  const tUx = tDirX / tLen, tUy = tDirY / tLen;
+
+  const far = canvasSize * 4;               // safely beyond any canvas edge
+  const FarR_cx = T_R_cx + far * tUx;
+  const FarR_cy = T_R_cy + far * tUy;
+  const FarL_cx = T_L_cx - far * tUx;      // mirror: negate x component
+  const FarL_cy = T_L_cy + far * tUy;
+
+  // Canvas angles of the tangent points (needed for the closing arc)
+  const angL = Math.atan2(T_L_cy - cy, T_L_cx - cx);   // ≈ π/2 + phi_t
+  const angR = Math.atan2(T_R_cy - cy, T_R_cx - cx);   // ≈ π/2 − phi_t
+
+  // Adds the shadow-cone sub-path to the current path.
+  // Shape: T_R → FarR → FarL → T_L → back arc to T_R (over the cylinder top).
+  const addShadowCone = () => {
+    ctx.moveTo(T_R_cx, T_R_cy);
+    ctx.lineTo(FarR_cx, FarR_cy);
+    ctx.lineTo(FarL_cx, FarL_cy);
+    ctx.lineTo(T_L_cx, T_L_cy);
+    // anticlockwise=false → increasing canvas angle, sweeps through 270° (top of canvas).
+    ctx.arc(cx, cy, R * PX_PER_CM, angL, angR, false);
+    ctx.closePath();
+  };
+
+  // ── Semi-transparent: directly-visible region (canvas MINUS shadow cone) ──
+  if (!hideDirectView) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, 0, canvasSize, canvasSize);
+    addShadowCone();
+    ctx.clip('evenodd');
+    ctx.globalAlpha = 0.28;
+    ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
+    ctx.restore();
+  }
+
+  // ── Full-opacity: shadow cone region (projected into mirror — show clearly) ──
+  ctx.save();
+  ctx.beginPath();
+  addShadowCone();
+  ctx.clip();
+  ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
+  ctx.restore();
+
+  // ── Buffer zone: overlay a white mask on the reflection of the buffer annulus ──
+  // The buffer annulus (R < r < R+buffer in physical print space) is not rendered in
+  // the warp. The virtual image points that would have been reflected off this zone
+  // are found by forward-mapping each canvas pixel: if forwardMap gives a physical
+  // point whose radius falls in [R, R+buffer], that virtual pixel should appear as
+  // "outside mirror" (semi-transparent or hidden), not full-opacity.
+  const bufferCm = bufferMm / 10;
+  if (bufferCm > 0) {
+    const maskSize = Math.min(canvasSize, 512);
+    const mask = document.createElement('canvas');
+    mask.width  = maskSize;
+    mask.height = maskSize;
+    const mCtx  = mask.getContext('2d');
+    const mData = mCtx.createImageData(maskSize, maskSize);
+    const step  = canvasSize / maskSize;
+    const R2lo  = R * R;
+    const R2hi  = (R + bufferCm) * (R + bufferCm);
+
+    for (let my = 0; my < maskSize; my++) {
+      for (let mx = 0; mx < maskSize; mx++) {
+        // Canvas pixel → virtual image physical coords
+        const vx = (mx * step - cx) / PX_PER_CM;
+        const vy = -(my * step - cy) / PX_PER_CM;
+        const m  = forwardMap(vx, vy, R, E);
+        if (!m) continue;
+        const dr2 = m.dx * m.dx + m.dy * m.dy;
+        if (dr2 >= R2lo && dr2 <= R2hi) {
+          const i = (my * maskSize + mx) * 4;
+          mData.data[i]   = 255;
+          mData.data[i+1] = 255;
+          mData.data[i+2] = 255;
+          // If hiding outside-mirror image entirely, erase; otherwise reduce to
+          // the same ~28 % opacity used for the directly-visible region.
+          mData.data[i+3] = hideDirectView ? 255 : Math.round(255 * 0.72);
+        }
+      }
+    }
+    mCtx.putImageData(mData, 0, 0);
+
+    // Only apply mask inside the shadow cone so the outside-mirror region is unaffected.
+    ctx.save();
+    ctx.beginPath();
+    addShadowCone();
+    ctx.clip();
+    ctx.drawImage(mask, 0, 0, canvasSize, canvasSize);
+    ctx.restore();
+  }
+
+  // ── Full-opacity: cylinder interior (positioning guide) ──
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R * PX_PER_CM, 0, 2 * Math.PI);
+  ctx.clip();
+  ctx.drawImage(sourceImage, imgX, imgY, imgW, imgH);
+  ctx.restore();
+}
+
+function repaintFromCache() {
+  if (!warpSizePx) return;
+  if (showMorph && !warpCacheData && !showGrid) return;
+  const ctx = outputCanvas.getContext('2d');
+  const dpr = window.devicePixelRatio || 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (showMorph && warpCacheData) {
+    // putImageData bypasses ctx transforms, so draw via a temp canvas
+    const tmp = document.createElement('canvas');
+    tmp.width = warpSizePx; tmp.height = warpSizePx;
+    tmp.getContext('2d').putImageData(new ImageData(warpCacheData, warpSizePx, warpSizePx), 0, 0);
+    ctx.drawImage(tmp, 0, 0);
+  } else {
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, warpSizePx, warpSizePx);
+  }
+  const cx = warpSizePx / 2, cy = warpSizePx / 2;
+  const R  = parseFloat(radiusSlider.value);
+  const E  = getE();
+  drawCylinderRing(ctx, cx, cy, R);
+  if (showSource) drawSourceOverlay(ctx, cx, cy, R, E, warpSizePx);
+  if (showGrid)   drawGrid(ctx, cx, cy, R, E);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Main render
+// ─────────────────────────────────────────────────────────────────────────────
+function renderGridOnly() {
+  const R = parseFloat(radiusSlider.value);
+  const E = getE();
+  const halfCm = Math.max(5 * R + 4, 16);
+  const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
+  warpSizePx = sizePx;
+  const dpr = window.devicePixelRatio || 1;
+  outputCanvas.width  = sizePx * dpr;
+  outputCanvas.height = sizePx * dpr;
+  outputCanvas.style.width  = sizePx + 'px';
+  outputCanvas.style.height = sizePx + 'px';
+  const ctx = outputCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, sizePx, sizePx);
+  const cx = sizePx / 2, cy = sizePx / 2;
+  drawCylinderRing(ctx, cx, cy, R);
+  drawGrid(ctx, cx, cy, R, E);
+  placeholder.style.display  = 'none';
+  outputCanvas.style.display = 'block';
+  pdfBtn.disabled = false;
+  if (!outputCanvas.dataset.zoomed) { fitZoom(); outputCanvas.dataset.zoomed = true; }
+  canvasInfo.textContent = `Grid preview · R=${R} cm · E=${observerAtInfinity ? '∞' : E + ' cm'}`;
+}
+
+function doRender() {
+  if (!sourceImage) {
+    if (showGrid) renderGridOnly();
+    return;
+  }
+
+  const R = parseFloat(radiusSlider.value);
+  const E = getE();
+
+  // Downscale source for pixel-level work
+  const MAX_SRC = 600;
+  const ratio = Math.min(1, MAX_SRC / Math.max(sourceImage.width, sourceImage.height));
+  const srcW  = Math.round(sourceImage.width  * ratio);
+  const srcH  = Math.round(sourceImage.height * ratio);
+  const tmp   = document.createElement('canvas');
+  tmp.width = srcW; tmp.height = srcH;
+  
+  const tmpCtx = tmp.getContext('2d');
+  // FIX: Pre-fill with white to prevent transparent PNGs from rendering black
+  tmpCtx.fillStyle = '#ffffff';
+  tmpCtx.fillRect(0, 0, srcW, srcH);
+  tmpCtx.drawImage(sourceImage, 0, 0, srcW, srcH);
+  const srcPx = tmpCtx.getImageData(0, 0, srcW, srcH).data;
+
+  // Output canvas dimensions — extra room for warp that extends behind the cylinder
+  const halfCm = Math.max(5 * R + 4, 16);
+  const sizePx = Math.min(Math.round(2 * halfCm * PX_PER_CM), 2400);
+  warpSizePx = sizePx;
+  const dpr = window.devicePixelRatio || 1;
+  outputCanvas.width  = sizePx * dpr;
+  outputCanvas.height = sizePx * dpr;
+  outputCanvas.style.width  = sizePx + 'px';
+  outputCanvas.style.height = sizePx + 'px';
+
+  const ctx = outputCanvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // White background pixel buffer
+  const outImg = new ImageData(sizePx, sizePx);
+  outImg.data.fill(255);
+
+  const t0 = performance.now();
+  if (showMorph) {
+    renderBackwardMapping(srcPx, srcW, srcH, R, E, outImg.data, sizePx, sizePx,
+                          srcScaleMult, srcOffsetX, srcOffsetY, bufferMm / 10);
+    warpCacheData = new Uint8ClampedArray(outImg.data);
+    // putImageData bypasses ctx transforms, so draw via a temp canvas
+    const warpTmp = document.createElement('canvas');
+    warpTmp.width = sizePx; warpTmp.height = sizePx;
+    warpTmp.getContext('2d').putImageData(outImg, 0, 0);
+    ctx.drawImage(warpTmp, 0, 0);
+  } else {
+    warpCacheData = null;   // mark stale so toggling morph on forces a real render
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, sizePx, sizePx);
+  }
+
+  const cx = sizePx / 2, cy = sizePx / 2;
+  drawCylinderRing(ctx, cx, cy, R);
+  if (showSource) drawSourceOverlay(ctx, cx, cy, R, E, sizePx);
+  if (showGrid)   drawGrid(ctx, cx, cy, R, E);
+
+  const elapsed = ((performance.now() - t0) / 1000).toFixed(2);
+  const cmSize  = (sizePx / PX_PER_CM).toFixed(1);
+  const eLabel = observerAtInfinity ? '∞' : `${E} cm`;
+  canvasInfo.textContent =
+    `${sizePx}×${sizePx} px · ${cmSize}×${cmSize} cm · R=${R} cm · E=${eLabel} · ${elapsed}s`;
+
+  placeholder.style.display = 'none';
+  outputCanvas.style.display = 'block';
+  pdfBtn.disabled = false;
+  outputCanvas.style.setProperty('--print-width',  cmSize + 'cm');
+  outputCanvas.style.setProperty('--print-height', cmSize + 'cm');
+
+  // Run initial fit zoom when rendering is successful
+  if (!outputCanvas.dataset.zoomed) {
+      fitZoom();
+      outputCanvas.dataset.zoomed = true;
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Print to PDF
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Returns pixel bounds of all content: warped pixels (from cache) plus the
+// cylinder ring (computed analytically so it's always included even when the
+// warp cache is absent).
+function getContentBoundsPx() {
+  if (!warpSizePx) return null;
+  const w = warpSizePx;
+  const cx = w / 2, cy = w / 2;
+  const R  = parseFloat(radiusSlider.value);
+  const rPx = R * PX_PER_CM + 3;  // +3 px for stroke line-width
+
+  // Start from the cylinder ring's axis-aligned bounding box
+  let minX = Math.max(0, Math.floor(cx - rPx));
+  let maxX = Math.min(w - 1, Math.ceil(cx + rPx));
+  let minY = Math.max(0, Math.floor(cy - rPx));
+  let maxY = Math.min(w - 1, Math.ceil(cy + rPx));
+
+  // Expand to include warped image pixels
+  if (warpCacheData) {
+    const data = warpCacheData;
+    for (let y = 0; y < w; y++) {
+      for (let x = 0; x < w; x++) {
+        const i = (y * w + x) * 4;
+        if (data[i] < 250 || data[i+1] < 250 || data[i+2] < 250) {
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+  }
+
+  return { minX, maxX, minY, maxY };
+}
+
+pdfBtn.addEventListener('click', () => {
+  // US Letter dimensions in cm
+  const portW = 21.59, portH = 27.94;
+
+  const bounds = getContentBoundsPx();
+  let contentW, contentH;
+  if (bounds) {
+    contentW = (bounds.maxX - bounds.minX) / PX_PER_CM;
+    contentH = (bounds.maxY - bounds.minY) / PX_PER_CM;
+  } else {
+    contentW = warpSizePx / PX_PER_CM;
+    contentH = warpSizePx / PX_PER_CM;
+  }
+
+  // Choose orientation based on content aspect ratio
+  const landscape = contentW > contentH;
+  const pageW = landscape ? portH : portW;   // printable width in chosen orientation
+  const pageH = landscape ? portW : portH;   // printable height in chosen orientation
+
+  // Warn only if content cannot fit on US Letter in *either* orientation
+  const fitsPortrait  = contentW <= portW && contentH <= portH;
+  const fitsLandscape = contentW <= portH && contentH <= portW;
+  if (!fitsPortrait && !fitsLandscape) {
+    const ok = confirm(
+      `The content is ${contentW.toFixed(1)}×${contentH.toFixed(1)} cm, which is too large ` +
+      `for US Letter paper in any orientation.\n\nParts of the image will be clipped. ` +
+      `Reduce Cylinder Radius R to shrink the output, or use larger paper.\n\nContinue anyway?`
+    );
+    if (!ok) return;
+  }
+
+  // Crop the canvas to the content bounding box for printing
+  // Bounds are in logical pixels; the physical canvas is scaled by dpr.
+  let dataUrl, imgW_cm, imgH_cm;
+  const _dpr = window.devicePixelRatio || 1;
+  if (bounds) {
+    const cropW = bounds.maxX - bounds.minX + 1;
+    const cropH = bounds.maxY - bounds.minY + 1;
+    const crop  = document.createElement('canvas');
+    crop.width  = cropW;
+    crop.height = cropH;
+    crop.getContext('2d').drawImage(
+      outputCanvas,
+      bounds.minX * _dpr, bounds.minY * _dpr, cropW * _dpr, cropH * _dpr,
+      0, 0, cropW, cropH
+    );
+    dataUrl  = crop.toDataURL('image/png');
+    imgW_cm  = cropW / PX_PER_CM;
+    imgH_cm  = cropH / PX_PER_CM;
+  } else {
+    dataUrl  = outputCanvas.toDataURL('image/png');
+    imgW_cm  = warpSizePx / PX_PER_CM;
+    imgH_cm  = warpSizePx / PX_PER_CM;
+  }
+
+  const pageSize   = landscape ? '11in 8.5in' : '8.5in 11in';
+  const bodyW      = landscape ? '11in' : '8.5in';
+  const bodyH      = landscape ? '8.5in' : '11in';
+
+  const win = window.open('', '_blank');
+  if (!win) { alert('Allow pop-ups to use Print to PDF.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+@page{size:${pageSize};margin:0}
+html,body{width:${bodyW};height:${bodyH};background:white;overflow:hidden}
+body{display:flex;align-items:center;justify-content:center}
+img{width:${imgW_cm.toFixed(2)}cm;height:${imgH_cm.toFixed(2)}cm;display:block}
+.note{position:fixed;bottom:6px;left:0;right:0;text-align:center;
+      font-family:sans-serif;font-size:11px;color:#999;display:none}
+@media screen{.note{display:block}}
+</style></head>
+<body>
+<img src="${dataUrl}" alt="anamorphic art">
+<div class="note">⚠ Print at exactly 100% scale — do NOT scale to fit page</div>
+<script>window.onload=function(){window.print()}<\/script>
+<script>
+// EigenNode auto-height v2.3
+(function() {
+  // 4px buffer for subpixel rounding + parent's >=3px noise threshold.
+  // 18px extra when horizontal overflow forces a scrollbar (eats vertical
+  // space — common in AoPS classroom where iframe column is < 600px content).
+  var BUFFER = 4;
+  var H_SCROLLBAR = 18;
+  function measure() {
+    var b = document.body, h = document.documentElement;
+    if (!b) return 0;
+    var max = Math.max(b.scrollHeight||0, b.offsetHeight||0, (h&&h.scrollHeight)||0, (h&&h.offsetHeight)||0);
+    // If body is sized to viewport (height:100vh), scrollHeight just echoes
+    // the iframe's height. Recover real content extent from children's bbox.
+    var minTop = 0, maxBot = 0, br = b.getBoundingClientRect();
+    for (var i = 0; i < b.children.length; i++) {
+      var r = b.children[i].getBoundingClientRect();
+      var top = r.top - br.top, bot = top + r.height;
+      if (top < minTop) minTop = top;
+      if (bot > maxBot) maxBot = bot;
+    }
+    var span = maxBot - minTop;
+    if (span > max) max = span;
+    // Check documentElement only — that's the element that owns the iframe's
+    // horizontal scrollbar. Body can be narrower than iframe and have its own
+    // 1-2px overflow that doesn't actually trigger a scrollbar.
+    var hOverflow = h && (h.scrollWidth - h.clientWidth) >= 4;
+    return Math.ceil(max) + BUFFER + (hOverflow ? H_SCROLLBAR : 0);
+  }
+  var last = 0;
+  function report() {
+    var h = measure();
+    if (h > 0 && Math.abs(h - last) >= 2) {
+      last = h;
+      window.parent.postMessage({ type: 'resize', height: h }, '*');
+    }
+  }
+  window.addEventListener('load', report);
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(report);
+  if (window.ResizeObserver && document.body) new ResizeObserver(report).observe(document.body);
+})();
+<\/script>
+</body></html>`);
+  win.document.close();
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Zoom controls
+// ─────────────────────────────────────────────────────────────────────────────
+function applyZoom() {
+  outputCanvas.style.transform = `scale(${zoomFactor})`;
+  outputCanvas.style.transformOrigin = 'top left';
+  zoomLabel.textContent = Math.round(zoomFactor * 100) + '%';
+}
+function fitZoom() {
+  const area = canvasScroll.getBoundingClientRect();
+  const pad  = 40;
+  const logW = warpSizePx || outputCanvas.width;
+  const logH = warpSizePx || outputCanvas.height;
+  zoomFactor = Math.min((area.width - pad) / logW,
+                        (area.height - pad) / logH, 1);
+  applyZoom();
+}
+document.getElementById('zoom-in').addEventListener('click', () => {
+  zoomFactor = Math.min(4, zoomFactor * 1.25); applyZoom();
+});
+document.getElementById('zoom-out').addEventListener('click', () => {
+  zoomFactor = Math.max(0.05, zoomFactor / 1.25); applyZoom();
+});
+document.getElementById('zoom-fit').addEventListener('click', fitZoom);
+new ResizeObserver(() => {
+  if (outputCanvas.style.display !== 'none') fitZoom();
+}).observe(canvasScroll);
+
+</script>
 <!-- @include shared/zoom-overlay.js -->
 <script>
 (function () {
