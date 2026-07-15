@@ -788,6 +788,13 @@
       "description": "Fit a power-law model to experimental wave speed data by adjusting coefficient and exponent sliders, discovering the quantitative relationship between wave speed and physical properties like tension or medium density.",
       "emoji": "🔊",
       "category": "sound"
+    },
+    {
+      "path": "Light/thin_film.html",
+      "title": "Thin-Film Interference (soap film)",
+      "description": "New simulation - description pending.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
