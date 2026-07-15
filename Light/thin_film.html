@@ -63,6 +63,7 @@ const MARK_T          = bool('markt', false);   // draw thickness arrow labeled 
 const SHOW_RED        = bool('red',  true);
 const SHOW_GREEN      = bool('green', true);
 const SHOW_BLUE       = bool('blue', true);
+const SHOW_INCIDENT   = bool('incident', true); // draw the incoming wave
 const SHOW_R1         = bool('r1', true);       // front-surface reflection
 const SHOW_T1         = bool('t1', true);       // transmitted into film
 const SHOW_R2         = bool('r2', true);       // reflection off back surface
@@ -71,8 +72,15 @@ const SHOW_T3         = bool('t3', true);       // back-reflection transmitted b
 const PHI_SLIDER      = bool('phislider', false);
 const T_SLIDER        = bool('tslider', false);
 const SHOW_COLOR      = bool('showcolor', true);
+const SPECTRUM        = bool('spectrum', false); // compute reflected color from full sunlight spectrum
+const DOT             = bool('dot', false);     // draw r1 dotted
+const DASH            = bool('dash', false);    // draw r2 and t3 dashed
 const ANIMATE         = bool('animate', true);
 const SPEED           = num('speed', 0.03);     // animation phase step (rad/frame)
+
+// Line-dash patterns for the styled beams
+const DOT_DASH  = [2, 4];
+const DASH_DASH = [9, 6];
 
 // Live, adjustable quantities
 let tnm    = num('thickness', 450);             // film thickness (nm)
@@ -133,10 +141,12 @@ function arrowHead(x, y, ang, color, size) {
 
 // Draw a sine wave from xA..xB (xA<xB) around baseline baseY.
 // dispFn(x) returns the transverse displacement; arrow shows travel direction.
-function wave(xA, xB, baseY, dispFn, color, arrowX, arrowAng) {
+// dash (optional) is a setLineDash pattern for dotted/dashed beams.
+function wave(xA, xB, baseY, dispFn, color, arrowX, arrowAng, dash) {
   if (xB - xA < 1) return;
   ctx.strokeStyle = color;
   ctx.lineWidth = 2;
+  ctx.setLineDash(dash || []);
   ctx.beginPath();
   let first = true;
   for (let x = xA; x <= xB + 0.001; x += 2) {
@@ -144,6 +154,7 @@ function wave(xA, xB, baseY, dispFn, color, arrowX, arrowAng) {
     if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
   }
   ctx.stroke();
+  ctx.setLineDash([]);
   if (arrowX !== null) arrowHead(arrowX, baseY, arrowAng, color, 9);
 }
 
@@ -219,14 +230,69 @@ function channel(lam) {
   return Math.round(255 * s * s);
 }
 
+// ── Spectral reflected-color engine (used when ?spectrum=1) ──────────────
+// Take white sunlight (CIE Illuminant D65), apply the thin film's wavelength-
+// dependent reflectance R(lambda)=sin^2(2*pi*n*t/lambda) across the visible
+// band, integrate the reflected spectrum against the CIE 1931 color-matching
+// functions to get XYZ, then convert to sRGB — the standard spectrum->RGB path.
+
+// CIE 1931 2° color-matching functions: multi-lobe Gaussian fit of
+// Wyman, Sloan & Shirley (2013). Coefficients are inverse widths (1/nm).
+function _pg(l, mu, i1, i2) { const t = (l - mu) * (l < mu ? i1 : i2); return Math.exp(-0.5 * t * t); }
+function cieX(l) { return 0.362*_pg(l,442.0,0.0624,0.0374) + 1.056*_pg(l,599.8,0.0264,0.0323) - 0.065*_pg(l,501.1,0.0490,0.0382); }
+function cieY(l) { return 0.821*_pg(l,568.8,0.0213,0.0247) + 0.286*_pg(l,530.9,0.0613,0.0322); }
+function cieZ(l) { return 1.217*_pg(l,437.0,0.0845,0.0278) + 0.681*_pg(l,459.0,0.0385,0.0725); }
+
+// CIE Standard Illuminant D65 relative spectral power, 380..780 nm at 10 nm.
+const D65 = [49.98,54.65,82.75,91.49,93.43,86.68,104.87,117.01,117.81,114.86,
+             115.92,108.81,109.35,107.80,104.79,107.69,104.41,104.05,100.00,96.33,
+             95.79,88.69,90.01,89.60,87.70,83.29,83.70,80.03,80.21,82.28,
+             78.28,69.72,71.61,74.35,61.60,69.89,75.09,63.59,46.42,66.81,63.38];
+const D65_START = 380, D65_STEP = 10;
+
+function _srgbGamma(c) { return c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055; }
+
+// Reflected color (0-255 rgb) of the soap film under D65 sunlight, thickness t nm.
+function spectralColor(t) {
+  let X = 0, Y = 0, Z = 0, norm = 0;
+  for (let i = 0; i < D65.length; i++) {
+    const lam = D65_START + i * D65_STEP;
+    const S = D65[i];
+    const s = Math.sin(2 * Math.PI * N_FILM * t / lam);
+    const R = s * s;                         // thin-film reflectance at this wavelength
+    const x = cieX(lam), y = cieY(lam), z = cieZ(lam);
+    X += S * R * x; Y += S * R * y; Z += S * R * z;
+    norm += S * y;                           // so a perfect mirror (R=1) maps to white
+  }
+  X /= norm; Y /= norm; Z /= norm;
+  // XYZ (D65) -> linear sRGB
+  let r =  3.2406 * X - 1.5372 * Y - 0.4986 * Z;
+  let g = -0.9689 * X + 1.8758 * Y + 0.0415 * Z;
+  let b =  0.0557 * X - 0.2040 * Y + 1.0570 * Z;
+  r = Math.max(0, r); g = Math.max(0, g); b = Math.max(0, b);
+  const mx = Math.max(r, g, b, 1);           // scale down out-of-gamut, preserving hue
+  r /= mx; g /= mx; b /= mx;
+  return {
+    R: Math.round(255 * _srgbGamma(r)),
+    G: Math.round(255 * _srgbGamma(g)),
+    B: Math.round(255 * _srgbGamma(b)),
+  };
+}
+
 function drawColorSwatch() {
-  const useR = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_RED;
-  const useG = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_GREEN;
-  const useB = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_BLUE;
-  const R = channel(useR), G = channel(useG), B = channel(useB);
+  let R, G, B;
+  if (SPECTRUM) {
+    const c = spectralColor(tnm); R = c.R; G = c.G; B = c.B;
+  } else {
+    const useR = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_RED;
+    const useG = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_GREEN;
+    const useB = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_BLUE;
+    R = channel(useR); G = channel(useG); B = channel(useB);
+  }
   const sx = 706, sy = 14, sw = 150, sh = 48;
-  text('reflected color', sx + sw / 2, sy - 3, '#9fb2c6', 'bold 12px Arial', 'center');
-  // checker backdrop so pure black reads as "no reflection"
+  text(SPECTRUM ? 'reflected color (sunlight)' : 'reflected color',
+       sx + sw / 2, sy - 3, '#9fb2c6', 'bold 12px Arial', 'center');
+  // dark backdrop so pure black reads as "no reflection"
   ctx.fillStyle = '#20242e';
   ctx.fillRect(sx, sy, sw, sh);
   ctx.fillStyle = 'rgb(' + R + ',' + G + ',' + B + ')';
@@ -246,10 +312,11 @@ function drawColorBeams(lamDraw, stroke, yc, BACK) {
   const kfd = kf * d;                         // one-pass phase across the film
   const psi = (phiDeg * Math.PI / 180) - tau; // common incident phase at the front surface
 
-  // Incident (→) — always shown; the light source
-  wave(X_START, FRONT, yc,
-       x => AMP * Math.cos(k * (x - FRONT) + psi),
-       stroke, FRONT - 4, 0);
+  // Incident (→) — the light source
+  if (SHOW_INCIDENT)
+    wave(X_START, FRONT, yc,
+         x => AMP * Math.cos(k * (x - FRONT) + psi),
+         stroke, FRONT - 4, 0);
 
   // t1: transmitted into the film (→), wavelength compressed by n
   if (SHOW_T1 && d > 0.5)
@@ -267,19 +334,19 @@ function drawColorBeams(lamDraw, stroke, yc, BACK) {
   if (SHOW_R1)
     wave(X_START, FRONT, yc - OFF,
          x => AMP * Math.cos(-k * (x - FRONT) + psi + Math.PI),
-         stroke, X_START + 4, Math.PI);
+         stroke, X_START + 4, Math.PI, DOT ? DOT_DASH : null);
 
   // r2: reflection off the back surface (←), inside film — high→low, no flip
   if (SHOW_R2 && d > 0.5)
     wave(FRONT, BACK, yc + OFF,
          x => AMP * Math.cos(-kf * (x - BACK) + kfd + psi),
-         stroke, FRONT + 4, Math.PI);
+         stroke, FRONT + 4, Math.PI, DASH ? DASH_DASH : null);
 
   // t3: back-reflection transmitted out the front, heading to the observer (←)
   if (SHOW_T3)
     wave(X_START, FRONT, yc + OFF,
          x => AMP * Math.cos(-k * (x - FRONT) + 2 * kfd + psi),
-         stroke, X_START + 4, Math.PI);
+         stroke, X_START + 4, Math.PI, DASH ? DASH_DASH : null);
 }
 
 // ── Beam labels (drawn once, on the middle band, in neutral gray) ────────
@@ -289,7 +356,7 @@ function drawBeamLabels(BACK) {
   const g = '#8fa3b8';
   const f = 'bold 12px Arial';
   const midFilm = (FRONT + BACK) / 2;
-  text('incident', X_START + 46, BAND_Y.green - 16, g, f, 'left');
+  if (SHOW_INCIDENT) text('incident', X_START + 46, BAND_Y.green - 16, g, f, 'left');
   if (SHOW_R1) text(R1, FRONT - 78, BAND_Y.green - OFF - 6, g, f, 'left');
   if (SHOW_T3) text(T3, X_START + 46, BAND_Y.green + OFF + 18, g, f, 'left');
   if (SHOW_T2) text(T2, BACK + 26, BAND_Y.green - 16, g, f, 'left');
@@ -387,12 +454,16 @@ loop();
     {name:'red',       type:'toggle',  default:1, desc:'Show red light (660 nm)'},
     {name:'green',     type:'toggle',  default:1, desc:'Show green light (532 nm)'},
     {name:'blue',      type:'toggle',  default:1, desc:'Show blue light (400 nm)'},
+    {name:'incident',  type:'toggle',  default:1, desc:'Show the incoming (incident) wave'},
     {name:'r1',        type:'toggle',  default:1, desc:'Show r1 (reflection off front surface)'},
     {name:'t1',        type:'toggle',  default:1, desc:'Show t1 (transmitted into the film)'},
     {name:'r2',        type:'toggle',  default:1, desc:'Show r2 (reflection off back surface)'},
     {name:'t2',        type:'toggle',  default:1, desc:'Show t2 (transmitted through the film)'},
     {name:'t3',        type:'toggle',  default:1, desc:'Show t3 (back-reflection exiting the front)'},
+    {name:'dot',       type:'toggle',  default:0, desc:'Draw the r1 reflection dotted'},
+    {name:'dash',      type:'toggle',  default:0, desc:'Draw r2 and t3 dashed'},
     {name:'showcolor', type:'toggle',  default:1, desc:'Show reflected-color swatch'},
+    {name:'spectrum',  type:'toggle',  default:0, desc:'Compute reflected color from full sunlight spectrum (D65 -> CIE -> sRGB)'},
     {name:'markt',     type:'toggle',  default:0, desc:'Draw a thickness arrow labeled t'},
     {name:'tslider',   type:'toggle',  default:0, desc:'Show a slider to adjust film thickness'},
     {name:'phislider', type:'toggle',  default:0, desc:'Show a slider to adjust incident phase'},
@@ -466,8 +537,9 @@ loop();
     panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;'+
       'background:rgba(12,18,32,0.97);color:#c8d8e8;'+
       'font-family:"Segoe UI",system-ui,monospace;font-size:13px;'+
-      'border-top:2px solid #3a7bd5;z-index:2147483647;max-height:48vh;overflow-y:auto;'+
-      'padding:10px 16px 14px;box-sizing:border-box;box-shadow:0 -4px 24px rgba(0,0,0,0.6)';
+      'border-top:2px solid #3a7bd5;z-index:2147483647;max-height:48vh;'+
+      'display:flex;flex-direction:column;'+
+      'box-sizing:border-box;box-shadow:0 -4px 24px rgba(0,0,0,0.6)';
 
     var bubble = document.createElement('button');
     bubble.style.cssText = 'position:fixed;bottom:8px;right:12px;'+
@@ -480,8 +552,9 @@ loop();
     document.body.appendChild(bubble);
 
     var hdr = document.createElement('div');
-    hdr.style.cssText = 'font-weight:bold;color:#7ab8f5;margin-bottom:8px;'+
-      'display:flex;align-items:center;justify-content:space-between';
+    hdr.style.cssText = 'font-weight:bold;color:#7ab8f5;'+
+      'display:flex;align-items:center;justify-content:space-between;'+
+      'flex-shrink:0;padding:10px 16px 8px;box-sizing:border-box';
     var hspan = document.createElement('span');
     hspan.textContent = '🔑 Cheat Panel — ' + location.pathname.split('/').pop();
     var btns = document.createElement('div');
@@ -498,6 +571,10 @@ loop();
     btns.appendChild(minbtn); btns.appendChild(xbtn);
     hdr.appendChild(hspan); hdr.appendChild(btns); panel.appendChild(hdr);
 
+    var body = document.createElement('div');
+    body.style.cssText = 'overflow-y:auto;flex:1 1 auto;min-height:0;'+
+      'padding:0 16px 14px;box-sizing:border-box';
+
     var tbl = document.createElement('table');
     tbl.style.cssText = 'border-collapse:collapse;width:100%;margin-bottom:10px';
     var hrow = tbl.createTHead().insertRow();
@@ -505,7 +582,8 @@ loop();
       var th = document.createElement('th');
       th.textContent = h;
       th.style.cssText = 'text-align:left;padding:4px 10px;border-bottom:1px solid #1e3050;'+
-        'color:#5a8fc0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap';
+        'color:#5a8fc0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap;'+
+        'position:sticky;top:0;background:rgba(12,18,32,0.97);z-index:1';
       hrow.appendChild(th);
     });
     var tbody = tbl.createTBody();
@@ -527,7 +605,7 @@ loop();
       dc.style.cssText = 'padding:5px 10px;color:#8aa0b0;font-size:12px';
       dc.textContent = (d.desc||'')+(d['default']!==undefined?' (default: '+d['default']+')':'');
     });
-    panel.appendChild(tbl);
+    body.appendChild(tbl);
 
     var urlBox = document.createElement('div');
     urlBox.style.cssText = 'background:#080d1a;border:1px solid #1e3050;border-radius:4px;'+
@@ -552,7 +630,8 @@ loop();
       setTimeout(function() { cpybtn.textContent = 'copy'; }, 1500);
     };
     urlBox.appendChild(ulbl); urlBox.appendChild(ulink); urlBox.appendChild(cpybtn);
-    panel.appendChild(urlBox);
+    body.appendChild(urlBox);
+    panel.appendChild(body);
     document.body.appendChild(panel);
   }
   render();
