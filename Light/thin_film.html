@@ -1,0 +1,640 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="eigennode-aspect" content="3/2">
+<title>Thin-Film Interference (soap film)</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 100%; height: 100%; overflow: hidden; }
+  body {
+    background: #0a0a1a;
+    font-family: Arial, sans-serif;
+    user-select: none;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  /* Overlaid slider panel (only shown when a slider param is on) */
+  #panel {
+    position: absolute;
+    left: 50%;
+    bottom: 10px;
+    transform: translateX(-50%);
+    display: none;
+    gap: 18px;
+    align-items: center;
+    background: rgba(10, 16, 30, 0.85);
+    border: 1px solid #2a3f5f;
+    border-radius: 8px;
+    padding: 8px 16px;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.5);
+  }
+  #panel .ctl { display: flex; align-items: center; gap: 8px; color: #cfe0f0; font-size: 13px; }
+  #panel input[type=range] { width: 150px; cursor: pointer; }
+  #panel .val { color: #8fd0ff; font-weight: bold; min-width: 62px; text-align: right; font-variant-numeric: tabular-nums; }
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="panel"></div>
+
+<script>
+// ── Query parameters ─────────────────────────────────────────────────────
+const Q    = new URLSearchParams(location.search);
+const num  = (k, d) => Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d;
+const bool = (k, d) => Q.has(k) ? Q.get(k) !== '0' : d;
+
+const SAME_WAVELENGTH = bool('same', false);   // draw all three colors with one wavelength
+const SAME_LAMBDA     = 532;                    // the common wavelength used in "same" mode (nm)
+const MARK_T          = bool('markt', false);   // draw thickness arrow labeled t
+const SHOW_RED        = bool('red',  true);
+const SHOW_GREEN      = bool('green', true);
+const SHOW_BLUE       = bool('blue', true);
+const SHOW_R1         = bool('r1', true);       // front-surface reflection
+const SHOW_T1         = bool('t1', true);       // transmitted into film
+const SHOW_R2         = bool('r2', true);       // reflection off back surface
+const SHOW_T2         = bool('t2', true);       // transmitted all the way through
+const SHOW_T3         = bool('t3', true);       // back-reflection transmitted back out the front
+const PHI_SLIDER      = bool('phislider', false);
+const T_SLIDER        = bool('tslider', false);
+const SHOW_COLOR      = bool('showcolor', true);
+const ANIMATE         = bool('animate', true);
+const SPEED           = num('speed', 0.03);     // animation phase step (rad/frame)
+
+// Live, adjustable quantities
+let tnm    = num('thickness', 450);             // film thickness (nm)
+let phiDeg = num('phi', 0);                      // incident phase at the front surface (deg)
+
+// ── Physical constants ───────────────────────────────────────────────────
+const N_FILM = 1.33;    // refractive index of soap film
+const N_AIR  = 1.0;     // refractive index of surrounding air
+const LAM_RED = 660, LAM_GREEN = 532, LAM_BLUE = 400;  // nm
+
+// ── Fixed logical design grid (matches eigennode-aspect 3/2) ─────────────
+const DESIGN_W = 900, DESIGN_H = 600;
+const W = DESIGN_W, H = DESIGN_H;
+const canvas = document.getElementById('c');
+const ctx = canvas.getContext('2d');
+
+function fit() {
+  const dpr = window.devicePixelRatio || 1;
+  const cw = canvas.clientWidth, ch = canvas.clientHeight;
+  if (!cw || !ch) return;
+  canvas.width  = Math.round(cw * dpr);
+  canvas.height = Math.round(ch * dpr);
+  ctx.setTransform(canvas.width / DESIGN_W, 0, 0, canvas.height / DESIGN_H, 0, 0);
+  draw();
+}
+
+// ── Scene geometry (logical px) ──────────────────────────────────────────
+const S       = 0.085;          // px per nm — SAME scale for wavelength AND film thickness,
+                                // so the drawn waves and the drawn thickness agree physically.
+const X_START = 130;            // left edge where the incident waves begin
+const FRONT   = 600;            // front (left) surface of the film
+const X_END   = 880;            // right edge for the transmitted beam
+const EYE_X   = 70, EYE_Y = 300;
+const FILM_TOP = 96, FILM_BOT = 504;
+const BAND_Y  = { red: 150, green: 300, blue: 450 };
+const AMP     = 12;             // wave amplitude (px)
+const OFF     = 30;            // vertical track offset for reflected / return beams
+
+// ── Sub/greek glyphs ─────────────────────────────────────────────────────
+const R1='r₁', T1='t₁', R2='r₂', T2='t₂', T3='t₃', PHI='φ';
+
+// ── Animation phase ──────────────────────────────────────────────────────
+let tau = 0;
+
+// ── Small drawing helpers ────────────────────────────────────────────────
+function arrowHead(x, y, ang, color, size) {
+  size = size || 8;
+  ctx.save();
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.moveTo(x, y);
+  ctx.lineTo(x - size * Math.cos(ang - Math.PI / 6), y - size * Math.sin(ang - Math.PI / 6));
+  ctx.lineTo(x - size * Math.cos(ang + Math.PI / 6), y - size * Math.sin(ang + Math.PI / 6));
+  ctx.closePath();
+  ctx.fill();
+  ctx.restore();
+}
+
+// Draw a sine wave from xA..xB (xA<xB) around baseline baseY.
+// dispFn(x) returns the transverse displacement; arrow shows travel direction.
+function wave(xA, xB, baseY, dispFn, color, arrowX, arrowAng) {
+  if (xB - xA < 1) return;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  let first = true;
+  for (let x = xA; x <= xB + 0.001; x += 2) {
+    const y = baseY - dispFn(x);
+    if (first) { ctx.moveTo(x, y); first = false; } else ctx.lineTo(x, y);
+  }
+  ctx.stroke();
+  if (arrowX !== null) arrowHead(arrowX, baseY, arrowAng, color, 9);
+}
+
+function text(str, x, y, color, font, align) {
+  ctx.fillStyle = color;
+  ctx.font = font || '13px Arial, sans-serif';
+  ctx.textAlign = align || 'left';
+  ctx.textBaseline = 'alphabetic';
+  ctx.fillText(str, x, y);
+}
+
+// ── Scene elements ───────────────────────────────────────────────────────
+function drawFilm(BACK) {
+  // Air | film | air shading
+  ctx.fillStyle = 'rgba(150, 200, 255, 0.13)';
+  ctx.fillRect(FRONT, FILM_TOP, BACK - FRONT, FILM_BOT - FILM_TOP);
+  // The two reflecting surfaces
+  ctx.strokeStyle = 'rgba(180, 220, 255, 0.55)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(FRONT, FILM_TOP); ctx.lineTo(FRONT, FILM_BOT);
+  ctx.moveTo(BACK,  FILM_TOP); ctx.lineTo(BACK,  FILM_BOT);
+  ctx.stroke();
+
+  // Region labels
+  text('air, n = 1', (X_START + FRONT) / 2, 520, '#8fa3b8', '13px Arial', 'center');
+  text('soap film, n = 1.33', (FRONT + BACK) / 2, 520, '#bcd4ee', 'bold 13px Arial', 'center');
+  text('air, n = 1', (BACK + X_END) / 2, 520, '#8fa3b8', '13px Arial', 'center');
+}
+
+function drawEye() {
+  ctx.save();
+  ctx.strokeStyle = '#cfd8e2';
+  ctx.fillStyle = 'rgba(200,210,225,0.18)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(EYE_X - 18, EYE_Y);
+  ctx.quadraticCurveTo(EYE_X, EYE_Y - 14, EYE_X + 18, EYE_Y);
+  ctx.quadraticCurveTo(EYE_X, EYE_Y + 14, EYE_X - 18, EYE_Y);
+  ctx.fill(); ctx.stroke();
+  ctx.beginPath();
+  ctx.arc(EYE_X + 2, EYE_Y, 5, 0, Math.PI * 2);
+  ctx.fillStyle = '#3a4a60';
+  ctx.fill();
+  ctx.restore();
+  text('observer', EYE_X, EYE_Y + 34, '#9fb2c6', 'bold 13px Arial', 'center');
+}
+
+function drawThicknessMarker(BACK) {
+  const y = 548;
+  ctx.strokeStyle = '#d8e2ee';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  // guide ticks up to the film
+  ctx.setLineDash([4, 4]);
+  ctx.moveTo(FRONT, y - 6); ctx.lineTo(FRONT, FILM_BOT);
+  ctx.moveTo(BACK,  y - 6); ctx.lineTo(BACK,  FILM_BOT);
+  ctx.stroke();
+  ctx.setLineDash([]);
+  // double-headed horizontal arrow
+  ctx.beginPath();
+  ctx.moveTo(FRONT, y); ctx.lineTo(BACK, y);
+  ctx.stroke();
+  arrowHead(FRONT, y, Math.PI, '#d8e2ee', 8);
+  arrowHead(BACK, y, 0, '#d8e2ee', 8);
+  text('t', (FRONT + BACK) / 2, y - 8, '#ffffff', 'italic bold 17px Georgia, serif', 'center');
+}
+
+// Reflected-color channel intensity: 0 at destructive, 1 at constructive.
+// intensity = cos^2(Delta/2) = sin^2(2*pi*n*t/lambda).
+function channel(lam) {
+  const s = Math.sin(2 * Math.PI * N_FILM * tnm / lam);
+  return Math.round(255 * s * s);
+}
+
+function drawColorSwatch() {
+  const useR = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_RED;
+  const useG = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_GREEN;
+  const useB = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_BLUE;
+  const R = channel(useR), G = channel(useG), B = channel(useB);
+  const sx = 706, sy = 14, sw = 150, sh = 48;
+  text('reflected color', sx + sw / 2, sy - 3, '#9fb2c6', 'bold 12px Arial', 'center');
+  // checker backdrop so pure black reads as "no reflection"
+  ctx.fillStyle = '#20242e';
+  ctx.fillRect(sx, sy, sw, sh);
+  ctx.fillStyle = 'rgb(' + R + ',' + G + ',' + B + ')';
+  ctx.fillRect(sx, sy, sw, sh);
+  ctx.strokeStyle = '#5a7088';
+  ctx.lineWidth = 1.5;
+  ctx.strokeRect(sx, sy, sw, sh);
+  text('rgb(' + R + ', ' + G + ', ' + B + ')', sx + sw / 2, sy + sh + 15,
+       '#7f94a8', '11px monospace', 'center');
+}
+
+// ── One color's beams ────────────────────────────────────────────────────
+function drawColorBeams(lamDraw, stroke, yc, BACK) {
+  const k   = 2 * Math.PI / (lamDraw * S);   // air wavenumber (rad/px)
+  const kf  = N_FILM * k;                     // film wavenumber (rad/px)
+  const d   = BACK - FRONT;                   // film width (px)
+  const kfd = kf * d;                         // one-pass phase across the film
+  const psi = (phiDeg * Math.PI / 180) - tau; // common incident phase at the front surface
+
+  // Incident (→) — always shown; the light source
+  wave(X_START, FRONT, yc,
+       x => AMP * Math.cos(k * (x - FRONT) + psi),
+       stroke, FRONT - 4, 0);
+
+  // t1: transmitted into the film (→), wavelength compressed by n
+  if (SHOW_T1 && d > 0.5)
+    wave(FRONT, BACK, yc,
+         x => AMP * Math.cos(kf * (x - FRONT) + psi),
+         stroke, BACK - 4, 0);
+
+  // t2: transmitted all the way through (→)
+  if (SHOW_T2)
+    wave(BACK, X_END, yc,
+         x => AMP * Math.cos(k * (x - BACK) + kfd + psi),
+         stroke, X_END - 6, 0);
+
+  // r1: front-surface reflection (←) — low→high index, so +pi phase flip
+  if (SHOW_R1)
+    wave(X_START, FRONT, yc - OFF,
+         x => AMP * Math.cos(-k * (x - FRONT) + psi + Math.PI),
+         stroke, X_START + 4, Math.PI);
+
+  // r2: reflection off the back surface (←), inside film — high→low, no flip
+  if (SHOW_R2 && d > 0.5)
+    wave(FRONT, BACK, yc + OFF,
+         x => AMP * Math.cos(-kf * (x - BACK) + kfd + psi),
+         stroke, FRONT + 4, Math.PI);
+
+  // t3: back-reflection transmitted out the front, heading to the observer (←)
+  if (SHOW_T3)
+    wave(X_START, FRONT, yc + OFF,
+         x => AMP * Math.cos(-k * (x - FRONT) + 2 * kfd + psi),
+         stroke, X_START + 4, Math.PI);
+}
+
+// ── Beam labels (drawn once, on the middle band, in neutral gray) ────────
+// Each label only appears when its beam is turned on, so the legend matches
+// what is actually drawn.
+function drawBeamLabels(BACK) {
+  const g = '#8fa3b8';
+  const f = 'bold 12px Arial';
+  const midFilm = (FRONT + BACK) / 2;
+  text('incident', X_START + 46, BAND_Y.green - 16, g, f, 'left');
+  if (SHOW_R1) text(R1, FRONT - 78, BAND_Y.green - OFF - 6, g, f, 'left');
+  if (SHOW_T3) text(T3, X_START + 46, BAND_Y.green + OFF + 18, g, f, 'left');
+  if (SHOW_T2) text(T2, BACK + 26, BAND_Y.green - 16, g, f, 'left');
+  if (SHOW_T1) text(T1, midFilm, BAND_Y.green - OFF - 8, g, f, 'center');
+  if (SHOW_R2) text(R2, midFilm, BAND_Y.green + OFF + 22, g, f, 'center');
+}
+
+// ── Master draw ──────────────────────────────────────────────────────────
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+
+  const BACK = Math.min(FRONT + tnm * S, X_END - 40);
+
+  // Titles / readouts
+  text('Thin-film interference — soap film', 14, 24, '#dbe6f2', 'bold 15px Arial', 'left');
+  text('film thickness  t = ' + Math.round(tnm) + ' nm', 14, 44, '#8fd0ff', '13px Arial', 'left');
+  if (SAME_WAVELENGTH)
+    text('(all colors drawn at one wavelength: ' + SAME_LAMBDA + ' nm)', 14, 62, '#c8a24d', '12px Arial', 'left');
+
+  drawFilm(BACK);
+
+  const colors = [
+    { on: SHOW_RED,   stroke: '#ff5252', lam: LAM_RED   },
+    { on: SHOW_GREEN, stroke: '#46d65a', lam: LAM_GREEN },
+    { on: SHOW_BLUE,  stroke: '#5b8dff', lam: LAM_BLUE  },
+  ];
+  const yByIndex = [BAND_Y.red, BAND_Y.green, BAND_Y.blue];
+
+  colors.forEach((c, i) => {
+    if (!c.on) return;
+    const lamDraw = SAME_WAVELENGTH ? SAME_LAMBDA : c.lam;
+    drawColorBeams(lamDraw, c.stroke, yByIndex[i], BACK);
+  });
+
+  drawBeamLabels(BACK);
+  drawEye();
+  if (MARK_T)      drawThicknessMarker(BACK);
+  if (SHOW_COLOR)  drawColorSwatch();
+
+  // Teaching hint (top, so it never collides with the overlaid slider panel)
+  text('Compare ' + R1 + ' and ' + T3 + ': where their crests line up that color reflects brightly; where they oppose, it cancels.',
+       14, 84, '#63788c', '12px Arial', 'left');
+}
+
+// ── Animation loop (advances phase only when animate is on) ───────────────
+function loop() {
+  if (ANIMATE) { tau += SPEED; draw(); }
+  requestAnimationFrame(loop);
+}
+
+// ── Slider panel (overlaid; only if a slider param is on) ─────────────────
+function buildPanel() {
+  const panel = document.getElementById('panel');
+  let any = false;
+
+  function addSlider(label, min, max, step, value, unit, onInput) {
+    any = true;
+    const ctl = document.createElement('div');
+    ctl.className = 'ctl';
+    const lab = document.createElement('span');
+    lab.innerHTML = label;
+    const inp = document.createElement('input');
+    inp.type = 'range'; inp.min = min; inp.max = max; inp.step = step; inp.value = value;
+    const val = document.createElement('span');
+    val.className = 'val';
+    const fmt = v => (unit === '°' ? Math.round(v) + '°' : Math.round(v) + ' ' + unit);
+    val.textContent = fmt(value);
+    inp.addEventListener('input', () => { val.textContent = fmt(+inp.value); onInput(+inp.value); if (!ANIMATE) draw(); });
+    ctl.appendChild(lab); ctl.appendChild(inp); ctl.appendChild(val);
+    panel.appendChild(ctl);
+  }
+
+  if (T_SLIDER)
+    addSlider('Thickness&nbsp;<i>t</i>', 0, 1200, 5, tnm, 'nm', v => { tnm = v; });
+  if (PHI_SLIDER)
+    addSlider('Incident phase&nbsp;' + PHI, 0, 360, 1, phiDeg, '°', v => { phiDeg = v; });
+
+  if (any) panel.style.display = 'flex';
+}
+
+buildPanel();
+new ResizeObserver(fit).observe(canvas);
+fit();
+loop();
+</script>
+
+<!-- CHEAT PANEL — visible only when ?cheat=1 is in the URL -->
+<script>
+(function () {
+  var _cpQ = new URLSearchParams(location.search);
+  if (_cpQ.get('cheat') !== '1') return;
+
+  var CHEAT_DEFS = [
+    {name:'same',      type:'toggle',  default:0, desc:'Draw all 3 colors at one wavelength (pedagogical, not physical)'},
+    {name:'red',       type:'toggle',  default:1, desc:'Show red light (660 nm)'},
+    {name:'green',     type:'toggle',  default:1, desc:'Show green light (532 nm)'},
+    {name:'blue',      type:'toggle',  default:1, desc:'Show blue light (400 nm)'},
+    {name:'r1',        type:'toggle',  default:1, desc:'Show r1 (reflection off front surface)'},
+    {name:'t1',        type:'toggle',  default:1, desc:'Show t1 (transmitted into the film)'},
+    {name:'r2',        type:'toggle',  default:1, desc:'Show r2 (reflection off back surface)'},
+    {name:'t2',        type:'toggle',  default:1, desc:'Show t2 (transmitted through the film)'},
+    {name:'t3',        type:'toggle',  default:1, desc:'Show t3 (back-reflection exiting the front)'},
+    {name:'showcolor', type:'toggle',  default:1, desc:'Show reflected-color swatch'},
+    {name:'markt',     type:'toggle',  default:0, desc:'Draw a thickness arrow labeled t'},
+    {name:'tslider',   type:'toggle',  default:0, desc:'Show a slider to adjust film thickness'},
+    {name:'phislider', type:'toggle',  default:0, desc:'Show a slider to adjust incident phase'},
+    {name:'thickness', type:'number',  min:0,  max:1200, step:5, default:450, desc:'Film thickness (nm)'},
+    {name:'phi',       type:'number',  min:0,  max:360,  step:1, default:0,   desc:'Incident phase at front surface (deg)'},
+    {name:'animate',   type:'toggle',  default:1, desc:'Animate the traveling waves'},
+    {name:'speed',     type:'number',  min:0,  max:0.2,  step:0.005, default:0.03, desc:'Animation speed (rad/frame)'},
+    {name:'zoom',      type:'toggle',  default:0, desc:'Enable zoom/pan controls'},
+  ];
+
+  var EMBED_KEYS = ['cheat'];
+  function buildCleanUrl(ov) {
+    var p = new URLSearchParams(location.search);
+    EMBED_KEYS.forEach(function(k) { p.delete(k); });
+    for (var k in ov) { var v=ov[k]; if(v===null||v==='') p.delete(k); else p.set(k,v); }
+    var qs = p.toString();
+    return location.origin + location.pathname + (qs ? '?' + qs : '');
+  }
+  function buildCheatUrl(ov) {
+    var b = buildCleanUrl(ov);
+    return b + (b.indexOf('?') >= 0 ? '&' : '?') + 'cheat=1';
+  }
+  function getEff(d) {
+    var r = _cpQ.get(d.name);
+    return r !== null ? r : (d['default'] !== undefined ? String(d['default']) : '');
+  }
+  function isTruthy(v) { return v!=='0'&&v!=='false'&&v!=='no'&&v!=='off'&&v!==''; }
+
+  function makeControl(d) {
+    var eff = getEff(d);
+    if (d.type === 'toggle') {
+      var on = isTruthy(eff), btn = document.createElement('button');
+      btn.textContent = on ? '1 (on)' : '0 (off)';
+      btn.style.cssText = 'background:'+(on?'#1b3d1b':'#3d1b1b')+';color:'+(on?'#6dca80':'#e07070')+
+        ';border:1px solid '+(on?'#2a7a3a':'#8a2a2a')+';border-radius:3px;padding:3px 10px;'+
+        'cursor:pointer;font-size:12px;min-width:70px';
+      btn.onclick = function() { var u={}; u[d.name]=on?'0':'1'; location.href=buildCheatUrl(u); };
+      return btn;
+    }
+    if (d.type === 'select') {
+      var sel = document.createElement('select');
+      sel.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
+        'border-radius:3px;padding:3px 8px;font-size:12px;cursor:pointer';
+      d.values.forEach(function(v) {
+        var o = document.createElement('option'); o.value=v; o.textContent=v;
+        if (eff===String(v)) o.selected=true; sel.appendChild(o);
+      });
+      sel.onchange = function() { var u={}; u[d.name]=sel.value; location.href=buildCheatUrl(u); };
+      return sel;
+    }
+    var inp = document.createElement('input');
+    inp.type = d.type==='number' ? 'number' : 'text'; inp.value = eff;
+    if (d.min!==undefined) inp.min=String(d.min);
+    if (d.max!==undefined) inp.max=String(d.max);
+    if (d.step!==undefined) inp.step=String(d.step);
+    inp.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
+      'border-radius:3px;padding:3px 6px;width:'+(d.type==='number'?'90':'220')+'px;font-size:12px';
+    inp.onchange = function() { var u={}; u[d.name]=inp.value; location.href=buildCheatUrl(u); };
+    return inp;
+  }
+
+  function typeLabel(d) {
+    if (d.type==='toggle') return '0|1';
+    if (d.type==='select') return d.values.join('|');
+    if (d.type==='number'&&d.min!==undefined&&d.max!==undefined) return d.min+'–'+d.max;
+    return d.type;
+  }
+
+  function render() {
+    var panel = document.createElement('div');
+    panel.style.cssText = 'position:fixed;bottom:0;left:0;right:0;'+
+      'background:rgba(12,18,32,0.97);color:#c8d8e8;'+
+      'font-family:"Segoe UI",system-ui,monospace;font-size:13px;'+
+      'border-top:2px solid #3a7bd5;z-index:2147483647;max-height:48vh;overflow-y:auto;'+
+      'padding:10px 16px 14px;box-sizing:border-box;box-shadow:0 -4px 24px rgba(0,0,0,0.6)';
+
+    var bubble = document.createElement('button');
+    bubble.style.cssText = 'position:fixed;bottom:8px;right:12px;'+
+      'background:rgba(12,18,32,0.95);color:#7ab8f5;border:1px solid #3a7bd5;'+
+      'border-radius:4px;padding:4px 12px;font-size:12px;'+
+      'font-family:"Segoe UI",system-ui,monospace;cursor:pointer;'+
+      'z-index:2147483647;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.5);user-select:none';
+    bubble.textContent = '🔑 Cheat Panel';
+    bubble.onclick = function() { bubble.style.display='none'; panel.style.display=''; };
+    document.body.appendChild(bubble);
+
+    var hdr = document.createElement('div');
+    hdr.style.cssText = 'font-weight:bold;color:#7ab8f5;margin-bottom:8px;'+
+      'display:flex;align-items:center;justify-content:space-between';
+    var hspan = document.createElement('span');
+    hspan.textContent = '🔑 Cheat Panel — ' + location.pathname.split('/').pop();
+    var btns = document.createElement('div');
+    btns.style.cssText = 'display:flex;align-items:center;gap:2px';
+    var minbtn = document.createElement('button');
+    minbtn.textContent = '−';
+    minbtn.title = 'Minimize (restore without reloading)';
+    minbtn.style.cssText = 'background:none;border:none;color:#7ab8f5;font-size:18px;cursor:pointer;padding:0 4px;line-height:1';
+    minbtn.onclick = function() { panel.style.display='none'; bubble.style.display=''; };
+    var xbtn = document.createElement('button');
+    xbtn.textContent = '×'; xbtn.title = 'Close (reload to restore)';
+    xbtn.style.cssText = 'background:none;border:none;color:#7ab8f5;font-size:18px;cursor:pointer;padding:0 4px;line-height:1';
+    xbtn.onclick = function() { panel.remove(); bubble.remove(); };
+    btns.appendChild(minbtn); btns.appendChild(xbtn);
+    hdr.appendChild(hspan); hdr.appendChild(btns); panel.appendChild(hdr);
+
+    var tbl = document.createElement('table');
+    tbl.style.cssText = 'border-collapse:collapse;width:100%;margin-bottom:10px';
+    var hrow = tbl.createTHead().insertRow();
+    ['Parameter','Type/Values','Control','Description'].forEach(function(h) {
+      var th = document.createElement('th');
+      th.textContent = h;
+      th.style.cssText = 'text-align:left;padding:4px 10px;border-bottom:1px solid #1e3050;'+
+        'color:#5a8fc0;font-size:11px;text-transform:uppercase;letter-spacing:.06em;white-space:nowrap';
+      hrow.appendChild(th);
+    });
+    var tbody = tbl.createTBody();
+    CHEAT_DEFS.forEach(function(d) {
+      var row = tbody.insertRow(), isSet = _cpQ.has(d.name);
+      row.style.cssText = 'border-bottom:1px solid #131f30;'+
+        (isSet ? 'background:rgba(58,123,213,0.08)' : '');
+      var nc = row.insertCell();
+      nc.style.cssText = 'padding:5px 10px;font-weight:bold;font-size:12px;'+
+        'color:'+(isSet?'#a8d4ff':'#7fa8d0')+';white-space:nowrap;font-family:monospace';
+      nc.textContent = d.name;
+      var tc = row.insertCell();
+      tc.style.cssText = 'padding:5px 10px;color:#5a7a90;font-size:11px;font-family:monospace';
+      tc.textContent = typeLabel(d);
+      var cc = row.insertCell();
+      cc.style.cssText = 'padding:4px 10px;white-space:nowrap';
+      cc.appendChild(makeControl(d));
+      var dc = row.insertCell();
+      dc.style.cssText = 'padding:5px 10px;color:#8aa0b0;font-size:12px';
+      dc.textContent = (d.desc||'')+(d['default']!==undefined?' (default: '+d['default']+')':'');
+    });
+    panel.appendChild(tbl);
+
+    var urlBox = document.createElement('div');
+    urlBox.style.cssText = 'background:#080d1a;border:1px solid #1e3050;border-radius:4px;'+
+      'padding:7px 12px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap';
+    var ulbl = document.createElement('span');
+    ulbl.style.cssText = 'color:#5a8fc0;font-size:11px;text-transform:uppercase;'+
+      'letter-spacing:.06em;white-space:nowrap;flex-shrink:0';
+    ulbl.textContent = 'Embed URL:';
+    var ulink = document.createElement('a');
+    ulink.style.cssText = 'color:#5fba7d;word-break:break-all;font-size:12px;'+
+      'font-family:monospace;text-decoration:none';
+    ulink.href = buildCleanUrl({}); ulink.textContent = buildCleanUrl({});
+    ulink.onclick = function(e) { e.preventDefault(); location.href=buildCheatUrl({}); };
+    var cpybtn = document.createElement('button');
+    cpybtn.textContent = 'copy';
+    cpybtn.style.cssText = 'background:#1a3050;color:#7ab8f5;border:1px solid #2a4a70;'+
+      'border-radius:3px;padding:2px 8px;font-size:11px;cursor:pointer;'+
+      'white-space:nowrap;flex-shrink:0;margin-left:4px';
+    cpybtn.onclick = function() {
+      navigator.clipboard && navigator.clipboard.writeText(buildCleanUrl({}));
+      cpybtn.textContent = '✓ copied';
+      setTimeout(function() { cpybtn.textContent = 'copy'; }, 1500);
+    };
+    urlBox.appendChild(ulbl); urlBox.appendChild(ulink); urlBox.appendChild(cpybtn);
+    panel.appendChild(urlBox);
+    document.body.appendChild(panel);
+  }
+  render();
+})();
+</script>
+
+<!-- @include shared/zoom-overlay.js -->
+<script>
+(function () {
+  /* Zoom/pan overlay — activated by ?zoom=1, hidden by default (?zoom=0 or absent). */
+  var Q = new URLSearchParams(location.search);
+  if (!Q.has('zoom') || Q.get('zoom') === '0') return;
+
+  var css = document.createElement('style');
+  css.textContent =
+    '#_zui{position:fixed;top:8px;right:8px;display:flex;align-items:center;' +
+    'gap:4px;background:rgba(0,0,0,.6);border-radius:8px;padding:5px 10px;' +
+    'z-index:99999;font-family:Arial,sans-serif;user-select:none}' +
+    '#_zui button{width:28px;height:28px;border:none;border-radius:4px;' +
+    'background:rgba(255,255,255,.2);color:#fff;font-size:18px;' +
+    'cursor:pointer;display:flex;align-items:center;justify-content:center}' +
+    '#_zui button:hover{background:rgba(255,255,255,.35)}' +
+    '#_zlab{color:#fff;font-size:13px;min-width:34px;text-align:center}';
+  document.head.appendChild(css);
+
+  var ui = document.createElement('div');
+  ui.id = '_zui';
+  ui.innerHTML =
+    '<button id="_zo">&#8722;</button>' +
+    '<span id="_zlab">1.0&#215;</span>' +
+    '<button id="_zi">+</button>' +
+    '<button id="_zr" title="Reset view">&#8634;</button>';
+  document.documentElement.appendChild(ui);
+
+  var Z = 1, tx = 0, ty = 0, drag = null;
+  var body = document.body;
+  var lab  = document.getElementById('_zlab');
+  var rst  = document.getElementById('_zr');
+
+  function apply() {
+    window._userZoom = Z > 1 ? Z : undefined;
+    var s = window._scalerFitScale || 1;
+    if (Z <= 1 && !tx && !ty) {
+      body.style.transform = '';
+      body.style.cursor    = '';
+      window.dispatchEvent(new Event('resize'));
+    } else {
+      body.style.transformOrigin = '0 0';
+      body.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (s * Z) + ')';
+      body.style.cursor    = 'grab';
+    }
+    lab.innerHTML         = Z.toFixed(1) + '&#215;';
+    rst.style.opacity     = (Z > 1 || tx || ty) ? '1' : '0.4';
+  }
+
+  document.getElementById('_zi').onclick = function () {
+    Z = Math.min(4, parseFloat((Z * 1.25).toFixed(2))); apply();
+  };
+  document.getElementById('_zo').onclick = function () {
+    Z = Math.max(1, parseFloat((Z / 1.25).toFixed(2))); apply();
+  };
+  rst.onclick = function () { Z = 1; tx = 0; ty = 0; apply(); };
+
+  document.documentElement.addEventListener('pointerdown', function (e) {
+    if (Z <= 1 || (e.target.closest && e.target.closest('#_zui'))) return;
+    drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+    body.style.cursor = 'grabbing';
+  });
+  document.documentElement.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    tx = drag.tx + (e.clientX - drag.x);
+    ty = drag.ty + (e.clientY - drag.y);
+    body.style.transform =
+      'translate(' + tx + 'px,' + ty + 'px) scale(' + ((window._scalerFitScale || 1) * Z) + ')';
+  });
+  document.documentElement.addEventListener('pointerup', function () {
+    drag = null;
+    if (Z > 1) body.style.cursor = 'grab';
+  });
+
+  document.documentElement.addEventListener('wheel', function (e) {
+    if (Z <= 1 && e.deltaY > 0) return;
+    e.preventDefault();
+    var factor = e.deltaY < 0 ? 1.1 : (1 / 1.1);
+    var newZ   = Math.max(1, Math.min(4, parseFloat((Z * factor).toFixed(3))));
+    if (newZ === Z) return;
+    var px = e.clientX, py = e.clientY;
+    tx = px + (tx - px) * (newZ / Z);
+    ty = py + (ty - py) * (newZ / Z);
+    if (newZ === 1) { tx = 0; ty = 0; }
+    Z = newZ;
+    apply();
+  }, { passive: false });
+})();
+</script>
+<!-- @end-include shared/zoom-overlay.js -->
+</body>
+</html>
