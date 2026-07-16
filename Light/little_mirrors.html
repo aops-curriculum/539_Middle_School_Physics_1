@@ -749,6 +749,13 @@ draw();
   var _cpQ = new URLSearchParams(location.search);
   if (_cpQ.get('cheat') !== '1') return;
 
+  var SCROLL_KEY = 'cheatPanelScroll:' + location.pathname;
+  var _scrollEl = null;
+  function saveScroll() {
+    if (_scrollEl) { try { sessionStorage.setItem(SCROLL_KEY, String(_scrollEl.scrollTop)); } catch (e) {} }
+  }
+  function go(url) { saveScroll(); location.href = url; }
+
   var CHEAT_DEFS = [
     {
         "name": "angles",
@@ -821,7 +828,7 @@ draw();
       btn.style.cssText = 'background:'+(on?'#1b3d1b':'#3d1b1b')+';color:'+(on?'#6dca80':'#e07070')+
         ';border:1px solid '+(on?'#2a7a3a':'#8a2a2a')+';border-radius:3px;padding:3px 10px;'+
         'cursor:pointer;font-size:12px;min-width:70px';
-      btn.onclick = function() { var u={}; u[d.name]=on?'0':'1'; location.href=buildCheatUrl(u); };
+      btn.onclick = function() { var u={}; u[d.name]=on?'0':'1'; go(buildCheatUrl(u)); };
       return btn;
     }
     if (d.type === 'select') {
@@ -832,7 +839,7 @@ draw();
         var o = document.createElement('option'); o.value=v; o.textContent=v;
         if (eff===String(v)) o.selected=true; sel.appendChild(o);
       });
-      sel.onchange = function() { var u={}; u[d.name]=sel.value; location.href=buildCheatUrl(u); };
+      sel.onchange = function() { var u={}; u[d.name]=sel.value; go(buildCheatUrl(u)); };
       return sel;
     }
     var inp = document.createElement('input');
@@ -842,7 +849,7 @@ draw();
     if (d.step!==undefined) inp.step=String(d.step);
     inp.style.cssText = 'background:#0d1b2a;color:#c8d8e8;border:1px solid #2a3f5f;'+
       'border-radius:3px;padding:3px 6px;width:'+(d.type==='number'?'90':'220')+'px;font-size:12px';
-    inp.onchange = function() { var u={}; u[d.name]=inp.value; location.href=buildCheatUrl(u); };
+    inp.onchange = function() { var u={}; u[d.name]=inp.value; go(buildCheatUrl(u)); };
     return inp;
   }
 
@@ -893,6 +900,7 @@ draw();
     hdr.appendChild(hspan); hdr.appendChild(btns); panel.appendChild(hdr);
 
     var body = document.createElement('div');
+    _scrollEl = body;
     body.style.cssText = 'overflow-y:auto;flex:1 1 auto;min-height:0;'+
       'padding:0 16px 14px;box-sizing:border-box';
 
@@ -939,7 +947,7 @@ draw();
     ulink.style.cssText = 'color:#5fba7d;word-break:break-all;font-size:12px;'+
       'font-family:monospace;text-decoration:none';
     ulink.href = buildCleanUrl({}); ulink.textContent = buildCleanUrl({});
-    ulink.onclick = function(e) { e.preventDefault(); location.href=buildCheatUrl({}); };
+    ulink.onclick = function(e) { e.preventDefault(); go(buildCheatUrl({})); };
     var cpybtn = document.createElement('button');
     cpybtn.textContent = 'copy';
     cpybtn.style.cssText = 'background:#1a3050;color:#7ab8f5;border:1px solid #2a4a70;'+
@@ -954,6 +962,11 @@ draw();
     body.appendChild(urlBox);
     panel.appendChild(body);
     document.body.appendChild(panel);
+
+    try {
+      var savedScroll = sessionStorage.getItem(SCROLL_KEY);
+      if (savedScroll !== null) body.scrollTop = parseFloat(savedScroll) || 0;
+    } catch (e) {}
   }
   render();
 })();
