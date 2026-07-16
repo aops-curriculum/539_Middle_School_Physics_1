@@ -478,13 +478,6 @@ loop();
   var _cpQ = new URLSearchParams(location.search);
   if (_cpQ.get('cheat') !== '1') return;
 
-  var SCROLL_KEY = 'cheatPanelScroll:' + location.pathname;
-  var _scrollEl = null;
-  function saveScroll() {
-    if (_scrollEl) { try { sessionStorage.setItem(SCROLL_KEY, String(_scrollEl.scrollTop)); } catch (e) {} }
-  }
-  function go(url) { saveScroll(); location.href = url; }
-
   var CHEAT_DEFS = [
     {name:'same',      type:'toggle',  default:0, desc:'Draw all 3 colors at one wavelength (pedagogical, not physical)'},
     {name:'red',       type:'toggle',  default:1, desc:'Show red light (660 nm)'},
@@ -512,6 +505,13 @@ loop();
   ];
 
   var EMBED_KEYS = ['cheat'];
+  var SCROLL_KEY = 'cheatPanelScroll:' + location.pathname;
+  var _scrollEl = null;
+  function saveScroll() {
+    if (_scrollEl) { try { sessionStorage.setItem(SCROLL_KEY, String(_scrollEl.scrollTop)); } catch (e) {} }
+  }
+  function go(url) { saveScroll(); location.href = url; }
+
   function buildCleanUrl(ov) {
     var p = new URLSearchParams(location.search);
     EMBED_KEYS.forEach(function(k) { p.delete(k); });
@@ -585,7 +585,7 @@ loop();
       'font-family:"Segoe UI",system-ui,monospace;cursor:pointer;'+
       'z-index:2147483647;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.5);user-select:none';
     bubble.textContent = '🔑 Cheat Panel';
-    bubble.onclick = function() { bubble.style.display='none'; panel.style.display='flex'; };
+    bubble.onclick = function() { bubble.style.display='none'; panel.style.display=''; };
     document.body.appendChild(bubble);
 
     var hdr = document.createElement('div');
