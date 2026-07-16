@@ -60,6 +60,7 @@ const bool = (k, d) => Q.has(k) ? Q.get(k) !== '0' : d;
 const SAME_WAVELENGTH = bool('same', false);   // draw all three colors with one wavelength
 const SAME_LAMBDA     = 532;                    // the common wavelength used in "same" mode (nm)
 const MARK_T          = bool('markt', false);   // draw thickness arrow labeled t
+const MARK_LAMBDA     = bool('marklambda', false); // draw wavelength arrow labeled lambda
 const SHOW_RED        = bool('red',  true);
 const SHOW_GREEN      = bool('green', true);
 const SHOW_BLUE       = bool('blue', true);
@@ -221,6 +222,22 @@ function drawThicknessMarker(BACK) {
   arrowHead(FRONT, y, Math.PI, '#d8e2ee', 8);
   arrowHead(BACK, y, 0, '#d8e2ee', 8);
   text('t', (FRONT + BACK) / 2, y - 8, '#ffffff', 'italic bold 17px Georgia, serif', 'center');
+}
+
+function drawWavelengthMarker() {
+  // One period of the incident light, drawn to scale (same px-per-nm as the
+  // thickness marker) in the clear strip below the incident/air region.
+  const lamDraw = SAME_WAVELENGTH ? SAME_LAMBDA : LAM_GREEN;
+  const x0 = X_START + 30, x1 = x0 + lamDraw * S;
+  const y  = 548;
+  ctx.strokeStyle = '#d8e2ee';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(x0, y); ctx.lineTo(x1, y);
+  ctx.stroke();
+  arrowHead(x0, y, Math.PI, '#d8e2ee', 8);
+  arrowHead(x1, y, 0, '#d8e2ee', 8);
+  text('λ', (x0 + x1) / 2, y - 8, '#ffffff', 'italic bold 17px Georgia, serif', 'center');
 }
 
 // Reflected-color channel intensity: 0 at destructive, 1 at constructive.
@@ -394,6 +411,7 @@ function draw() {
   drawBeamLabels(BACK);
   drawEye();
   if (MARK_T)      drawThicknessMarker(BACK);
+  if (MARK_LAMBDA) drawWavelengthMarker();
   if (SHOW_COLOR)  drawColorSwatch();
 
   // Teaching hint (top, so it never collides with the overlaid slider panel)
@@ -465,6 +483,7 @@ loop();
     {name:'showcolor', type:'toggle',  default:1, desc:'Show reflected-color swatch'},
     {name:'spectrum',  type:'toggle',  default:0, desc:'Compute reflected color from full sunlight spectrum (D65 -> CIE -> sRGB)'},
     {name:'markt',     type:'toggle',  default:0, desc:'Draw a thickness arrow labeled t'},
+    {name:'marklambda',type:'toggle',  default:0, desc:'Draw a wavelength arrow labeled lambda'},
     {name:'tslider',   type:'toggle',  default:0, desc:'Show a slider to adjust film thickness'},
     {name:'phislider', type:'toggle',  default:0, desc:'Show a slider to adjust incident phase'},
     {name:'thickness', type:'number',  min:0,  max:1200, step:5, default:450, desc:'Film thickness (nm)'},
@@ -548,7 +567,7 @@ loop();
       'font-family:"Segoe UI",system-ui,monospace;cursor:pointer;'+
       'z-index:2147483647;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.5);user-select:none';
     bubble.textContent = '🔑 Cheat Panel';
-    bubble.onclick = function() { bubble.style.display='none'; panel.style.display=''; };
+    bubble.onclick = function() { bubble.style.display='none'; panel.style.display='flex'; };
     document.body.appendChild(bubble);
 
     var hdr = document.createElement('div');
