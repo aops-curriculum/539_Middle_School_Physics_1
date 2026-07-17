@@ -121,7 +121,7 @@ const AMP     = 12;             // wave amplitude (px)
 const OFF     = 30;            // vertical track offset for reflected / return beams
 
 // ── Sub/greek glyphs ─────────────────────────────────────────────────────
-const R1='r₁', T1='t₁', R2='r₂', T2='t₂', T3='t₃', PHI='φ';
+const R1='r₁', T3='t₃', PHI='φ';
 
 // ── Animation phase ──────────────────────────────────────────────────────
 let tau = 0;
@@ -377,21 +377,6 @@ function drawColorBeams(lamDraw, stroke, yc, BACK) {
          stroke, X_START + 4, Math.PI, DASH ? DASH_DASH : null);
 }
 
-// ── Beam labels (drawn once, on the middle band, in neutral gray) ────────
-// Each label only appears when its beam is turned on, so the legend matches
-// what is actually drawn.
-function drawBeamLabels(BACK) {
-  const g = '#8fa3b8';
-  const f = 'bold 12px Arial';
-  const midFilm = (FRONT + BACK) / 2;
-  if (SHOW_INCIDENT) text('incident', X_START + 46, BAND_Y.green - 16, g, f, 'left');
-  if (SHOW_R1) text(R1, FRONT - 78, BAND_Y.green - OFF - 6, g, f, 'left');
-  if (SHOW_T3) text(T3, X_START + 46, BAND_Y.green + OFF + 18, g, f, 'left');
-  if (SHOW_T2) text(T2, BACK + 26, BAND_Y.green - 16, g, f, 'left');
-  if (SHOW_T1) text(T1, midFilm, BAND_Y.green - OFF - 8, g, f, 'center');
-  if (SHOW_R2) text(R2, midFilm, BAND_Y.green + OFF + 22, g, f, 'center');
-}
-
 // ── Master draw ──────────────────────────────────────────────────────────
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -419,7 +404,6 @@ function draw() {
     drawColorBeams(lamDraw, c.stroke, yByIndex[i], BACK);
   });
 
-  drawBeamLabels(BACK);
   drawEye();
   if (MARK_T)      drawThicknessMarker(BACK);
   if (MARK_LAMBDA) drawWavelengthMarker();
