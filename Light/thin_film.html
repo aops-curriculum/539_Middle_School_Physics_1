@@ -57,6 +57,14 @@ const Q    = new URLSearchParams(location.search);
 const num  = (k, d) => Q.has(k) && isFinite(+Q.get(k)) ? +Q.get(k) : d;
 const bool = (k, d) => Q.has(k) ? Q.get(k) !== '0' : d;
 
+// Keep the address bar in sync with slider-driven state, so a later cheat-panel
+// toggle (which reloads via the URL) doesn't clobber a value the slider changed.
+function syncParam(k, v) {
+  const p = new URLSearchParams(location.search);
+  p.set(k, v);
+  history.replaceState(null, '', location.pathname + '?' + p.toString());
+}
+
 const SAME_WAVELENGTH = bool('same', false);   // draw all three colors with one wavelength
 const SAME_LAMBDA     = 532;                    // the common wavelength used in "same" mode (nm)
 const MARK_T          = bool('markt', false);   // draw thickness arrow labeled t
@@ -443,9 +451,9 @@ function buildPanel() {
   }
 
   if (T_SLIDER)
-    addSlider('Thickness&nbsp;<i>t</i>', 0, 1200, 5, tnm, 'nm', v => { tnm = v; });
+    addSlider('Thickness&nbsp;<i>t</i>', 0, 1200, 5, tnm, 'nm', v => { tnm = v; syncParam('thickness', v); });
   if (PHI_SLIDER)
-    addSlider('Incident phase&nbsp;' + PHI, 0, 360, 1, phiDeg, '°', v => { phiDeg = v; });
+    addSlider('Incident phase&nbsp;' + PHI, 0, 360, 1, phiDeg, '°', v => { phiDeg = v; syncParam('phi', v); });
 
   if (any) panel.style.display = 'flex';
 }
