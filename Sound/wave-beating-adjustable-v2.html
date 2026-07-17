@@ -700,7 +700,7 @@
       'font-family:"Segoe UI",system-ui,monospace;cursor:pointer;'+
       'z-index:2147483647;display:none;box-shadow:0 2px 8px rgba(0,0,0,0.5);user-select:none';
     bubble.textContent = '🔑 Cheat Panel';
-    bubble.onclick = function() { bubble.style.display='none'; panel.style.display=''; };
+    bubble.onclick = function() { bubble.style.display='none'; panel.style.display='flex'; };
     document.body.appendChild(bubble);
 
     var hdr = document.createElement('div');
