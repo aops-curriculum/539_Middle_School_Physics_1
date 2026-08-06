@@ -294,12 +294,12 @@ function drawTicks() {
     ctx.stroke();
 
     if (major) {
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#fff';
-      ctx.fillRect(r.right + len + 2, p.y - 7, 22, 14);
-      ctx.fillStyle = '#000';
-      ctx.fillText(String(Math.round(y)), r.right + len + 22, p.y);
-    }
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fff';
+  ctx.fillRect(r.left - len - 26, p.y - 7, 24, 14);
+  ctx.fillStyle = '#000';
+  ctx.fillText(String(Math.round(y)), r.left - len - 4, p.y);
+}
   }
 }
 
