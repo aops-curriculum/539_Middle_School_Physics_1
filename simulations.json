@@ -795,6 +795,13 @@
       "description": "Watch iridescent interference colors form in a soap film as light reflects off opposite surfaces. Discover how film thickness determines whether reflected waves interfere constructively or destructively.",
       "emoji": "💡",
       "category": "light"
+    },
+    {
+      "path": "chip_collision.html",
+      "title": "Chip Collision — 1D Elastic",
+      "description": "New simulation - description pending.",
+      "emoji": "🔬",
+      "category": "other"
     }
   ]
 }
