@@ -9,10 +9,6 @@ on:
       - 'simulations.json'
       - 'scripts/**'
 
-  # Run on schedule - every 2 hours
-  schedule:
-    - cron: '0 */2 * * *'
-
   # Allow manual trigger
   workflow_dispatch:
     inputs:

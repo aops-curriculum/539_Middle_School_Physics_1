@@ -500,12 +500,19 @@ async function main() {
     await takeScreenshots(data.simulations, forceScreenshots);
   }
 
-  // Generate index.html
+  // Generate index.html (skip the write if nothing but the date stamp changed,
+  // so regenerating on an unchanged simulation list doesn't create a commit)
   if (!screenshotsOnly) {
     console.log('\nGenerating index.html...');
     const html = generateIndexHtml(data);
-    fs.writeFileSync(INDEX_HTML, html);
-    console.log('Done! index.html has been updated.');
+    const stripDate = s => s.replace(/Auto-generated on \d{4}-\d{2}-\d{2}/, 'Auto-generated on DATE');
+    const existing = fs.existsSync(INDEX_HTML) ? fs.readFileSync(INDEX_HTML, 'utf8') : null;
+    if (existing !== null && stripDate(existing) === stripDate(html)) {
+      console.log('No content changes; leaving index.html untouched.');
+    } else {
+      fs.writeFileSync(INDEX_HTML, html);
+      console.log('Done! index.html has been updated.');
+    }
   }
 }
 
