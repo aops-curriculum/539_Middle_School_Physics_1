@@ -799,7 +799,7 @@
     {
       "path": "chip_collision.html",
       "title": "Chip Collision — 1D Elastic",
-      "description": "New simulation - description pending.",
+      "description": "Investigate 1D elastic collisions by launching red chips at blue chips and observing momentum transfer. Adjust the number and speed of red chips to explore how energy and momentum are conserved in successive elastic collisions.",
       "emoji": "🔬",
       "category": "other"
     }
