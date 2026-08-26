@@ -741,6 +741,13 @@
       "category": "light"
     },
     {
+      "path": "Light/fish_apparent_position.html",
+      "title": "Where Does the Fish Appear to Be?",
+      "description": "Drag a fish underwater and drag two eyes above the surface; rays refract at the water line and the backward-extended lines of sight show where the fish appears to be. Four presets match the worksheet practice diagrams.",
+      "emoji": "🐟",
+      "category": "light"
+    },
+    {
       "path": "Sound/sound_refraction_sim.html",
       "title": "Sound Refraction Simulation",
       "description": "Slide a temperature gradient control and watch sound rays curve upward or downward correspondingly. Illustrates atmospheric refraction of sound and why temperature inversions cause sound to travel farther.",

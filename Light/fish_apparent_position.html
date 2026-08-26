@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="eigennode-aspect" content="6/5">
+<title>Where Does the Fish Appear to Be?</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+        background: #f4f7fa;
+        font-family: Arial, Helvetica, sans-serif;
+        user-select: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px;
+    }
+    #hint {
+        flex: 0 0 auto;
+        font-size: 14px;
+        color: #55606b;
+        text-align: center;
+    }
+    #cwrap {
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    /* The canvas is absolutely positioned inside #stage so that the DPR-scaled
+       backing store never feeds back into layout. #stage carries the aspect
+       ratio; the min() clamps it by width once the window gets narrow. */
+    #stage {
+        position: relative;
+        aspect-ratio: 4 / 3;
+        height: min(100%, 74vw);
+        width: auto;
+    }
+    canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        cursor: grab;
+        border-radius: 4px;
+    }
+    canvas.dragging { cursor: grabbing; }
+    #controls {
+        flex: 0 0 auto;
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 6px 14px;
+        font-size: 13px;
+        color: #33404d;
+    }
+    #controls button {
+        font: inherit;
+        padding: 4px 11px;
+        border: 1px solid #b9c6d3;
+        border-radius: 5px;
+        background: #fff;
+        color: #33404d;
+        cursor: pointer;
+    }
+    #controls button:hover { background: #e8eff6; }
+    #controls label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    #readout { font-variant-numeric: tabular-nums; color: #55606b; }
+    .sep { color: #c3cdd7; }
+</style>
+</head>
+<body>
+
+<p id="hint">Drag the <b>fish</b> and the <b>eyes</b>. Gold lines are the real light paths; dashed lines extend each line of sight back to where the fish appears to be.</p>
+
+<div id="cwrap"><div id="stage"><canvas id="canvas"></canvas></div></div>
+
+<div id="controls">
+    <span>Setup:</span>
+    <button data-preset="0">Ex.</button>
+    <button data-preset="1">1</button>
+    <button data-preset="2">2</button>
+    <button data-preset="3">3</button>
+    <span class="sep">|</span>
+    <label><input type="checkbox" id="showAnswer" checked> Show apparent position</label>
+    <label><input type="checkbox" id="showGhost" checked> Ghost fish</label>
+    <span class="sep">|</span>
+    <span id="readout"></span>
+</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 600;            // logical design grid
+const SURFACE = 250;               // water line, y in logical units
+const N_WATER = 1.33, N_AIR = 1.00;
+
+const SKY   = '#A5D5EE';
+const WATER = '#3D80BF';
+const RAY   = '#F0AB2B';
+const DASH  = '#1F3864';
+const FISH  = '#E32B21';
+
+const EYE_HALF_W = 26;             // half-width of the eye icon (hit radius, roughly)
+const FISH_S = 1.25;               // fish drawing scale
+
+// Presets mirror the four worksheet panels.
+const PRESETS = [
+    { fish: { x: 250, y: 470 }, eyes: [{ x: 520, y: 120 }, { x: 600, y: 120 }] },
+    { fish: { x: 400, y: 500 }, eyes: [{ x: 330, y:  75 }, { x: 495, y:  75 }] },
+    { fish: { x: 600, y: 400 }, eyes: [{ x: 170, y: 150 }, { x: 250, y: 150 }] },
+    { fish: { x: 520, y: 525 }, eyes: [{ x: 350, y: 150 }, { x: 445, y: 150 }] }
+];
+
+let fish = { x: 0, y: 0 };
+let eyes = [{ x: 0, y: 0 }, { x: 0, y: 0 }];
+let dragging = null;               // 'fish' | 0 | 1 | null
+
+function loadPreset(i) {
+    const p = PRESETS[i];
+    fish = { x: p.fish.x, y: p.fish.y };
+    eyes = p.eyes.map(e => ({ x: e.x, y: e.y }));
+    draw();
+}
+
+/* ---------------------------------------------------------------- optics */
+
+// Exact Snell's law for a flat horizontal surface: find the crossing point xs
+// on the surface such that the path source -> xs -> eye obeys
+//   n_water * sin(theta_water) = n_air * sin(theta_air).
+// Written as f(xs) = 0, f is strictly increasing from -(n1+n2) to +(n1+n2),
+// so bisection always converges to the unique root.
+function findSurfacePoint(src, eye) {
+    const depth  = src.y - SURFACE;    // source below the surface
+    const height = SURFACE - eye.y;    // eye above the surface
+    if (depth <= 0 || height <= 0) return null;
+
+    const f = xs => {
+        const dw = xs - src.x;
+        const da = eye.x - xs;
+        return N_WATER * dw / Math.hypot(dw, depth) - N_AIR * da / Math.hypot(da, height);
+    };
+
+    let lo = -4000, hi = 4000;
+    for (let i = 0; i < 90; i++) {
+        const mid = (lo + hi) / 2;
+        (f(lo) * f(mid) <= 0) ? (hi = mid) : (lo = mid);
+    }
+    return { x: (lo + hi) / 2, y: SURFACE };
+}
+
+// Tangential (meridional) image: where the two backward-extended lines of
+// sight cross. This is the construction the worksheet asks students to draw,
+// and it ignores the sagittal focus, i.e. the astigmatism of the surface.
+// Both surface points share y = SURFACE, which collapses the intersection to
+//   t * (dx1*dy2 - dy1*dx2) = (sp2.x - sp1.x) * dy2
+function tangentialImage(sp1, e1, sp2, e2) {
+    const dx1 = sp1.x - e1.x, dy1 = sp1.y - e1.y;   // pointing down into the water
+    const dx2 = sp2.x - e2.x, dy2 = sp2.y - e2.y;
+    const denom = dx1 * dy2 - dy1 * dx2;
+    if (Math.abs(denom) < 1e-9) return null;        // eyes give parallel sight lines
+    const t = (sp2.x - sp1.x) * dy2 / denom;
+    if (t < 0) return null;
+    return { x: sp1.x + t * dx1, y: sp1.y + t * dy1 };
+}
+
+/* --------------------------------------------------------------- drawing */
+
+// Fish outline in local coordinates, facing left, with the traced point at
+// the origin sitting just above the fish's back.
+function fishPath() {
+    ctx.beginPath();
+    ctx.moveTo(-46, 14);                       // nose
+    ctx.quadraticCurveTo(-20, 0, 8, 8);        // back, to the tail root
+    ctx.lineTo(28, -4);                        // upper tail tip
+    ctx.quadraticCurveTo(20, 14, 28, 32);      // tail notch
+    ctx.lineTo(8, 20);                         // back to the tail root
+    ctx.quadraticCurveTo(-20, 28, -46, 14);    // belly, back to the nose
+    ctx.closePath();
+}
+
+function drawFish(pt, ghost) {
+    ctx.save();
+    ctx.translate(pt.x, pt.y);
+    ctx.scale(FISH_S, FISH_S);
+    fishPath();
+    if (ghost) {
+        ctx.globalAlpha = 0.45;
+        ctx.fillStyle = FISH;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#FFD9D6';
+        ctx.lineWidth = 2.2 / FISH_S;
+        ctx.setLineDash([5 / FISH_S, 4 / FISH_S]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+    } else {
+        ctx.fillStyle = FISH;
+        ctx.fill();
+    }
+    ctx.restore();
+}
+
+function drawEye(e) {
+    ctx.save();
+    ctx.translate(e.x, e.y);
+
+    ctx.beginPath();                            // almond outline
+    ctx.moveTo(-EYE_HALF_W, 0);
+    ctx.quadraticCurveTo(0, -19, EYE_HALF_W, 0);
+    ctx.quadraticCurveTo(0, 19, -EYE_HALF_W, 0);
+    ctx.closePath();
+    ctx.fillStyle = '#fff';
+    ctx.fill();
+    ctx.strokeStyle = '#111';
+    ctx.lineWidth = 3;
+    ctx.stroke();
+
+    ctx.fillStyle = '#111';                     // iris, centred on the ray endpoint
+    ctx.beginPath();
+    ctx.arc(0, 0, 9, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.fillStyle = '#fff';                     // highlight
+    ctx.beginPath();
+    ctx.arc(-3, -3.5, 2.6, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.restore();
+}
+
+function marker(pt, r) {
+    ctx.fillStyle = '#111';
+    ctx.beginPath();
+    ctx.arc(pt.x, pt.y, r, 0, Math.PI * 2);
+    ctx.fill();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.fillStyle = SKY;
+    ctx.fillRect(0, 0, W, SURFACE);
+    ctx.fillStyle = WATER;
+    ctx.fillRect(0, SURFACE, W, H - SURFACE);
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, SURFACE);
+    ctx.lineTo(W, SURFACE);
+    ctx.stroke();
+
+    const sp = eyes.map(e => findSurfacePoint(fish, e));
+    const showAnswer = document.getElementById('showAnswer').checked;
+    const showGhost  = document.getElementById('showGhost').checked;
+    let image = null;
+
+    if (sp[0] && sp[1]) {
+        image = tangentialImage(sp[0], eyes[0], sp[1], eyes[1]);
+
+        if (image && showAnswer) {
+            if (showGhost) drawFish(image, true);
+
+            ctx.strokeStyle = DASH;
+            ctx.lineWidth = 2;
+            ctx.setLineDash([7, 6]);
+            for (let i = 0; i < 2; i++) {
+                ctx.beginPath();
+                ctx.moveTo(sp[i].x, sp[i].y);
+                ctx.lineTo(image.x, image.y);
+                ctx.stroke();
+            }
+            ctx.setLineDash([]);
+        }
+
+        ctx.strokeStyle = RAY;                  // real light paths
+        ctx.lineWidth = 3;
+        ctx.lineCap = 'round';
+        for (let i = 0; i < 2; i++) {
+            ctx.beginPath();
+            ctx.moveTo(fish.x, fish.y);
+            ctx.lineTo(sp[i].x, sp[i].y);
+            ctx.lineTo(eyes[i].x, eyes[i].y);
+            ctx.stroke();
+        }
+        ctx.lineCap = 'butt';
+    }
+
+    drawFish(fish, false);
+    marker(fish, 5.5);
+    if (image && showAnswer) marker(image, 5.5);
+    eyes.forEach(drawEye);
+
+    const real = fish.y - SURFACE;
+    const app  = image ? image.y - SURFACE : null;
+    document.getElementById('readout').textContent = app
+        ? `apparent depth = ${(100 * app / real).toFixed(0)}% of real depth`
+        : 'lines of sight do not converge';
+}
+
+/* ----------------------------------------------------------- interaction */
+
+function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    const p = e.touches ? e.touches[0] : e;
+    return { x: (p.clientX - r.left) * W / r.width, y: (p.clientY - r.top) * H / r.height };
+}
+
+function hitTest(p) {
+    for (let i = 0; i < 2; i++) {
+        if (Math.abs(p.x - eyes[i].x) < EYE_HALF_W + 6 && Math.abs(p.y - eyes[i].y) < 22) return i;
+    }
+    const lx = (p.x - fish.x) / FISH_S, ly = (p.y - fish.y) / FISH_S;
+    if (lx > -52 && lx < 34 && ly > -10 && ly < 36) return 'fish';
+    return null;
+}
+
+function moveTo(target, p) {
+    if (target === 'fish') {
+        // Keep the whole body plus the traced point below the surface.
+        fish.x = Math.max(48 * FISH_S, Math.min(W - 30 * FISH_S, p.x));
+        fish.y = Math.max(SURFACE + 12, Math.min(H - 34 * FISH_S, p.y));
+    } else {
+        eyes[target].x = Math.max(EYE_HALF_W + 2, Math.min(W - EYE_HALF_W - 2, p.x));
+        eyes[target].y = Math.max(21, Math.min(SURFACE - 22, p.y));
+    }
+}
+
+canvas.addEventListener('mousedown', e => {
+    dragging = hitTest(canvasPos(e));
+    if (dragging !== null) canvas.classList.add('dragging');
+});
+canvas.addEventListener('mousemove', e => {
+    const p = canvasPos(e);
+    if (dragging === null) {
+        canvas.style.cursor = hitTest(p) !== null ? 'grab' : 'default';
+        return;
+    }
+    moveTo(dragging, p);
+    draw();
+});
+function endDrag() { dragging = null; canvas.classList.remove('dragging'); }
+canvas.addEventListener('mouseup', endDrag);
+canvas.addEventListener('mouseleave', endDrag);
+
+canvas.addEventListener('touchstart', e => {
+    e.preventDefault();
+    dragging = hitTest(canvasPos(e));
+}, { passive: false });
+canvas.addEventListener('touchmove', e => {
+    e.preventDefault();
+    if (dragging !== null) { moveTo(dragging, canvasPos(e)); draw(); }
+}, { passive: false });
+canvas.addEventListener('touchend', e => { e.preventDefault(); endDrag(); }, { passive: false });
+
+document.querySelectorAll('#controls button').forEach(b => {
+    b.addEventListener('click', () => loadPreset(+b.dataset.preset));
+});
+document.getElementById('showAnswer').addEventListener('change', draw);
+document.getElementById('showGhost').addEventListener('change', draw);
+
+function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    canvas.width  = Math.round(r.width  * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    draw();
+}
+
+loadPreset(0);
+new ResizeObserver(fit).observe(canvas);
+fit();
+</script>
+
+<!-- @include shared/zoom-overlay.js -->
+<script>
+(function () {
+  /* Zoom/pan overlay — activated by ?zoom=1, hidden by default (?zoom=0 or absent). */
+  var Q = new URLSearchParams(location.search);
+  if (!Q.has('zoom') || Q.get('zoom') === '0') return;
+
+  var css = document.createElement('style');
+  css.textContent =
+    '#_zui{position:fixed;top:8px;right:8px;display:flex;align-items:center;' +
+    'gap:4px;background:rgba(0,0,0,.6);border-radius:8px;padding:5px 10px;' +
+    'z-index:99999;font-family:Arial,sans-serif;user-select:none}' +
+    '#_zui button{width:28px;height:28px;border:none;border-radius:4px;' +
+    'background:rgba(255,255,255,.2);color:#fff;font-size:18px;' +
+    'cursor:pointer;display:flex;align-items:center;justify-content:center}' +
+    '#_zui button:hover{background:rgba(255,255,255,.35)}' +
+    '#_zlab{color:#fff;font-size:13px;min-width:34px;text-align:center}';
+  document.head.appendChild(css);
+
+  /* Attach to <html> so position:fixed stays viewport-relative even when body has a transform. */
+  var ui = document.createElement('div');
+  ui.id = '_zui';
+  ui.innerHTML =
+    '<button id="_zo">&#8722;</button>' +
+    '<span id="_zlab">1.0&#215;</span>' +
+    '<button id="_zi">+</button>' +
+    '<button id="_zr" title="Reset view">&#8634;</button>';
+  document.documentElement.appendChild(ui);
+
+  var Z = 1, tx = 0, ty = 0, drag = null;
+  var body = document.body;
+  var lab  = document.getElementById('_zlab');
+  var rst  = document.getElementById('_zr');
+
+  function apply() {
+    /* window._userZoom signals the old-style scale-to-fit controller to stand down. */
+    window._userZoom = Z > 1 ? Z : undefined;
+    var s = window._scalerFitScale || 1;
+    if (Z <= 1 && !tx && !ty) {
+      body.style.transform = '';
+      body.style.cursor    = '';
+      window.dispatchEvent(new Event('resize')); /* let the scaler re-fit if present */
+    } else {
+      body.style.transformOrigin = '0 0';
+      body.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (s * Z) + ')';
+      body.style.cursor    = 'grab';
+    }
+    lab.innerHTML         = Z.toFixed(1) + '&#215;';
+    rst.style.opacity     = (Z > 1 || tx || ty) ? '1' : '0.4';
+  }
+
+  document.getElementById('_zi').onclick = function () {
+    Z = Math.min(4, parseFloat((Z * 1.25).toFixed(2))); apply();
+  };
+  document.getElementById('_zo').onclick = function () {
+    Z = Math.max(1, parseFloat((Z / 1.25).toFixed(2))); apply();
+  };
+  rst.onclick = function () { Z = 1; tx = 0; ty = 0; apply(); };
+
+  document.documentElement.addEventListener('pointerdown', function (e) {
+    if (Z <= 1 || (e.target.closest && e.target.closest('#_zui'))) return;
+    drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+    body.style.cursor = 'grabbing';
+  });
+  document.documentElement.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    tx = drag.tx + (e.clientX - drag.x);
+    ty = drag.ty + (e.clientY - drag.y);
+    body.style.transform =
+      'translate(' + tx + 'px,' + ty + 'px) scale(' + ((window._scalerFitScale || 1) * Z) + ')';
+  });
+  document.documentElement.addEventListener('pointerup', function () {
+    drag = null;
+    if (Z > 1) body.style.cursor = 'grab';
+  });
+
+  document.documentElement.addEventListener('wheel', function (e) {
+    if (Z <= 1 && e.deltaY > 0) return;
+    e.preventDefault();
+    var factor = e.deltaY < 0 ? 1.1 : (1 / 1.1);
+    var newZ   = Math.max(1, Math.min(4, parseFloat((Z * factor).toFixed(3))));
+    if (newZ === Z) return;
+    var px = e.clientX, py = e.clientY;
+    tx = px + (tx - px) * (newZ / Z);
+    ty = py + (ty - py) * (newZ / Z);
+    if (newZ === 1) { tx = 0; ty = 0; }
+    Z = newZ;
+    apply();
+  }, { passive: false });
+})();
+</script>
+<!-- @end-include shared/zoom-overlay.js -->
+</body>
+</html>
