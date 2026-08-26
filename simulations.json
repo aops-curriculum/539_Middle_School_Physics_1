@@ -809,6 +809,13 @@
       "description": "Investigate 1D elastic collisions by launching red chips at blue chips and observing momentum transfer. Adjust the number and speed of red chips to explore how energy and momentum are conserved in successive elastic collisions.",
       "emoji": "🔬",
       "category": "other"
+    },
+    {
+      "path": "chip_collision_2d.html",
+      "title": "Chip Collision — 2D Elastic",
+      "description": "New simulation - description pending.",
+      "emoji": "🔬",
+      "category": "other"
     }
   ]
 }
