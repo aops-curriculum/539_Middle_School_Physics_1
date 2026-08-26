@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=500, height=458">
+<title>Chip Collision — 2D Elastic</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  width: 500px;
+  height: 458px;
+  overflow: hidden;
+  font-family: Georgia, 'Times New Roman', serif;
+  background: #fff;
+  color: #3d3429;
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+#app {
+  width: 500px;
+  height: 458px;
+  display: flex;
+  flex-direction: column;
+}
+#header {
+  flex-shrink: 0;
+  background: #fff;
+  border-bottom: 1px solid #ddd;
+  padding: 6px 10px;
+}
+#controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+  font-family: Arial, Helvetica, sans-serif;
+  font-size: 11px;
+}
+.ctrl-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.ctrl-group.stack-n { gap: 3px; }
+.ctrl-group label { color: #6b5d4d; }
+input[type="number"] {
+  padding: 3px 6px;
+  border: 1px solid #a8957a;
+  border-radius: 4px;
+  font-size: 11px;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #fff;
+  color: #4a3f32;
+  width: 52px;
+}
+.ctrl-group.stack-n input[type="number"] {
+  width: 34px;
+  padding: 3px 2px;
+}
+#speed-input {
+  width: 58px;
+  padding: 3px 6px;
+}
+.speed-field {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.speed-field .unit {
+  color: #6b5d4d;
+  font-size: 11px;
+  white-space: nowrap;
+}
+.offset-group {
+  flex: 1 1 100%;
+  gap: 8px;
+}
+.offset-group input[type="range"] {
+  flex: 1;
+  max-width: 220px;
+  height: 4px;
+  accent-color: #7a6548;
+}
+#offset-val {
+  color: #4a3f32;
+  font-family: 'Courier New', monospace;
+  font-size: 10px;
+  min-width: 52px;
+}
+button {
+  padding: 4px 10px;
+  border: 1px solid #7a6548;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: Arial, Helvetica, sans-serif;
+  background: #fff;
+  color: #4a3f32;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.12);
+}
+button:hover { background: #fff; }
+button:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+#canvas-wrap {
+  flex: 0 0 400px;
+  height: 400px;
+  position: relative;
+  overflow: hidden;
+}
+#c {
+  display: block;
+  width: 500px;
+  height: 400px;
+}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="header">
+    <div id="controls">
+      <div class="ctrl-group stack-n">
+        <label for="n-red-input">Red N</label>
+        <input type="number" id="n-red-input" min="1" max="10" value="3">
+      </div>
+      <div class="ctrl-group stack-n">
+        <label for="n-blue-input">Blue N</label>
+        <input type="number" id="n-blue-input" min="1" max="10" value="3">
+      </div>
+      <div class="ctrl-group">
+        <label for="speed-input">Red initial speed</label>
+        <span class="speed-field">
+          <input type="number" id="speed-input" min="0.5" max="20" step="0.5" value="4">
+          <span class="unit">m/s</span>
+        </span>
+      </div>
+      <button id="run-btn" type="button">Run</button>
+      <button id="reset-btn" type="button">Reset</button>
+      <div class="ctrl-group offset-group">
+        <label for="offset-slider">Vertical offset</label>
+        <input type="range" id="offset-slider" min="-35" max="35" value="0" step="1">
+        <span id="offset-val">0.00 m</span>
+      </div>
+    </div>
+  </div>
+  <div id="canvas-wrap">
+    <canvas id="c" width="500" height="400"></canvas>
+  </div>
+</div>
+<script>
+(function () {
+  'use strict';
+
+  const canvas = document.getElementById('c');
+  const ctx = canvas.getContext('2d');
+  const nRedInput = document.getElementById('n-red-input');
+  const nBlueInput = document.getElementById('n-blue-input');
+  const speedInput = document.getElementById('speed-input');
+  const offsetSlider = document.getElementById('offset-slider');
+  const offsetVal = document.getElementById('offset-val');
+  const runBtn = document.getElementById('run-btn');
+  const resetBtn = document.getElementById('reset-btn');
+
+  const W = 500;
+  const H = 400;
+  const READOUT_H = 38;
+  const GRID_H = H - READOUT_H;
+  const MARGIN = 36;
+  const PX_PER_M = 72;
+  const R = 0.14;
+  const GRID_STEP = 0.5;
+  const OFFSET_STEP_M = 0.01;
+
+  const RED_COLOR = '#c93a32';
+  const BLUE_COLOR = '#3a6eb8';
+
+  let nRed = 3;
+  let nBlue = 3;
+  let v0 = 4;
+  let yOffset = 0;
+  let red = { x: 0, y: 0, vx: 0, vy: 0 };
+  let blue = { x: 0, y: 0, vx: 0, vy: 0 };
+  let redReadoutX = 0;
+  let blueReadoutX = 0;
+  let phase = 'idle';
+  let lastT = 0;
+  let animId = null;
+  let collided = false;
+  let separateStart = 0;
+  let finalRed = null;
+  let finalBlue = null;
+
+  function clampN(v) {
+    const n = parseInt(v, 10);
+    if (!Number.isFinite(n)) return 3;
+    return Math.max(1, Math.min(10, n));
+  }
+
+  function clampSpeed(v) {
+    const s = parseFloat(v);
+    if (!Number.isFinite(s)) return 4;
+    return Math.max(0.5, Math.min(20, s));
+  }
+
+  function readControls() {
+    nRed = clampN(nRedInput.value);
+    nBlue = clampN(nBlueInput.value);
+    nRedInput.value = nRed;
+    nBlueInput.value = nBlue;
+    v0 = clampSpeed(speedInput.value);
+    speedInput.value = v0;
+    yOffset = parseInt(offsetSlider.value, 10) * OFFSET_STEP_M;
+    offsetVal.textContent = (yOffset >= 0 ? '+' : '') + yOffset.toFixed(2) + ' m';
+  }
+
+  function origin() {
+    return { x: MARGIN + 1.1 * PX_PER_M, y: GRID_H * 0.52 };
+  }
+
+  function toScreen(x, y) {
+    const o = origin();
+    return { x: o.x + x * PX_PER_M, y: o.y - y * PX_PER_M };
+  }
+
+  function layoutBodies() {
+    blue.x = 1.8;
+    blue.y = 0;
+    red.x = -1.2;
+    red.y = yOffset;
+    redReadoutX = toScreen(-0.55, 0).x;
+    blueReadoutX = toScreen(2.35, 0).x;
+  }
+
+  function diskDist() {
+    return Math.hypot(blue.x - red.x, blue.y - red.y);
+  }
+
+  function speedAngle(vx, vy) {
+    const speed = Math.hypot(vx, vy);
+    if (speed < 0.001) return { speed: 0, angle: 0 };
+    const angle = Math.atan2(vy, vx) * 180 / Math.PI;
+    return { speed, angle };
+  }
+
+  function formatReadout(label, vx, vy, color) {
+    const sa = speedAngle(vx, vy);
+    const sp = sa.speed.toFixed(2);
+    const th = sa.speed < 0.001 ? '—' : sa.angle.toFixed(0) + '°';
+    return { label, text: sp + ' m/s,  θ = ' + th, color };
+  }
+
+  function currentRedVel() {
+    if (phase === 'done' && finalRed) return finalRed;
+    return { vx: red.vx, vy: red.vy };
+  }
+
+  function currentBlueVel() {
+    if (phase === 'done' && finalBlue) return finalBlue;
+    return { vx: blue.vx, vy: blue.vy };
+  }
+
+  function drawGrid() {
+    const o = origin();
+    const xMin = -2.0;
+    const xMax = 4.2;
+    const yMin = -2.2;
+    const yMax = 2.2;
+
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, GRID_H);
+
+    ctx.strokeStyle = '#ece7df';
+    ctx.lineWidth = 1;
+    for (let x = Math.ceil(xMin / GRID_STEP) * GRID_STEP; x <= xMax; x += GRID_STEP) {
+      const p1 = toScreen(x, yMin);
+      const p2 = toScreen(x, yMax);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+    for (let y = Math.ceil(yMin / GRID_STEP) * GRID_STEP; y <= yMax; y += GRID_STEP) {
+      const p1 = toScreen(xMin, y);
+      const p2 = toScreen(xMax, y);
+      ctx.beginPath();
+      ctx.moveTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.stroke();
+    }
+
+    ctx.strokeStyle = '#c8bfb3';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    const x0a = toScreen(0, yMin);
+    const x0b = toScreen(0, yMax);
+    ctx.moveTo(x0a.x, x0a.y);
+    ctx.lineTo(x0b.x, x0b.y);
+    const y0a = toScreen(xMin, 0);
+    const y0b = toScreen(xMax, 0);
+    ctx.moveTo(y0a.x, y0a.y);
+    ctx.lineTo(y0b.x, y0b.y);
+    ctx.stroke();
+
+    ctx.fillStyle = '#9a8d7e';
+    ctx.font = '9px Arial, Helvetica, sans-serif';
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'top';
+    ctx.fillText('+x', toScreen(xMax - 0.15, 0).x + 4, toScreen(xMax, 0).y - 4);
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText('+y', toScreen(0, yMax).x, toScreen(0, yMax).y - 2);
+  }
+
+  function drawDisk(body, color) {
+    const p = toScreen(body.x, body.y);
+    const rPx = R * PX_PER_M;
+
+    ctx.fillStyle = color;
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, rPx, 0, Math.PI * 2);
+    ctx.fill();
+
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+    ctx.lineWidth = 1.5;
+    ctx.stroke();
+  }
+
+  function drawVelocityArrow(body, vx, vy, color) {
+    const speed = Math.hypot(vx, vy);
+    if (speed < 0.05) return;
+
+    const p = toScreen(body.x, body.y);
+    const rPx = R * PX_PER_M;
+    const len = Math.min(42, 10 + speed * 5);
+    const ux = vx / speed;
+    const uy = -vy / speed;
+
+    const tx = p.x + ux * (rPx + 6);
+    const ty = p.y + uy * (rPx + 6);
+    const hx = tx + ux * len;
+    const hy = ty + uy * len;
+
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(tx, ty);
+    ctx.lineTo(hx, hy);
+    ctx.stroke();
+
+    const px = -uy;
+    const py = ux;
+    ctx.beginPath();
+    ctx.moveTo(hx, hy);
+    ctx.lineTo(hx - ux * 7 + px * 3, hy - uy * 7 + py * 3);
+    ctx.lineTo(hx - ux * 7 - px * 3, hy - uy * 7 - py * 3);
+    ctx.closePath();
+    ctx.fill();
+  }
+
+  function drawReadoutBand() {
+    ctx.fillStyle = '#f5f2ec';
+    ctx.fillRect(0, GRID_H, W, READOUT_H);
+    ctx.strokeStyle = '#ddd3c8';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, GRID_H);
+    ctx.lineTo(W, GRID_H);
+    ctx.stroke();
+
+    if (phase === 'idle') return;
+
+    const rv = currentRedVel();
+    const bv = currentBlueVel();
+    const redInfo = formatReadout('Red', rv.vx, rv.vy, RED_COLOR);
+    const blueInfo = formatReadout('Blue', bv.vx, bv.vy, BLUE_COLOR);
+
+    ctx.font = '11px Courier New, monospace';
+    ctx.textBaseline = 'middle';
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = redInfo.color;
+    ctx.fillText('Red:  ' + redInfo.text, redReadoutX, GRID_H + READOUT_H / 2);
+
+    ctx.fillStyle = blueInfo.color;
+    ctx.fillText('Blue: ' + blueInfo.text, blueReadoutX, GRID_H + READOUT_H / 2);
+  }
+
+  function draw() {
+    drawGrid();
+    drawDisk(blue, BLUE_COLOR);
+    drawDisk(red, RED_COLOR);
+
+    if (phase !== 'idle') {
+      const rv = currentRedVel();
+      const bv = currentBlueVel();
+      drawVelocityArrow(red, rv.vx, rv.vy, '#b83828');
+      drawVelocityArrow(blue, bv.vx, bv.vy, '#2a5a9e');
+    }
+
+    drawReadoutBand();
+  }
+
+  function setControlsEnabled(on) {
+    nRedInput.disabled = !on;
+    nBlueInput.disabled = !on;
+    speedInput.disabled = !on;
+    offsetSlider.disabled = !on;
+    runBtn.disabled = !on;
+  }
+
+  function stopAnim() {
+    if (animId != null) {
+      cancelAnimationFrame(animId);
+      animId = null;
+    }
+  }
+
+  function resolveCollision() {
+    const dx = blue.x - red.x;
+    const dy = blue.y - red.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < 1e-8) return false;
+
+    const nx = dx / dist;
+    const ny = dy / dist;
+    const v1n = red.vx * nx + red.vy * ny;
+    const v2n = blue.vx * nx + blue.vy * ny;
+    if (v1n - v2n <= 0) return false;
+
+    const m1 = nRed;
+    const m2 = nBlue;
+    const v1nNew = ((m1 - m2) * v1n + 2 * m2 * v2n) / (m1 + m2);
+    const v2nNew = ((m2 - m1) * v2n + 2 * m1 * v1n) / (m1 + m2);
+
+    red.vx += (v1nNew - v1n) * nx;
+    red.vy += (v1nNew - v1n) * ny;
+    blue.vx += (v2nNew - v2n) * nx;
+    blue.vy += (v2nNew - v2n) * ny;
+
+    const overlap = 2 * R - dist;
+    if (overlap > 0) {
+      const push = overlap / 2 + 0.0005;
+      red.x -= push * nx;
+      red.y -= push * ny;
+      blue.x += push * nx;
+      blue.y += push * ny;
+    }
+    return true;
+  }
+
+  function storeFinalVelocities() {
+    finalRed = { vx: red.vx, vy: red.vy };
+    finalBlue = { vx: blue.vx, vy: blue.vy };
+  }
+
+  function tick(now) {
+    if (phase === 'idle') return;
+
+    const dt = Math.min(0.032, (now - lastT) / 1000);
+    lastT = now;
+
+    if (phase === 'approach') {
+      red.x += red.vx * dt;
+      red.y += red.vy * dt;
+
+      if (diskDist() <= 2 * R + 0.0005) {
+        if (resolveCollision()) {
+          collided = true;
+          storeFinalVelocities();
+          phase = 'separate';
+          separateStart = performance.now();
+        }
+      } else if (red.x > blue.x + 2.5) {
+        phase = 'done';
+        storeFinalVelocities();
+        setControlsEnabled(true);
+      }
+    } else if (phase === 'separate') {
+      red.x += red.vx * dt;
+      red.y += red.vy * dt;
+      blue.x += blue.vx * dt;
+      blue.y += blue.vy * dt;
+
+      const elapsed = now - separateStart;
+      const sep = diskDist();
+      if (elapsed > 4000 && (elapsed > 9000 || sep > 2 * R + 0.35)) {
+        phase = 'done';
+        setControlsEnabled(true);
+      }
+    }
+
+    draw();
+
+    if (phase === 'done') {
+      animId = null;
+      return;
+    }
+
+    animId = requestAnimationFrame(tick);
+  }
+
+  function run() {
+    stopAnim();
+    readControls();
+    layoutBodies();
+    red.vx = v0;
+    red.vy = 0;
+    blue.vx = 0;
+    blue.vy = 0;
+    collided = false;
+    finalRed = null;
+    finalBlue = null;
+    phase = 'approach';
+    setControlsEnabled(false);
+    lastT = performance.now();
+    draw();
+    animId = requestAnimationFrame(tick);
+  }
+
+  function reset() {
+    stopAnim();
+    readControls();
+    layoutBodies();
+    red.vx = 0;
+    red.vy = 0;
+    blue.vx = 0;
+    blue.vy = 0;
+    collided = false;
+    finalRed = null;
+    finalBlue = null;
+    phase = 'idle';
+    setControlsEnabled(true);
+    draw();
+  }
+
+  runBtn.addEventListener('click', run);
+  resetBtn.addEventListener('click', reset);
+  offsetSlider.addEventListener('input', () => {
+    readControls();
+    if (phase === 'idle') {
+      layoutBodies();
+      draw();
+    }
+  });
+  function onStackCountChange() {
+    if (phase === 'idle') {
+      readControls();
+      layoutBodies();
+      draw();
+    }
+  }
+  nRedInput.addEventListener('change', onStackCountChange);
+  nBlueInput.addEventListener('change', onStackCountChange);
+  speedInput.addEventListener('change', () => {
+    speedInput.value = clampSpeed(speedInput.value);
+  });
+
+  readControls();
+  layoutBodies();
+  draw();
+})();
+</script>
+</body>
+</html>
