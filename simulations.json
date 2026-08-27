@@ -813,7 +813,7 @@
     {
       "path": "chip_collision_2d.html",
       "title": "Chip Collision — 2D Elastic",
-      "description": "New simulation - description pending.",
+      "description": "Explore 2D elastic collisions between red and blue chips, testing how initial speed and vertical offset affect momentum and energy conservation.",
       "emoji": "🔬",
       "category": "other"
     },
@@ -822,6 +822,13 @@
       "title": "Snell’s Law Ray Tracer",
       "description": "Aim a ray at a tiltable interface, set both indices of refraction, and see the refracted and reflected rays, including total internal reflection. Drop in a screenshot to trace over.",
       "emoji": "📐",
+      "category": "light"
+    },
+    {
+      "path": "Light/refraction_calculator.html",
+      "title": "Refraction Angle Calculator",
+      "description": "Turns InDesign rotation angles into the rotation angle for a refracted ray. Solves in either direction, or for either index of refraction, and flags total internal reflection.",
+      "emoji": "🧮",
       "category": "light"
     }
   ]
