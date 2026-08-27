@@ -837,6 +837,13 @@
       "description": "Traces light through both curved surfaces of a lens. Set the height, thickness, index, and the radius of curvature of each face, then send in parallel light or light from up to three coloured points.",
       "emoji": "🔍",
       "category": "light"
+    },
+    {
+      "path": "chess-position-builder.html",
+      "title": "Position Builder &mdash; Asymptote chessboard",
+      "description": "New simulation - description pending.",
+      "emoji": "🔬",
+      "category": "other"
     }
   ]
 }
