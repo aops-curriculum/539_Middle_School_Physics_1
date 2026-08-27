@@ -45,6 +45,7 @@
     #controls button.src i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
     #controls label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
     input[type=range] { width: 88px; vertical-align: middle; cursor: pointer; }
+    input[type=range]:disabled { opacity: .38; cursor: default; }
     .val { display: inline-block; font-variant-numeric: tabular-nums; color: #55606b; min-width: 30px; }
     .w2 { min-width: 62px; }
     .sep { color: #c3cdd7; }
@@ -70,6 +71,7 @@ Paste (Ctrl+V), drop, or load an image to trace over it &mdash; drag the backgro
         <label>Lens height <input type="range" id="lensH" min="60" max="330" step="1" value="200"><span class="val" id="lensHv"></span></label>
         <label>R&#8321; <input type="range" id="r1"><span class="val w2" id="r1v"></span></label>
         <label>R&#8322; <input type="range" id="r2"><span class="val w2" id="r2v"></span></label>
+        <label><input type="checkbox" id="cLock"> lock R&#8322; = R&#8321;</label>
         <label>Thickness <input type="range" id="thick" min="0" max="200" step="1" value="0"><span class="val" id="thickv"></span></label>
         <label>n <input type="range" id="nLens" min="1.02" max="2.6" step="0.01" value="1.50"><span class="val" id="nLensv"></span></label>
         <span class="sep">|</span>
@@ -594,6 +596,7 @@ function syncInputs() {
         el.value = sgn * get();
         $(id + 'v').textContent = radiusLabel(sgn * get());
     });
+    $('r2').disabled = $('cLock').checked;
     $('lensH').value = lensH;  $('lensHv').textContent = Math.round(lensH);
     $('thick').value = extraT; $('thickv').textContent = Math.round(thickness());
     $('nLens').value = nLens;  $('nLensv').textContent = nLens.toFixed(2);
@@ -624,7 +627,7 @@ function syncInputs() {
 function clampCurvatures() {
     const mx = curvRange();
     c1 = Math.max(-mx, Math.min(mx, c1));
-    c2 = Math.max(-mx, Math.min(mx, c2));
+    c2 = $('cLock').checked ? -c1 : Math.max(-mx, Math.min(mx, c2));
 }
 
 $('lensH').addEventListener('input', e => {
@@ -635,8 +638,20 @@ $('lensH').addEventListener('input', e => {
     syncInputs(); draw();
 });
 $('thick').addEventListener('input', e => { extraT = +e.target.value; syncInputs(); draw(); });
-$('r1').addEventListener('input', e => { c1 =  +e.target.value; syncInputs(); draw(); });
+
+// Locking makes the lens symmetric. The two faces bulge the same way, which in
+// the optics convention means the curvatures are equal and opposite.
+const locked = () => $('cLock').checked;
+$('r1').addEventListener('input', e => {
+    c1 = +e.target.value;
+    if (locked()) c2 = -c1;
+    syncInputs(); draw();
+});
 $('r2').addEventListener('input', e => { c2 = -+e.target.value; syncInputs(); draw(); });
+$('cLock').addEventListener('change', () => {
+    if (locked()) c2 = -c1;
+    syncInputs(); draw();
+});
 $('nLens').addEventListener('input', e => { nLens = +e.target.value; syncInputs(); draw(); });
 $('nRays').addEventListener('input', e => { nRays = +e.target.value; syncInputs(); draw(); });
 $('hit').addEventListener('input', e => {
@@ -673,6 +688,7 @@ $('reset').addEventListener('click', () => {
     sources = defaultSources();
     $('dop').value = 100;
     ['cAxis', 'cFocal', 'cArrow'].forEach(id => $(id).checked = true);
+    $('cLock').checked = false;
     $('cGlass').checked = !img;
     syncInputs(); draw();
 });
