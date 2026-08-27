@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<meta name="eigennode-aspect" content="3/2">
+<meta name="eigennode-aspect" content="5/2">
 <title>Refraction Angle Calculator</title>
 <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -11,91 +11,73 @@
         background: #f4f7fa;
         font-family: Arial, Helvetica, sans-serif;
         color: #1F3864;
-        font-size: 15px;
-        padding: 18px 16px 28px;
+        font-size: 13px;
+        padding: 10px 12px 14px;
     }
-    .wrap { max-width: 1020px; margin: 0 auto; }
+    .wrap { max-width: 1000px; margin: 0 auto; }
 
-    h1 { font-size: 25px; margin-bottom: 2px; }
-    .sub { color: #55606b; font-size: 14px; margin-bottom: 14px; }
-    .sub b { color: #1F3864; }
+    h1 { font-size: 18px; display: inline; }
+    .sub { color: #7d8894; font-size: 12px; display: inline; margin-left: 8px; }
 
-    .card {
-        background: #fff;
-        border: 1px solid #dde5ed;
-        border-radius: 9px;
-        padding: 12px 14px;
-        margin-bottom: 11px;
-    }
-    .cardhead {
-        font-size: 12px; font-weight: bold; letter-spacing: .06em;
-        text-transform: uppercase; color: #7d8894; margin-bottom: 9px;
-    }
-    .cardhead span { text-transform: none; letter-spacing: 0; font-weight: normal; }
-
-    .solvebar { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; margin-bottom: 13px; }
-    .solvebar > span { font-weight: bold; margin-right: 3px; }
+    .solvebar { display: flex; flex-wrap: wrap; align-items: center; gap: 5px; margin: 8px 0; }
+    .solvebar > span { color: #55606b; }
     button {
-        font: inherit; padding: 6px 13px; border: 1px solid #b9c6d3;
-        border-radius: 6px; background: #fff; color: #33404d; cursor: pointer;
+        font: inherit; padding: 3px 9px; border: 1px solid #b9c6d3;
+        border-radius: 5px; background: #fff; color: #33404d; cursor: pointer;
     }
     button:hover { background: #e8eff6; }
     button.on { background: #1F3864; border-color: #1F3864; color: #fff; }
-    button:disabled { opacity: .38; cursor: default; background: #fff; }
+    button:disabled { opacity: .35; cursor: default; background: #fff; }
 
-    .grid { display: grid; grid-template-columns: minmax(0,1fr) 430px; gap: 14px; align-items: start; }
-    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .grid { display: grid; grid-template-columns: minmax(0,1fr) 380px; gap: 12px; align-items: start; }
+    @media (max-width: 880px) { .grid { grid-template-columns: 1fr; } }
 
-    .row { display: flex; align-items: center; gap: 10px; margin-bottom: 9px; }
-    .row:last-child { margin-bottom: 0; }
-    .row label { flex: 1 1 auto; }
-    .row .unit { color: #7d8894; width: 12px; }
+    .card { background: #fff; border: 1px solid #dde5ed; border-radius: 8px; }
+
+    /* One row per quantity: name over its slider on the left, the live value on
+       the right, presets beside it. Typing in the value moves the slider. */
+    .r { display: flex; align-items: center; gap: 11px; padding: 6px 11px; border-top: 1px solid #eef2f7; }
+    .r:first-child { border-top: none; }
+    .r.ans { background: #FFF8EA; }
+    .c1 { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+    .c1 .nm { font-size: 12px; color: #55606b; }
+    .c1 .nm b { color: #1F3864; }
+    .c2 { flex: 0 0 118px; display: flex; align-items: center; gap: 3px; }
+    .c3 { flex: 0 0 240px; display: flex; flex-wrap: wrap; gap: 3px; }
+
+    input[type=range] { width: 100%; height: 14px; cursor: pointer; margin: 0; }
     input[type=number] {
-        font: inherit; font-size: 19px; width: 116px; padding: 5px 8px; text-align: right;
-        border: 1px solid #b9c6d3; border-radius: 6px; color: #1F3864;
+        font: inherit; font-size: 16px; width: 82px; padding: 3px 5px; text-align: right;
+        border: 1px solid #b9c6d3; border-radius: 5px; color: #1F3864;
         font-variant-numeric: tabular-nums; background: #fff;
     }
     input[type=number]:focus { outline: 2px solid #7aa7d9; outline-offset: -1px; }
-    input.solved {
-        background: #FFF4DE; border-color: #E8A020; font-weight: bold;
+    .r.ans input[type=number] { background: #FFF0D2; border-color: #E8A020; font-weight: bold; }
+    .u { color: #9aa5b1; width: 8px; font-size: 12px; }
+    .cp { padding: 2px 5px; font-size: 12px; line-height: 1.2; }
+
+    .c3 button { padding: 2px 5px; font-size: 10.5px; border-radius: 9px; line-height: 1.3; }
+    .c3 button b { font-variant-numeric: tabular-nums; }
+
+    #status {
+        margin-top: 8px; padding: 7px 11px; border-radius: 7px;
+        background: #fff; border: 1px solid #dde5ed; font-size: 12.5px; line-height: 1.55;
     }
-    .hint { font-size: 12.5px; color: #7d8894; margin-top: 3px; }
+    #status.bad { background: #FDF0EF; border-color: #E9B7B3; color: #B0231C; }
+    #status b { font-variant-numeric: tabular-nums; }
 
-    .chips { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
-    .chips button { padding: 4px 9px; font-size: 13px; border-radius: 20px; }
-    .chips button b { font-variant-numeric: tabular-nums; }
+    canvas { width: 100%; height: auto; display: block; border-radius: 7px; border: 1px solid #dde5ed; background: #fff; }
 
-    .answer {
-        background: #fff; border: 2px solid #E8A020; border-radius: 9px;
-        padding: 13px 15px; margin-bottom: 11px;
-    }
-    .answer .lab { font-size: 12.5px; color: #7d8894; text-transform: uppercase; letter-spacing: .06em; }
-    .answer .big {
-        font-size: 38px; font-weight: bold; font-variant-numeric: tabular-nums;
-        line-height: 1.15; cursor: pointer;
-    }
-    .answer .big.err { font-size: 17px; color: #C62828; cursor: default; line-height: 1.35; }
-    .answer .alt { font-size: 13px; color: #55606b; margin-top: 2px; }
-    .answer .acts { display: flex; gap: 7px; margin-top: 10px; flex-wrap: wrap; }
-
-    .facts { font-size: 13.5px; color: #33404d; line-height: 1.6; }
-    .facts b { font-variant-numeric: tabular-nums; }
-    .facts .warn { color: #C62828; }
-
-    canvas { width: 100%; height: auto; display: block; border-radius: 6px; }
-
-    ol.steps { margin: 6px 0 0 20px; font-size: 13.5px; color: #33404d; line-height: 1.65; }
-    details { margin-top: 4px; }
-    summary { cursor: pointer; font-size: 13.5px; color: #55606b; }
+    details { margin-top: 8px; font-size: 12px; color: #55606b; }
+    summary { cursor: pointer; }
+    ol { margin: 5px 0 0 18px; line-height: 1.6; }
 </style>
 </head>
 <body>
 <div class="wrap">
 
 <h1>Refraction Angle Calculator</h1>
-<p class="sub">Draw the glass and the ray horizontally, rotate each one, and type those two rotation
-angles below. You get back the rotation angle for the refracted ray.
-<b>The sign convention does not matter</b> &mdash; just use the same one for every angle.</p>
+<span class="sub">Rotate the glass and the ray from horizontal in InDesign, type both angles, get the rotation for the refracted ray.</span>
 
 <div class="solvebar">
     <span>Solve for:</span>
@@ -103,119 +85,89 @@ angles below. You get back the rotation angle for the refracted ray.
     <button data-solve="I">Incident ray</button>
     <button data-solve="n1">n&#8321;</button>
     <button data-solve="n2">n&#8322;</button>
+    <button id="swap" title="Exchange the two media">&#8646; Swap media</button>
+    <button id="next" title="Send this ray into the next surface: it becomes the incident ray and the media swap">Next surface &rarr;</button>
 </div>
 
 <div class="grid">
 
 <div>
-    <div class="card">
-        <div class="cardhead">Medium 1 <span>&mdash; where the light starts</span></div>
-        <div class="row">
-            <label for="n1">Index of refraction n&#8321;</label>
-            <input type="number" id="n1" step="any" min="0.1" value="1.00">
+    <div class="card" id="rows">
+        <div class="r" data-row="n1">
+            <div class="c1"><span class="nm"><b>n&#8321;</b> &mdash; where the light starts</span>
+                <input type="range" id="s_n1" min="1" max="2.6" step="0.01"></div>
+            <div class="c2"><input type="number" id="n1" step="any" value="1.00"><span class="u"></span></div>
+            <div class="c3" data-target="n1"></div>
         </div>
-        <div class="chips" data-target="n1"></div>
-    </div>
-
-    <div class="row" style="justify-content:center;margin:-4px 0 7px">
-        <button id="swap" title="Exchange the two media">&#8646; Swap the two media</button>
-    </div>
-
-    <div class="card">
-        <div class="cardhead">Medium 2 <span>&mdash; where the light goes</span></div>
-        <div class="row">
-            <label for="n2">Index of refraction n&#8322;</label>
-            <input type="number" id="n2" step="any" min="0.1" value="1.50">
+        <div class="r" data-row="n2">
+            <div class="c1"><span class="nm"><b>n&#8322;</b> &mdash; where the light goes</span>
+                <input type="range" id="s_n2" min="1" max="2.6" step="0.01"></div>
+            <div class="c2"><input type="number" id="n2" step="any" value="1.50"><span class="u"></span></div>
+            <div class="c3" data-target="n2"></div>
         </div>
-        <div class="chips" data-target="n2"></div>
-    </div>
-
-    <div class="card">
-        <div class="cardhead">Rotation angles from InDesign</div>
-        <div class="row">
-            <label for="gRot">Glass / surface rotation</label>
-            <input type="number" id="gRot" step="any" value="0"><span class="unit">&deg;</span>
+        <div class="r" data-row="R">
+            <div class="c1"><span class="nm"><b>Glass / surface</b> rotation</span>
+                <input type="range" id="s_gRot" min="-180" max="180" step="0.5"></div>
+            <div class="c2"><input type="number" id="gRot" step="any" value="0"><span class="u">&deg;</span></div>
+            <div class="c3"></div>
         </div>
-        <div class="row">
-            <label for="iRot">Incident ray rotation</label>
-            <input type="number" id="iRot" step="any" value="-60"><span class="unit">&deg;</span>
+        <div class="r" data-row="I">
+            <div class="c1"><span class="nm"><b>Incident ray</b> rotation</span>
+                <input type="range" id="s_iRot" min="-180" max="180" step="0.5"></div>
+            <div class="c2"><input type="number" id="iRot" step="any" value="-60"><span class="u">&deg;</span></div>
+            <div class="c3"></div>
         </div>
-        <div class="row">
-            <label for="tRot">Refracted ray rotation</label>
-            <input type="number" id="tRot" step="any" class="solved"><span class="unit">&deg;</span>
-        </div>
-        <p class="hint">Rotate the glass rectangle from horizontal; rotate each ray from horizontal too.</p>
-    </div>
-</div>
-
-<div>
-    <div class="answer">
-        <div class="lab" id="ansLab">Rotate the refracted ray by</div>
-        <div class="big" id="ansBig" title="Click to copy">&mdash;</div>
-        <div class="alt" id="ansAlt"></div>
-        <div class="acts">
-            <button id="copy">Copy</button>
-            <button id="next" title="Send this ray into the next surface: it becomes the incident ray and the two media swap">Use as next incident ray &rarr;</button>
+        <div class="r" data-row="T">
+            <div class="c1"><span class="nm"><b>Refracted ray</b> rotation</span>
+                <input type="range" id="s_tRot" min="-180" max="180" step="0.5"></div>
+            <div class="c2"><input type="number" id="tRot" step="any"><span class="u">&deg;</span></div>
+            <div class="c3"></div>
         </div>
     </div>
 
-    <div class="card" style="padding:8px">
-        <canvas id="preview" width="820" height="620"></canvas>
-    </div>
+    <div id="status"></div>
 
-    <div class="card">
-        <div class="facts" id="facts"></div>
-    </div>
-</div>
-
-</div>
-
-<div class="card">
     <details>
         <summary>How to use this in InDesign</summary>
-        <ol class="steps">
-            <li>Draw the glass as a horizontal rectangle, then rotate it. Note the rotation angle &rarr; <b>Glass / surface rotation</b>.</li>
-            <li>Draw the incident ray as a horizontal line, then rotate it. Note that angle &rarr; <b>Incident ray rotation</b>.</li>
-            <li>Set n&#8321; and n&#8322; for the two materials.</li>
-            <li>Draw another horizontal line and rotate it by the number this calculator gives you. That is the refracted ray.</li>
-            <li>For a ray leaving the glass again, press <b>Use as next incident ray</b>, then change the glass rotation to the rotation of the second face. (For a rectangle both faces have the same rotation, and you will find the exit ray comes out parallel to the original.)</li>
+        <ol>
+            <li>Draw the glass as a horizontal rectangle and rotate it &rarr; <b>Glass / surface rotation</b>.</li>
+            <li>Draw the incident ray as a horizontal line and rotate it &rarr; <b>Incident ray rotation</b>.</li>
+            <li>Draw one more horizontal line and rotate it by the highlighted answer. That is the refracted ray.</li>
+            <li>For the ray leaving the glass again, press <b>Next surface</b> and set the rotation of the second face.</li>
         </ol>
-        <p class="hint" style="margin-top:8px">Positive rotations may be clockwise or counterclockwise depending on your tool
-        &mdash; it cancels out, so the answer is right either way as long as every angle you type uses the same convention.
-        A line rotated by <i>x</i>&deg; and by <i>x</i>&nbsp;&plusmn;&nbsp;180&deg; lie on top of each other, so either value draws the same ray.</p>
+        <p style="margin-top:6px">Whether your tool calls clockwise or counterclockwise positive cancels out of the
+        geometry, so the answer is right either way as long as every angle you type uses the same convention.
+        A line rotated by <i>x</i>&deg; and by <i>x</i>&nbsp;&plusmn;&nbsp;180&deg; lie on top of each other.</p>
     </details>
 </div>
 
+<canvas id="preview" width="560" height="430"></canvas>
+
+</div>
 </div>
 
 <script>
 const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+const $ = id => document.getElementById(id);
 
 const PRESETS = [
-    { name: 'Air',           n: 1.00 },
-    { name: 'Water',         n: 1.33 },
-    { name: 'Vegetable oil', n: 1.47 },
-    { name: 'Glass',         n: 1.50 },
-    { name: 'Sapphire',      n: 1.77 },
-    { name: 'Diamond',       n: 2.42 }
+    { name: 'Air',      n: 1.00 }, { name: 'Water',    n: 1.33 },
+    { name: 'Oil',      n: 1.47 }, { name: 'Glass',    n: 1.50 },
+    { name: 'Sapphire', n: 1.77 }, { name: 'Diamond',  n: 2.42 }
 ];
 
-const $ = id => document.getElementById(id);
-const FIELD = { T: 'tRot', I: 'iRot', n1: 'n1', n2: 'n2' };
-const TITLE = {
-    T:  'Rotate the refracted ray by',
-    I:  'Rotate the incident ray by',
-    n1: 'Index of refraction n₁',
-    n2: 'Index of refraction n₂'
-};
+// solve key -> the input it fills in, and the slider that tracks it
+const FIELD  = { T: 'tRot', I: 'iRot', n1: 'n1', n2: 'n2' };
+const SLIDER = { n1: 's_n1', n2: 's_n2', gRot: 's_gRot', iRot: 's_iRot', tRot: 's_tRot' };
 
 let mode = 'T';
+let lastAnswer = null;
 
 /* ------------------------------------------------------------------- math */
 
-// Every angle here is a rotation away from horizontal, in the same sense the
-// drawing program uses. Mirroring that sense flips every angle in the problem
-// including the answer, so the result is convention-independent.
+// Every angle is a rotation away from horizontal, in whatever sense the drawing
+// program uses. Mirroring that sense flips every angle in the problem including
+// the answer, so the result comes out right either way.
 function norm180(a) {
     a = a % 360;
     if (a > 180) a -= 360;
@@ -223,26 +175,21 @@ function norm180(a) {
     return a;
 }
 
-// The normal to the surface, pointing the way the light is heading. Picking the
-// sense from the ray keeps the answer's arrow pointing downstream.
+// The normal to the surface, pointing the way the light is heading, so the
+// answer's arrow ends up pointing downstream.
 function forwardNormal(surface, ray) {
     const cand = surface + 90;
     return Math.cos(norm180(ray - cand) * D2R) >= 0 ? cand : surface - 90;
 }
 
-const num = id => {
-    const v = $(id).value.trim();
-    return v === '' ? NaN : Number(v);
-};
+const num = id => { const v = $(id).value.trim(); return v === '' ? NaN : Number(v); };
 
 function compute() {
     const R = num('gRot'), n1 = num('n1'), n2 = num('n2'), I = num('iRot'), T = num('tRot');
     const r = { R, n1, n2, I, T, ok: false, err: null, answer: null };
-
     const need = m => { r.err = m; return r; };
     if (!isFinite(R)) return need('Enter the rotation angle of the glass surface.');
 
-    // Angles measured from the normal, signed, so the two rays stay on the same side.
     if (mode === 'T' || mode === 'I') {
         if (!isFinite(n1) || !isFinite(n2)) return need('Enter both indices of refraction.');
         if (n1 <= 0 || n2 <= 0) return need('An index of refraction has to be a positive number.');
@@ -257,26 +204,21 @@ function compute() {
         r.N = N;
         if (Math.abs(tK) > 89.999) return need('That ray is parallel to the glass surface, so it never reaches it.');
 
-        // n_from sin(theta_from) = n_to sin(theta_to)
         const nFrom = mode === 'T' ? n1 : n2, nTo = mode === 'T' ? n2 : n1;
         const sinOut = nFrom * Math.sin(tK * D2R) / nTo;
-
-        if (mode === 'T') { r.theta1 = tK; } else { r.theta2 = tK; }
+        if (mode === 'T') r.theta1 = tK; else r.theta2 = tK;
 
         if (Math.abs(sinOut) > 1) {
-            const critAng = Math.asin(Math.min(1, nTo / nFrom)) * R2D;
+            const crit = Math.asin(Math.min(1, nTo / nFrom)) * R2D;
             r.reflOnly = true;
-            if (mode === 'T') {
-                r.err = `Total internal reflection — there is no refracted ray. Going from n₁ = ${n1} into `
-                      + `n₂ = ${n2}, light only crosses the surface if it is within ${critAng.toFixed(2)}° of the `
-                      + `normal, and yours is at ${Math.abs(tK).toFixed(2)}°. Draw the reflected ray instead.`;
-            } else {
-                r.err = `Impossible. Going from n₁ = ${n1} into n₂ = ${n2}, a refracted ray can never be more `
-                      + `than ${critAng.toFixed(2)}° from the normal, but yours is at ${Math.abs(tK).toFixed(2)}°.`;
-            }
+            r.err = mode === 'T'
+                ? `Total internal reflection — there is no refracted ray. Going from n₁ = ${n1} into n₂ = ${n2}, `
+                + `light only crosses the surface within ${crit.toFixed(2)}° of the normal, and yours is at `
+                + `${Math.abs(tK).toFixed(2)}°. Draw the reflected ray instead.`
+                : `Impossible. Going from n₁ = ${n1} into n₂ = ${n2}, a refracted ray can never be more than `
+                + `${crit.toFixed(2)}° from the normal, but yours is at ${Math.abs(tK).toFixed(2)}°.`;
             return r;
         }
-
         const tOut = Math.asin(sinOut) * R2D;
         if (mode === 'T') { r.theta2 = tOut; r.T = norm180(N + tOut); r.answer = r.T; }
         else              { r.theta1 = tOut; r.I = norm180(N + tOut); r.answer = r.I; }
@@ -284,127 +226,103 @@ function compute() {
         return r;
     }
 
-    // Solving for an index: both rays are given, so read both angles off the
-    // same forward normal and invert Snell's law.
+    // Solving for an index: read both ray angles off the same forward normal.
     if (!isFinite(I)) return need('Enter the rotation angle of the incident ray.');
     if (!isFinite(T)) return need('Enter the rotation angle of the refracted ray.');
-    const givenN = mode === 'n2' ? n1 : n2;
-    if (!isFinite(givenN)) return need(mode === 'n2' ? 'Enter n₁.' : 'Enter n₂.');
-    if (givenN <= 0) return need('An index of refraction has to be a positive number.');
+    const given = mode === 'n2' ? n1 : n2;
+    if (!isFinite(given)) return need(mode === 'n2' ? 'Enter n₁.' : 'Enter n₂.');
+    if (given <= 0) return need('An index of refraction has to be a positive number.');
 
     const N = forwardNormal(R, I);
     const t1 = norm180(I - N);
     let t2 = norm180(T - N);
-    if (Math.abs(t2) > 90) t2 = norm180(T + 180 - N);   // they drew the refracted ray pointing back
+    if (Math.abs(t2) > 90) t2 = norm180(T + 180 - N);   // they drew it pointing back
     r.N = N; r.theta1 = t1; r.theta2 = t2;
-
     if (Math.abs(t1) > 89.999) return need('The incident ray is parallel to the glass surface, so it never reaches it.');
     if (Math.abs(t2) > 89.999) return need('The refracted ray is parallel to the glass surface, which cannot happen.');
 
     const s1 = Math.sin(t1 * D2R), s2 = Math.sin(t2 * D2R);
-    if (Math.abs(s1) < 1e-9 && Math.abs(s2) < 1e-9) {
-        r.err = 'Both rays run straight along the normal, so they never bend — every index of refraction fits. '
-              + 'Tilt one of the rays to pin the index down.';
-        return r;
-    }
-    if (s1 * s2 < 0) {
-        r.err = 'Impossible: the refracted ray has to stay on the same side of the normal as the incident ray. '
-              + 'Check the rotation angles, or add 180° to one of them.';
-        return r;
-    }
+    if (Math.abs(s1) < 1e-9 && Math.abs(s2) < 1e-9)
+        return need('Both rays run straight along the normal, so they never bend — every index fits. Tilt one of them.');
+    if (s1 * s2 < 0)
+        return need('Impossible: the refracted ray has to stay on the same side of the normal as the incident ray. '
+                  + 'Check the angles, or add 180° to one of them.');
     const sOut = mode === 'n2' ? s2 : s1;
-    if (Math.abs(sOut) < 1e-9) {
-        r.err = `Impossible: that would take an infinitely large ${mode === 'n2' ? 'n₂' : 'n₁'}. `
-              + 'Only a ray already on the normal stays on the normal.';
-        return r;
-    }
-    const value = mode === 'n2' ? givenN * s1 / s2 : givenN * s2 / s1;
-    r[mode] = value;
-    r.answer = value;
+    if (Math.abs(sOut) < 1e-9)
+        return need(`Impossible: that would take an infinitely large ${mode === 'n2' ? 'n₂' : 'n₁'}. `
+                  + 'Only a ray already on the normal stays on the normal.');
+
+    r.answer = mode === 'n2' ? given * s1 / s2 : given * s2 / s1;
+    r[mode] = r.answer;
     r.ok = true;
-    if (value < 1) r.note = 'That is less than 1, which is below the index of a vacuum — worth double-checking the angles.';
+    if (r.answer < 1) r.note = 'That is below the index of a vacuum — worth re-checking the angles.';
     return r;
 }
 
 /* ---------------------------------------------------------------- display */
 
-let lastAnswer = null;
-
-function fmt(v, d) { return (Math.abs(v) < 5e-9 ? 0 : v).toFixed(d); }
+const fmt = (v, d) => (Math.abs(v) < 5e-9 ? 0 : v).toFixed(d);
+const trim = v => fmt(v, 4).replace(/0+$/, '').replace(/\.$/, '');
 
 function render() {
     const r = compute();
     const isAngle = mode === 'T' || mode === 'I';
 
-    // Keep every field but the unknown one editable, and show the answer in place.
     for (const k in FIELD) {
-        $(FIELD[k]).classList.toggle('solved', k === mode);
-        $(FIELD[k]).readOnly = (k === mode);
+        const el = $(FIELD[k]), solved = k === mode;
+        el.readOnly = solved;
+        document.querySelector(`.r[data-row="${k}"]`).classList.toggle('ans', solved);
+        if (solved) el.value = r.ok ? (isAngle ? fmt(r.answer, 2) : trim(r.answer)) : '';
     }
-    document.querySelectorAll('.chips').forEach(box =>
-        box.querySelectorAll('button').forEach(b => b.disabled = mode === box.dataset.target));
+    lastAnswer = r.ok ? $(FIELD[mode]).value : null;
+
+    // Sliders follow whatever the boxes now say, including the computed one.
+    for (const id in SLIDER) {
+        const v = num(id);
+        if (isFinite(v)) $(SLIDER[id]).value = v;
+    }
+
+    document.querySelectorAll('.c3').forEach(box => {
+        if (!box.dataset.target) return;
+        box.querySelectorAll('button').forEach(b => b.disabled = mode === box.dataset.target);
+    });
     $('swap').disabled = (mode === 'n1' || mode === 'n2');
-    if (r.ok) {
-        $(FIELD[mode]).value = isAngle ? fmt(r.answer, 2) : fmt(r.answer, 4).replace(/0+$/, '').replace(/\.$/, '');
-    } else if (document.activeElement !== $(FIELD[mode])) {
-        $(FIELD[mode]).value = '';
-    }
-
-    $('ansLab').textContent = TITLE[mode];
-    const big = $('ansBig'), alt = $('ansAlt');
-
-    if (r.ok) {
-        lastAnswer = isAngle ? fmt(r.answer, 2) : $(FIELD[mode]).value;
-        big.className = 'big';
-        big.textContent = lastAnswer + (isAngle ? '°' : '');
-        alt.textContent = isAngle
-            ? `The same line: ${fmt(norm180(r.answer + 180), 2)}° (rotates the arrow the other way)`
-            : (r.note || '');
-    } else {
-        lastAnswer = null;
-        big.className = 'big err';
-        big.textContent = r.err;
-        alt.textContent = '';
-    }
-    $('copy').disabled = !lastAnswer;
     $('next').disabled = !(r.ok && mode === 'T');
+    $('cp').disabled = !lastAnswer;
 
-    facts(r);
+    status(r);
     drawPreview(r);
 }
 
-function facts(r) {
+function status(r) {
+    const el = $('status');
+    if (!r.ok) {
+        el.className = 'bad';
+        el.innerHTML = r.err;
+        return;
+    }
+    el.className = '';
     const L = [];
-    if (isFinite(r.theta1) && isFinite(r.theta2)) {
-        L.push(`Angle of incidence <b>${fmt(Math.abs(r.theta1), 2)}°</b> from the normal &nbsp;→&nbsp; `
-             + `angle of refraction <b>${fmt(Math.abs(r.theta2), 2)}°</b>`);
-        if (isFinite(r.n1) && isFinite(r.n2)) {
-            L.push(`Snell's law: ${fmt(r.n1, 3)} × sin ${fmt(Math.abs(r.theta1), 2)}° = `
-                 + `${fmt(r.n2, 3)} × sin ${fmt(Math.abs(r.theta2), 2)}° = `
-                 + `<b>${fmt(Math.abs(r.n1 * Math.sin(r.theta1 * D2R)), 4)}</b>`);
-        }
-    } else if (isFinite(r.theta1)) {
-        L.push(`Angle of incidence <b>${fmt(Math.abs(r.theta1), 2)}°</b> from the normal`);
-    }
-    if (isFinite(r.n1) && isFinite(r.n2) && r.n1 > r.n2) {
-        L.push(`Critical angle for ${fmt(r.n1, 3)} → ${fmt(r.n2, 3)}: <b>${fmt(Math.asin(r.n2 / r.n1) * R2D, 2)}°</b>`
-             + ` &mdash; past that the light is trapped and reflects.`);
-    }
-    if (isFinite(r.I) && isFinite(r.R)) {
-        L.push(`Reflected ray rotation: <b>${fmt(norm180(2 * r.R - r.I), 2)}°</b>`
-             + (r.reflOnly ? ' <span class="warn">(this is the only ray that leaves)</span>' : ' (the partial reflection)'));
-    }
-    $('facts').innerHTML = L.length ? L.join('<br>') : 'Fill in the boxes to see the angles.';
+    L.push(`Angle of incidence <b>${fmt(Math.abs(r.theta1), 2)}°</b> from the normal &nbsp;→&nbsp; `
+         + `angle of refraction <b>${fmt(Math.abs(r.theta2), 2)}°</b> &nbsp;·&nbsp; `
+         + `${fmt(r.n1, 3)} × sin ${fmt(Math.abs(r.theta1), 2)}° = ${fmt(r.n2, 3)} × sin `
+         + `${fmt(Math.abs(r.theta2), 2)}° = <b>${fmt(Math.abs(r.n1 * Math.sin(r.theta1 * D2R)), 4)}</b>`);
+    const bits = [`Reflected ray rotation <b>${fmt(norm180(2 * r.R - r.I), 2)}°</b>`];
+    if (r.n1 > r.n2) bits.push(`critical angle <b>${fmt(Math.asin(r.n2 / r.n1) * R2D, 2)}°</b>`);
+    if (mode === 'T' || mode === 'I')
+        bits.push(`same line as the answer: <b>${fmt(norm180(r.answer + 180), 2)}°</b>`);
+    if (r.note) bits.push(r.note);
+    L.push(bits.join(' &nbsp;·&nbsp; '));
+    el.innerHTML = L.join('<br>');
 }
 
 /* --------------------------------------------------------------- preview */
 
 const cv = $('preview'), cx = cv.getContext('2d');
-const PW = 820, PH = 620, PC = { x: PW / 2, y: PH / 2 };
+const PW = 560, PH = 430, PC = { x: PW / 2, y: PH / 2 };
 
-// Rotation angles are counterclockwise-positive on screen, and canvas y grows
-// downward, so the y component is negated.
-function vec(a) { return { x: Math.cos(a * D2R), y: -Math.sin(a * D2R) }; }
+// Rotations are counterclockwise-positive on screen; canvas y grows downward.
+const vec = a => ({ x: Math.cos(a * D2R), y: -Math.sin(a * D2R) });
 
 function edgeLen(d) {
     let t = Infinity;
@@ -420,10 +338,10 @@ function pline(a, b, color, w, dash) {
     cx.beginPath(); cx.moveTo(a.x, a.y); cx.lineTo(b.x, b.y); cx.stroke(); cx.setLineDash([]);
 }
 
-function ptext(t, x, y, color, size, align) {
+function ptext(t, x, y, color, size) {
     cx.font = `600 ${size}px Arial, Helvetica, sans-serif`;
-    cx.textAlign = align || 'center'; cx.textBaseline = 'middle';
-    cx.lineJoin = 'round'; cx.lineWidth = 4; cx.strokeStyle = 'rgba(255,255,255,0.92)';
+    cx.textAlign = 'center'; cx.textBaseline = 'middle';
+    cx.lineJoin = 'round'; cx.lineWidth = 3.5; cx.strokeStyle = 'rgba(255,255,255,0.92)';
     cx.strokeText(t, x, y); cx.fillStyle = color; cx.fillText(t, x, y);
 }
 
@@ -441,11 +359,11 @@ function parc(dA, dB, rad, color, text) {
     let da = a1 - a0;
     while (da >  Math.PI) da -= 2 * Math.PI;
     while (da < -Math.PI) da += 2 * Math.PI;
-    if (Math.abs(da) < 0.04) return;
-    cx.strokeStyle = color; cx.lineWidth = 2;
+    if (Math.abs(da) < 0.045) return;
+    cx.strokeStyle = color; cx.lineWidth = 1.6;
     cx.beginPath(); cx.arc(PC.x, PC.y, rad, a0, a0 + da, da < 0); cx.stroke();
     const am = a0 + da / 2;
-    ptext(text, PC.x + Math.cos(am) * (rad + 22), PC.y + Math.sin(am) * (rad + 22), color, 19);
+    ptext(text, PC.x + Math.cos(am) * (rad + 17), PC.y + Math.sin(am) * (rad + 17), color, 14);
 }
 
 function drawPreview(r) {
@@ -453,11 +371,10 @@ function drawPreview(r) {
     cx.fillStyle = '#fff'; cx.fillRect(0, 0, PW, PH);
     if (!isFinite(r.R)) return;
 
-    const t = vec(r.R);                                   // along the surface
-    const nOut = r.N !== undefined ? vec(r.N) : vec(r.R - 90);  // into medium 2
+    const t = vec(r.R);
+    const nOut = r.N !== undefined ? vec(r.N) : vec(r.R - 90);
+    const L = 1600;
 
-    // Medium 2 fills the far side of the surface.
-    const L = 2000;
     cx.beginPath();
     cx.moveTo(PC.x - t.x * L, PC.y - t.y * L);
     cx.lineTo(PC.x + t.x * L, PC.y + t.y * L);
@@ -466,114 +383,113 @@ function drawPreview(r) {
     cx.closePath();
     cx.fillStyle = '#D6E6F4'; cx.fill();
 
-    // Horizontal reference: rotation angles are all measured from this.
-    pline({ x: 0, y: PC.y }, { x: PW, y: PC.y }, '#C9D3DD', 2, [6, 7]);
-    ptext('0° reference', 74, PC.y - 15, '#A6B2BE', 15);
+    pline({ x: 0, y: PC.y }, { x: PW, y: PC.y }, '#C9D3DD', 1.5, [5, 6]);
+    ptext('0°', 16, PC.y - 11, '#A6B2BE', 12);
 
     pline({ x: PC.x - t.x * edgeLen({ x: -t.x, y: -t.y }), y: PC.y - t.y * edgeLen({ x: -t.x, y: -t.y }) },
-          { x: PC.x + t.x * edgeLen(t), y: PC.y + t.y * edgeLen(t) }, '#1F3864', 4);
+          { x: PC.x + t.x * edgeLen(t), y: PC.y + t.y * edgeLen(t) }, '#1F3864', 3);
 
     const nIn = { x: -nOut.x, y: -nOut.y };
     pline({ x: PC.x + nIn.x * edgeLen(nIn), y: PC.y + nIn.y * edgeLen(nIn) },
-          { x: PC.x + nOut.x * edgeLen(nOut), y: PC.y + nOut.y * edgeLen(nOut) }, '#7d8894', 2, [8, 7]);
-    ptext('normal', PC.x + nIn.x * (edgeLen(nIn) - 34), PC.y + nIn.y * (edgeLen(nIn) - 34), '#7d8894', 15);
+          { x: PC.x + nOut.x * edgeLen(nOut), y: PC.y + nOut.y * edgeLen(nOut) }, '#7d8894', 1.5, [6, 6]);
+    ptext('normal', PC.x + nIn.x * (edgeLen(nIn) - 26), PC.y + nIn.y * (edgeLen(nIn) - 26), '#7d8894', 12);
 
-    // Rotation of the surface, the one angle that is easiest to get backwards.
-    parc({ x: 1, y: 0 }, t, 128, '#1F3864', `glass ${fmt(norm180(r.R), 1)}°`);
+    parc({ x: 1, y: 0 }, t, 92, '#1F3864', `glass ${fmt(norm180(r.R), 1)}°`);
 
     const RAY = '#E8820E', REFL = '#C62828';
     if (isFinite(r.I)) {
         const d = vec(r.I), back = { x: -d.x, y: -d.y }, Lin = edgeLen(back);
-        pline({ x: PC.x + back.x * Lin, y: PC.y + back.y * Lin }, PC, RAY, 4);
-        parrow({ x: PC.x + back.x * Lin * 0.45, y: PC.y + back.y * Lin * 0.45 }, d, 13, RAY);
-        ptext('incident', PC.x + back.x * Lin * 0.75 - back.y * 20,
-                          PC.y + back.y * Lin * 0.75 + back.x * 20, RAY, 17);
-        if (isFinite(r.theta1)) parc({ x: -nOut.x, y: -nOut.y }, back, 66, '#1F3864', `${fmt(Math.abs(r.theta1), 1)}°`);
+        pline({ x: PC.x + back.x * Lin, y: PC.y + back.y * Lin }, PC, RAY, 3);
+        parrow({ x: PC.x + back.x * Lin * 0.45, y: PC.y + back.y * Lin * 0.45 }, d, 10, RAY);
+        ptext('incident', PC.x + back.x * Lin * 0.74 - back.y * 15,
+                          PC.y + back.y * Lin * 0.74 + back.x * 15, RAY, 13);
+        if (isFinite(r.theta1)) parc(nIn, back, 48, '#1F3864', `${fmt(Math.abs(r.theta1), 1)}°`);
 
         if (r.reflOnly || r.ok) {
             const rf = vec(norm180(2 * r.R - r.I)), Lr = edgeLen(rf);
-            pline(PC, { x: PC.x + rf.x * Lr, y: PC.y + rf.y * Lr }, REFL, r.reflOnly ? 4 : 2, r.reflOnly ? [] : [10, 7]);
-            parrow({ x: PC.x + rf.x * Lr * 0.45, y: PC.y + rf.y * Lr * 0.45 }, rf, r.reflOnly ? 13 : 10, REFL);
-            ptext('reflected', PC.x + rf.x * Lr * 0.72 - rf.y * 20,
-                               PC.y + rf.y * Lr * 0.72 + rf.x * 20, REFL, 17);
+            pline(PC, { x: PC.x + rf.x * Lr, y: PC.y + rf.y * Lr }, REFL, r.reflOnly ? 3 : 1.6, r.reflOnly ? [] : [8, 6]);
+            parrow({ x: PC.x + rf.x * Lr * 0.45, y: PC.y + rf.y * Lr * 0.45 }, rf, r.reflOnly ? 10 : 8, REFL);
+            ptext('reflected', PC.x + rf.x * Lr * 0.72 - rf.y * 15,
+                               PC.y + rf.y * Lr * 0.72 + rf.x * 15, REFL, 13);
         }
     }
-
     if (isFinite(r.T) && !r.reflOnly) {
         const f = vec(r.T), Lf = edgeLen(f);
-        pline(PC, { x: PC.x + f.x * Lf, y: PC.y + f.y * Lf }, RAY, 4);
-        parrow({ x: PC.x + f.x * Lf * 0.45, y: PC.y + f.y * Lf * 0.45 }, f, 13, RAY);
-        ptext('refracted', PC.x + f.x * Lf * 0.75 - f.y * 20,
-                           PC.y + f.y * Lf * 0.75 + f.x * 20, RAY, 17);
-        if (isFinite(r.theta2)) parc(nOut, f, 66, '#1F3864', `${fmt(Math.abs(r.theta2), 1)}°`);
+        pline(PC, { x: PC.x + f.x * Lf, y: PC.y + f.y * Lf }, RAY, 3);
+        parrow({ x: PC.x + f.x * Lf * 0.45, y: PC.y + f.y * Lf * 0.45 }, f, 10, RAY);
+        ptext('refracted', PC.x + f.x * Lf * 0.74 - f.y * 15,
+                           PC.y + f.y * Lf * 0.74 + f.x * 15, RAY, 13);
+        if (isFinite(r.theta2)) parc(nOut, f, 48, '#1F3864', `${fmt(Math.abs(r.theta2), 1)}°`);
     }
 
-    if (isFinite(r.n1)) ptext(`n₁ = ${fmt(r.n1, 3)}`, PC.x + nIn.x * 178 + t.x * 210,
-                                                      PC.y + nIn.y * 178 + t.y * 210, '#1F3864', 18);
-    if (isFinite(r.n2)) ptext(`n₂ = ${fmt(r.n2, 3)}`, PC.x + nOut.x * 178 + t.x * 210,
-                                                      PC.y + nOut.y * 178 + t.y * 210, '#1F3864', 18);
-    cx.beginPath(); cx.arc(PC.x, PC.y, 5, 0, Math.PI * 2); cx.fillStyle = '#1F3864'; cx.fill();
+    if (isFinite(r.n1)) ptext(`n₁ ${fmt(r.n1, 2)}`, PC.x + nIn.x * 126 + t.x * 152,
+                                                    PC.y + nIn.y * 126 + t.y * 152, '#1F3864', 14);
+    if (isFinite(r.n2)) ptext(`n₂ ${fmt(r.n2, 2)}`, PC.x + nOut.x * 126 + t.x * 152,
+                                                    PC.y + nOut.y * 126 + t.y * 152, '#1F3864', 14);
+    cx.beginPath(); cx.arc(PC.x, PC.y, 4, 0, Math.PI * 2); cx.fillStyle = '#1F3864'; cx.fill();
 }
 
-/* ----------------------------------------------------------- wiring */
+/* ------------------------------------------------------------------ wiring */
 
-document.querySelectorAll('.chips').forEach(box => {
-    const target = box.dataset.target;
-    PRESETS.forEach(p => {
-        const b = document.createElement('button');
-        b.innerHTML = `${p.name} <b>${p.n.toFixed(2)}</b>`;
-        b.addEventListener('click', () => {
-            if (mode === target) return;              // that box is the answer right now
-            $(target).value = p.n.toFixed(2);
-            render();
-        });
-        box.appendChild(b);
-    });
-});
+// A copy button, parked in the value cell of whichever row is the answer.
+const cp = document.createElement('button');
+cp.id = 'cp'; cp.className = 'cp'; cp.title = 'Copy the answer'; cp.textContent = 'Copy';
 
-document.querySelectorAll('.solvebar button').forEach(b => {
-    b.addEventListener('click', () => {
-        mode = b.dataset.solve;
-        document.querySelectorAll('.solvebar button').forEach(o => o.classList.toggle('on', o === b));
-        render();
-    });
-});
-
-['n1', 'n2', 'gRot', 'iRot', 'tRot'].forEach(id =>
-    $(id).addEventListener('input', () => { if (id !== FIELD[mode]) render(); }));
-
-$('swap').addEventListener('click', () => {
-    if (mode === 'n1' || mode === 'n2') return;
-    const a = $('n1').value; $('n1').value = $('n2').value; $('n2').value = a;
-    render();
-});
+function placeCopy() {
+    document.querySelector(`.r[data-row="${mode}"] .c2`).appendChild(cp);
+}
 
 function copyAnswer() {
     if (!lastAnswer) return;
     navigator.clipboard.writeText(lastAnswer).then(() => {
-        const b = $('copy'), old = b.textContent;
-        b.textContent = 'Copied!';
-        setTimeout(() => { b.textContent = old; }, 1100);
+        cp.textContent = '✓';
+        setTimeout(() => { cp.textContent = 'Copy'; }, 1000);
     });
 }
-$('copy').addEventListener('click', copyAnswer);
-$('ansBig').addEventListener('click', copyAnswer);
+cp.addEventListener('click', copyAnswer);
 document.addEventListener('keydown', e => {
     if (e.key === 'Enter') { e.preventDefault(); copyAnswer(); }
 });
 
-// Send the refracted ray on to the next surface: it becomes the incident ray,
-// and the light is now heading the other way through the pair of media.
-$('next').addEventListener('click', () => {
-    const t = $('tRot').value;
-    if (!t) return;
-    $('iRot').value = t;
+document.querySelectorAll('.c3[data-target]').forEach(box => {
+    PRESETS.forEach(p => {
+        const b = document.createElement('button');
+        b.innerHTML = `${p.name} <b>${p.n.toFixed(2)}</b>`;
+        b.addEventListener('click', () => { $(box.dataset.target).value = p.n.toFixed(2); render(); });
+        box.appendChild(b);
+    });
+});
+
+// Slider and box are two views of the same number, in both directions.
+for (const id in SLIDER) {
+    $(id).addEventListener('input', () => { if (id !== FIELD[mode]) render(); });
+    $(SLIDER[id]).addEventListener('input', e => {
+        if (id === FIELD[mode]) { $(SLIDER[id]).value = num(id) || 0; return; }
+        $(id).value = e.target.value;
+        render();
+    });
+}
+
+document.querySelectorAll('.solvebar button[data-solve]').forEach(b => {
+    b.addEventListener('click', () => {
+        mode = b.dataset.solve;
+        document.querySelectorAll('.solvebar button[data-solve]').forEach(o => o.classList.toggle('on', o === b));
+        placeCopy();
+        render();
+    });
+});
+
+$('swap').addEventListener('click', () => {
     const a = $('n1').value; $('n1').value = $('n2').value; $('n2').value = a;
-    mode = 'T';
-    document.querySelectorAll('.solvebar button').forEach(o => o.classList.toggle('on', o.dataset.solve === 'T'));
     render();
-    $('gRot').focus();
-    $('gRot').select();
+});
+
+$('next').addEventListener('click', () => {
+    if (!$('tRot').value) return;
+    $('iRot').value = $('tRot').value;
+    const a = $('n1').value; $('n1').value = $('n2').value; $('n2').value = a;
+    render();
+    $('gRot').focus(); $('gRot').select();
 });
 
 function fitCanvas() {
@@ -586,6 +502,7 @@ function fitCanvas() {
     cx.setTransform(cv.width / PW, 0, 0, cv.height / PH, 0, 0);
     render();
 }
+placeCopy();
 new ResizeObserver(fitCanvas).observe(cv);
 fitCanvas();
 </script>

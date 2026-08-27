@@ -123,7 +123,7 @@ const ctx = canvas.getContext('2d');
 const W = 960, H = 600;              // logical design grid (matches stage aspect 8/5)
 const AY = 300;                      // the optical axis
 const LX = 380;                      // where the lens sits along the axis
-const MIN_T = 10;                    // thinnest the lens is allowed to get, in either place
+const MIN_T = 1;                     // only a floor against a fully degenerate shape
 const N_AIR = 1.0;
 const $ = id => document.getElementById(id);
 
@@ -167,10 +167,11 @@ function sag(c, a) {
     return R - Math.sign(R) * Math.sqrt(Math.max(0, R * R - a * a));
 }
 
-// Centre thickness. The base value leaves whichever part of the lens is
-// thinnest -- the middle of a diverging lens, the rim of a converging one --
-// at MIN_T; extraT then slides the two caps apart, which keeps the height and
-// both curvatures fixed and simply grows the flat rim at top and bottom.
+// Centre thickness. At extraT = 0 the two caps meet, so a converging lens comes
+// to a knife edge with no flat rim at all; MIN_T only stops a diverging lens
+// from collapsing to nothing in the middle. Raising extraT slides the caps
+// apart, which leaves the height and both curvatures alone and grows a flat rim
+// at the top and bottom.
 function thickness() {
     const a = aperture();
     return Math.max(MIN_T, MIN_T + sag(c1, a) - sag(c2, a)) + extraT;
