@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="eigennode-aspect" content="12/11">
+<title>Snell's Law Ray Tracer</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+        background: #f4f7fa;
+        font-family: Arial, Helvetica, sans-serif;
+        user-select: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px;
+    }
+    #hint {
+        flex: 0 0 auto;
+        font-size: 13px;
+        color: #55606b;
+        text-align: center;
+        line-height: 1.35;
+    }
+    #cwrap {
+        flex: 1 1 auto;
+        min-height: 0;
+        width: 100%;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    /* The canvas is absolutely positioned inside #stage so that the DPR-scaled
+       backing store never feeds back into layout. #stage carries the aspect
+       ratio; the min() clamps it by width once the window gets narrow. */
+    #stage {
+        position: relative;
+        aspect-ratio: 4 / 3;
+        height: min(100%, 72vw);
+        width: auto;
+    }
+    canvas {
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        display: block;
+        border-radius: 4px;
+        box-shadow: 0 0 0 1px #d5dee7;
+        touch-action: none;
+    }
+    #controls {
+        flex: 0 0 auto;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        gap: 5px;
+        font-size: 12.5px;
+        color: #33404d;
+        width: 100%;
+    }
+    .row {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        justify-content: center;
+        gap: 4px 13px;
+    }
+    #controls button {
+        font: inherit;
+        padding: 3px 9px;
+        border: 1px solid #b9c6d3;
+        border-radius: 5px;
+        background: #fff;
+        color: #33404d;
+        cursor: pointer;
+    }
+    #controls button:hover { background: #e8eff6; }
+    #controls button.on { background: #1F3864; border-color: #1F3864; color: #fff; }
+    #controls label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    input[type=range] { width: 92px; vertical-align: middle; cursor: pointer; }
+    .val { display: inline-block; font-variant-numeric: tabular-nums; color: #55606b; }
+    .w1 { min-width: 30px; }
+    .w2 { min-width: 92px; }
+    .sep { color: #c3cdd7; }
+    .note { color: #7d8894; }
+    #drop {
+        position: fixed; inset: 0; z-index: 500;
+        background: rgba(31,56,100,0.55);
+        color: #fff; font-size: 26px; font-weight: bold;
+        display: none; align-items: center; justify-content: center;
+        pointer-events: none;
+    }
+    #drop.show { display: flex; }
+</style>
+</head>
+<body>
+
+<p id="hint">Drag the <b>orange dot</b> to aim the incoming ray and the <b>dark dots</b> to tilt the interface.<br>
+Paste (Ctrl+V), drop, or load an image to trace over it &mdash; drag the background to move it, scroll to resize it. Press <b>space</b> to hide the diagram.</p>
+
+<div id="cwrap"><div id="stage"><canvas id="canvas"></canvas></div></div>
+
+<div id="controls">
+
+    <div class="row">
+        <label>n&#8321; <input type="range" id="n1" min="1" max="2.6" step="0.01" value="1.00"><span class="val w2" id="n1v"></span></label>
+        <label>n&#8322; <input type="range" id="n2" min="1" max="2.6" step="0.01" value="1.50"><span class="val w2" id="n2v"></span></label>
+        <button id="swap" title="Exchange the two indices">&#8646; Swap</button>
+        <span class="sep">|</span>
+        <span>Light starts in:</span>
+        <button id="side1" data-side="1">Medium 1</button>
+        <button id="side2" data-side="-1">Medium 2</button>
+    </div>
+
+    <div class="row">
+        <label>Interface tilt <input type="range" id="tilt" min="-90" max="90" step="1" value="0"><span class="val w1" id="tiltv"></span></label>
+        <label>Angle of incidence <input type="range" id="ang" min="-88" max="88" step="0.5" value="40"><span class="val w1" id="angv"></span></label>
+        <label>Diagram opacity <input type="range" id="dop" min="10" max="100" step="1" value="100"><span class="val w1" id="dopv"></span></label>
+        <button id="reset">Reset</button>
+    </div>
+
+    <div class="row">
+        <label><input type="checkbox" id="cNormal" checked> Normal</label>
+        <label><input type="checkbox" id="cAngles" checked> Angles</label>
+        <label><input type="checkbox" id="cRefl" checked> Reflected ray</label>
+        <label><input type="checkbox" id="cCrit" checked> Critical angle</label>
+        <label><input type="checkbox" id="cShade" checked> Shade media</label>
+        <label><input type="checkbox" id="cLabels" checked> Labels</label>
+    </div>
+
+    <div class="row">
+        <span>Background:</span>
+        <button id="load">&#128247; Load image</button>
+        <button id="fit">Fit</button>
+        <button id="clear">Clear</button>
+        <label>opacity <input type="range" id="iop" min="0" max="100" step="1" value="100"><span class="val w1" id="iopv"></span></label>
+        <label>size <input type="range" id="isc" min="10" max="400" step="1" value="100"><span class="val w1" id="iscv"></span></label>
+        <span class="note">arrow keys nudge 1&nbsp;px</span>
+    </div>
+
+</div>
+
+<input type="file" id="file" accept="image/*" style="display:none">
+<div id="drop">Drop the image here</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 800, H = 600;                 // logical design grid (matches stage aspect 4/3)
+const C = { x: W / 2, y: H / 2 };       // the point every ray strikes
+const D2R = Math.PI / 180, R2D = 180 / Math.PI;
+
+const R_RAY   = 215;                    // radius of the incoming-ray drag handle
+const R_FACE  = 250;                    // radius of the two interface drag handles
+const MAX_T   = 88 * D2R;               // grazing incidence is clamped short of 90 deg
+const HIT     = 17;
+
+const RAY   = '#F0A11E';                // incident + refracted: it is one beam of light
+const REFL  = '#C62828';
+const NORM  = '#5B6B7C';
+const INK   = '#1F3864';
+const CRIT  = '#2E7D32';
+
+const NAMED = [[1.00, 'air'], [1.33, 'water'], [1.46, 'quartz'], [1.50, 'glass'], [1.60, 'flint glass'], [2.42, 'diamond']];
+
+/* ------------------------------------------------------------------ state */
+/* The interface is the line through C tilted by `phi`. Its unit normal points
+   into medium 1, so medium 1 is always the "upper" region. The incoming ray is
+   stored relative to the interface as (sigma, theta) but is treated as fixed in
+   space whenever the interface itself moves, so tilting the surface changes the
+   angle of incidence the way it would in a real drawing. */
+let phi   = 0;                          // interface tilt, radians
+let sigma = 1;                          // +1: light starts in medium 1, -1: medium 2
+let theta = 40 * D2R;                   // signed angle from the normal, (-90, 90)
+let n1 = 1.00, n2 = 1.50;
+
+let showDiagram = true;
+let img = null, imgX = 0, imgY = 0, imgScale = 1, imgFit = 1;
+
+let drag = null;                        // 'ray' | 'face' | 'img' | null
+let dragOff = { x: 0, y: 0 };
+
+/* -------------------------------------------------------------- geometry */
+
+function normal()  { return { x: -Math.sin(phi), y: -Math.cos(phi) }; }
+function tangent() { return { x:  Math.cos(phi), y: -Math.sin(phi) }; }
+
+// N points from the incident medium into the interface; T is tangential, and
+// (N, T) is the frame in which the signed angle `theta` is measured.
+function basis() {
+    const n = normal();
+    const N = { x: -sigma * n.x, y: -sigma * n.y };
+    return { N, T: { x: -N.y, y: N.x } };
+}
+
+function dirFrom(t) {
+    const { N, T } = basis(), c = Math.cos(t), s = Math.sin(t);
+    return { x: c * N.x + s * T.x, y: c * N.y + s * T.y };
+}
+
+function incidentDir() { return dirFrom(theta); }
+
+// Re-derive (sigma, theta) from a propagation direction, for when the ray must
+// hold still in space while the interface rotates underneath it.
+function setFromDir(d) {
+    const n = normal();
+    sigma = (d.x * n.x + d.y * n.y) < 0 ? 1 : -1;
+    const { N, T } = basis();
+    theta = clamp(Math.atan2(d.x * T.x + d.y * T.y, d.x * N.x + d.y * N.y), -MAX_T, MAX_T);
+}
+
+function setPhi(p) { const d = incidentDir(); phi = p; setFromDir(d); }
+
+function clamp(v, lo, hi) { return v < lo ? lo : v > hi ? hi : v; }
+
+function nIn()  { return sigma > 0 ? n1 : n2; }
+function nOut() { return sigma > 0 ? n2 : n1; }
+
+// Snell's law plus the law of reflection, in the (N, T) frame.
+function solve() {
+    const { N, T } = basis();
+    const cI = Math.cos(theta), sI = Math.sin(theta);
+    const sT = nIn() / nOut() * sI;
+    const tir = Math.abs(sT) > 1;
+    const cT = tir ? 0 : Math.sqrt(1 - sT * sT);
+    return {
+        N, T,
+        incident:  { x:  cI * N.x + sI * T.x, y:  cI * N.y + sI * T.y },
+        reflected: { x: -cI * N.x + sI * T.x, y: -cI * N.y + sI * T.y },
+        refracted: tir ? null : { x: cT * N.x + sT * T.x, y: cT * N.y + sT * T.y },
+        theta2: tir ? null : Math.asin(sT),
+        tir,
+        // Beyond the critical angle no refracted ray exists; it is only defined
+        // when the light is heading into the less dense medium.
+        crit: nIn() > nOut() ? Math.asin(nOut() / nIn()) : null
+    };
+}
+
+// Distance from `o` along `d` to the edge of the drawing area.
+function exitLen(o, d) {
+    let t = Infinity;
+    if (d.x >  1e-9) t = Math.min(t, (W - o.x) / d.x);
+    if (d.x < -1e-9) t = Math.min(t, -o.x / d.x);
+    if (d.y >  1e-9) t = Math.min(t, (H - o.y) / d.y);
+    if (d.y < -1e-9) t = Math.min(t, -o.y / d.y);
+    return t === Infinity ? 0 : t;
+}
+
+/* --------------------------------------------------------------- drawing */
+
+function mediumColor(n) {
+    const t = clamp((n - 1) / 1.6, 0, 1);
+    const c = (a, b) => Math.round(a + (b - a) * t);
+    return `rgb(${c(238, 86)},${c(246, 146)},${c(252, 194)})`;
+}
+
+function mediumName(n) {
+    for (const [v, name] of NAMED) if (Math.abs(n - v) < 0.005) return name;
+    return null;
+}
+
+function nLabel(n) {
+    const name = mediumName(n);
+    return `n = ${n.toFixed(2)}${name ? ' (' + name + ')' : ''}`;
+}
+
+function fillSide(sign, color) {
+    const n = normal(), t = tangent(), L = 3000;
+    ctx.beginPath();
+    ctx.moveTo(C.x - t.x * L, C.y - t.y * L);
+    ctx.lineTo(C.x + t.x * L, C.y + t.y * L);
+    ctx.lineTo(C.x + t.x * L + sign * n.x * L, C.y + t.y * L + sign * n.y * L);
+    ctx.lineTo(C.x - t.x * L + sign * n.x * L, C.y - t.y * L + sign * n.y * L);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+}
+
+// Every piece of text gets a white halo so it stays legible over a screenshot.
+function label(text, x, y, color, size, align, weight) {
+    ctx.font = `${weight || 600} ${size}px Arial, Helvetica, sans-serif`;
+    ctx.textAlign = align || 'left';
+    ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+    ctx.strokeText(text, x, y);
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y);
+}
+
+function line(a, b, color, width, dash) {
+    ctx.setLineDash(dash || []);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.setLineDash([]);
+}
+
+function arrowHead(p, d, size, color) {
+    const px = -d.y, py = d.x;
+    ctx.beginPath();
+    ctx.moveTo(p.x + d.x * size, p.y + d.y * size);
+    ctx.lineTo(p.x - d.x * size * 0.5 + px * size * 0.62, p.y - d.y * size * 0.5 + py * size * 0.62);
+    ctx.lineTo(p.x - d.x * size * 0.5 - px * size * 0.62, p.y - d.y * size * 0.5 - py * size * 0.62);
+    ctx.closePath();
+    ctx.fillStyle = color;
+    ctx.fill();
+}
+
+// Arc from direction a to direction b about C, sweeping the short way.
+function angleArc(a, b, r, color, text) {
+    const a0 = Math.atan2(a.y, a.x), a1 = Math.atan2(b.y, b.x);
+    let da = a1 - a0;
+    while (da >  Math.PI) da -= 2 * Math.PI;
+    while (da < -Math.PI) da += 2 * Math.PI;
+    if (Math.abs(da) < 0.035) return;              // too thin to read
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(C.x, C.y, r, a0, a0 + da, da < 0);
+    ctx.stroke();
+    const am = a0 + da / 2;
+    label(text, C.x + Math.cos(am) * (r + 20), C.y + Math.sin(am) * (r + 20), color, 15, 'center');
+}
+
+function dot(p, fill, ring) {
+    ctx.beginPath();
+    ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+    ctx.fillStyle = fill;
+    ctx.fill();
+    ctx.lineWidth = 2.5;
+    ctx.strokeStyle = ring;
+    ctx.stroke();
+}
+
+// Park the readout in whichever corner sits furthest from every ray, so it
+// never lands on the part of the drawing you are trying to compare.
+function pickCorner(w, h, s) {
+    const pad = 12;
+    const cands = [
+        { x: pad, y: H - h - pad }, { x: W - w - pad, y: H - h - pad },
+        { x: pad, y: pad },         { x: W - w - pad, y: pad }
+    ];
+    const dirs = [s.incident, s.reflected, s.refracted, tangent()].filter(Boolean);
+    let best = cands[0], bestScore = -1;
+    for (const c of cands) {
+        const mx = c.x + w / 2 - C.x, my = c.y + h / 2 - C.y;
+        let score = Infinity;
+        for (const d of dirs) score = Math.min(score, Math.abs(mx * d.y - my * d.x));
+        if (score > bestScore) { bestScore = score; best = c; }
+    }
+    return best;
+}
+
+function infoBox(s) {
+    const lines = [
+        `Light goes from ${nLabel(nIn())} into ${nLabel(nOut())}`,
+        s.tir
+            ? `θ₁ = ${(Math.abs(theta) * R2D).toFixed(1)}°  >  θc = ${(s.crit * R2D).toFixed(1)}°  →  total internal reflection`
+            : `θ₁ = ${(Math.abs(theta) * R2D).toFixed(1)}°   →   θ₂ = ${(Math.abs(s.theta2) * R2D).toFixed(1)}°`,
+        s.tir
+            ? `${nIn().toFixed(2)} × sin ${(Math.abs(theta) * R2D).toFixed(1)}° = ${(nIn() * Math.abs(Math.sin(theta))).toFixed(3)} > ${nOut().toFixed(2)}, so sin θ₂ > 1 — impossible`
+            : `${nIn().toFixed(2)} × sin ${(Math.abs(theta) * R2D).toFixed(1)}° = ${nOut().toFixed(2)} × sin ${(Math.abs(s.theta2) * R2D).toFixed(1)}° = ${(nIn() * Math.abs(Math.sin(theta))).toFixed(3)}`
+    ];
+
+    ctx.font = '600 14px Arial, Helvetica, sans-serif';
+    const w = Math.max(...lines.map(t => ctx.measureText(t).width)) + 22;
+    const h = lines.length * 21 + 16;
+    const { x, y } = pickCorner(w, h, s);
+
+    ctx.fillStyle = 'rgba(255,255,255,0.86)';
+    ctx.strokeStyle = 'rgba(31,56,100,0.35)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.roundRect(x, y, w, h, 7);
+    ctx.fill();
+    ctx.stroke();
+
+    lines.forEach((t, i) =>
+        label(t, x + 11, y + 18 + i * 21, i === 1 && s.tir ? REFL : INK, 14, 'left'));
+}
+
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, W, H);
+
+    if (img) {
+        ctx.save();
+        ctx.globalAlpha = +document.getElementById('iop').value / 100;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, imgX, imgY, img.naturalWidth * imgScale, img.naturalHeight * imgScale);
+        ctx.restore();
+    }
+
+    if (!showDiagram) return;
+
+    ctx.save();
+    ctx.globalAlpha = +document.getElementById('dop').value / 100;
+
+    const s = solve();
+    const n = normal(), t = tangent();
+
+    if (document.getElementById('cShade').checked) {
+        fillSide( 1, mediumColor(n1));
+        fillSide(-1, mediumColor(n2));
+    }
+
+    // The interface, drawn edge to edge.
+    const eA = { x: C.x - t.x * exitLen(C, { x: -t.x, y: -t.y }), y: C.y - t.y * exitLen(C, { x: -t.x, y: -t.y }) };
+    const eB = { x: C.x + t.x * exitLen(C, t), y: C.y + t.y * exitLen(C, t) };
+    line(eA, eB, INK, 3);
+
+    // Region labels, pinned near whichever end of the interface is up/left and
+    // pushed in far enough that the longer of the two never runs off the edge.
+    const showText = $('cLabels').checked;
+    if (showText) {
+        const l1 = `n₁ = ${n1.toFixed(2)}${mediumName(n1) ? ' (' + mediumName(n1) + ')' : ''}`;
+        const l2 = `n₂ = ${n2.toFixed(2)}${mediumName(n2) ? ' (' + mediumName(n2) + ')' : ''}`;
+        ctx.font = '600 13.5px Arial, Helvetica, sans-serif';
+        const inset = Math.max(ctx.measureText(l1).width, ctx.measureText(l2).width) / 2 + 16;
+        const end = (eA.x < eB.x - 1 || (Math.abs(eA.x - eB.x) < 1 && eA.y < eB.y)) ? eA : eB;
+        const iv = { x: C.x - end.x, y: C.y - end.y };
+        const iLen = Math.hypot(iv.x, iv.y) || 1;
+        ctx.save();
+        ctx.translate(end.x + iv.x / iLen * inset, end.y + iv.y / iLen * inset);
+        ctx.rotate(-phi);
+        // 24px clears the interface drag dots wherever they happen to sit on the line.
+        label(l1, 0, -24, INK, 13.5, 'center');
+        label(l2, 0,  24, INK, 13.5, 'center');
+        ctx.restore();
+    }
+
+    // The normal, both ways through the strike point.
+    if (document.getElementById('cNormal').checked) {
+        line({ x: C.x - n.x * exitLen(C, { x: -n.x, y: -n.y }), y: C.y - n.y * exitLen(C, { x: -n.x, y: -n.y }) },
+             { x: C.x + n.x * exitLen(C, n), y: C.y + n.y * exitLen(C, n) }, NORM, 1.5, [7, 6]);
+        const nl = exitLen(C, n);
+        label('normal', C.x + n.x * (nl - 26), C.y + n.y * (nl - 26), NORM, 12.5, 'center', 400);
+    }
+
+    // Critical-angle rays, drawn symmetrically about the normal on the incident side.
+    if (s.crit !== null && document.getElementById('cCrit').checked) {
+        for (const sgn of [1, -1]) {
+            const c = Math.cos(s.crit), sn = Math.sin(s.crit) * sgn;
+            const back = { x: -(c * s.N.x + sn * s.T.x), y: -(c * s.N.y + sn * s.T.y) };
+            const L = exitLen(C, back);
+            line(C, { x: C.x + back.x * L, y: C.y + back.y * L }, CRIT, 1.5, [4, 5]);
+        }
+        const c = Math.cos(s.crit), sn = Math.sin(s.crit) * Math.sign(theta || 1);
+        const back = { x: -(c * s.N.x + sn * s.T.x), y: -(c * s.N.y + sn * s.T.y) };
+        const L = Math.min(exitLen(C, back) - 14, 152);
+        label(`θc = ${(s.crit * R2D).toFixed(1)}°`,
+              C.x + back.x * L, C.y + back.y * L, CRIT, 13, 'center');
+    }
+
+    // Incident ray: it comes in from the edge of the frame and lands on C.
+    const d = s.incident;
+    const back = { x: -d.x, y: -d.y };
+    const Lin = exitLen(C, back);
+    const src = { x: C.x + back.x * Lin, y: C.y + back.y * Lin };
+    line(src, C, RAY, 3.5);
+    arrowHead({ x: C.x + back.x * Lin * 0.5, y: C.y + back.y * Lin * 0.5 }, d, 11, RAY);
+    if (showText) label('incident ray',
+          C.x + back.x * Lin * 0.78 - back.y * 15,
+          C.y + back.y * Lin * 0.78 + back.x * 15, RAY, 13, 'center');
+
+    // Reflected ray: partial at any angle, and everything once past the critical angle.
+    if (document.getElementById('cRefl').checked) {
+        const r = s.reflected, Lr = exitLen(C, r);
+        line(C, { x: C.x + r.x * Lr, y: C.y + r.y * Lr }, REFL, s.tir ? 3.5 : 2, s.tir ? [] : [9, 6]);
+        arrowHead({ x: C.x + r.x * Lr * 0.5, y: C.y + r.y * Lr * 0.5 }, r, s.tir ? 11 : 9, REFL);
+        if (showText) label(s.tir ? 'reflected ray (all of the light)' : 'reflected ray (part of the light)',
+              C.x + r.x * Lr * 0.76 - r.y * 15,
+              C.y + r.y * Lr * 0.76 + r.x * 15, REFL, 13, 'center');
+    }
+
+    // Refracted ray.
+    if (s.refracted) {
+        const f = s.refracted, Lf = exitLen(C, f);
+        line(C, { x: C.x + f.x * Lf, y: C.y + f.y * Lf }, RAY, 3.5);
+        arrowHead({ x: C.x + f.x * Lf * 0.5, y: C.y + f.y * Lf * 0.5 }, f, 11, RAY);
+        if (showText) label('refracted ray',
+              C.x + f.x * Lf * 0.78 - f.y * 15,
+              C.y + f.y * Lf * 0.78 + f.x * 15, RAY, 13, 'center');
+    }
+
+    if (document.getElementById('cAngles').checked) {
+        const outN = { x: -s.N.x, y: -s.N.y };
+        angleArc(outN, back, 64, INK, `θ₁ = ${(Math.abs(theta) * R2D).toFixed(1)}°`);
+        if (s.refracted) {
+            angleArc(s.N, s.refracted, 64, INK, `θ₂ = ${(Math.abs(s.theta2) * R2D).toFixed(1)}°`);
+        } else if (document.getElementById('cRefl').checked) {
+            angleArc(outN, s.reflected, 92, REFL, `${(Math.abs(theta) * R2D).toFixed(1)}°`);
+        }
+    }
+
+    dot({ x: C.x + t.x * R_FACE, y: C.y + t.y * R_FACE }, INK, '#fff');
+    dot({ x: C.x - t.x * R_FACE, y: C.y - t.y * R_FACE }, INK, '#fff');
+    dot({ x: C.x + back.x * R_RAY, y: C.y + back.y * R_RAY }, RAY, '#fff');
+    ctx.beginPath();
+    ctx.arc(C.x, C.y, 4, 0, Math.PI * 2);
+    ctx.fillStyle = INK;
+    ctx.fill();
+
+    ctx.restore();
+
+    if (showText) infoBox(s);
+}
+
+/* ----------------------------------------------------------- interaction */
+
+function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+}
+
+function near(p, q) { return Math.hypot(p.x - q.x, p.y - q.y) < HIT; }
+
+function hitTest(p) {
+    if (!showDiagram) return img ? 'img' : null;
+    const t = tangent(), d = incidentDir();
+    if (near(p, { x: C.x - d.x * R_RAY, y: C.y - d.y * R_RAY })) return 'ray';
+    if (near(p, { x: C.x + t.x * R_FACE, y: C.y + t.y * R_FACE })) return 'face';
+    if (near(p, { x: C.x - t.x * R_FACE, y: C.y - t.y * R_FACE })) return 'face';
+    return img ? 'img' : null;
+}
+
+function applyDrag(p) {
+    if (drag === 'ray') {
+        const v = { x: C.x - p.x, y: C.y - p.y };
+        const L = Math.hypot(v.x, v.y);
+        if (L < 6) return;
+        setFromDir({ x: v.x / L, y: v.y / L });
+        syncInputs();
+    } else if (drag === 'face') {
+        const v = { x: p.x - C.x, y: p.y - C.y };
+        if (Math.hypot(v.x, v.y) < 12) return;
+        let a = Math.atan2(-v.y, v.x);                  // tangent() = (cos phi, -sin phi)
+        while (a >  Math.PI / 2) a -= Math.PI;          // the line is unchanged mod 180 deg
+        while (a <= -Math.PI / 2) a += Math.PI;
+        setPhi(a);
+        syncInputs();
+    } else if (drag === 'img' && img) {
+        imgX = p.x - dragOff.x;
+        imgY = p.y - dragOff.y;
+    }
+    draw();
+}
+
+canvas.addEventListener('pointerdown', e => {
+    const p = canvasPos(e);
+    drag = hitTest(p);
+    if (!drag) return;
+    if (drag === 'img') dragOff = { x: p.x - imgX, y: p.y - imgY };
+    canvas.setPointerCapture(e.pointerId);
+});
+
+canvas.addEventListener('pointermove', e => {
+    const p = canvasPos(e);
+    if (!drag) {
+        const h = hitTest(p);
+        canvas.style.cursor = h === 'img' ? 'move' : h ? 'grab' : 'default';
+        return;
+    }
+    canvas.style.cursor = drag === 'img' ? 'grabbing' : 'grabbing';
+    applyDrag(p);
+});
+
+function endDrag() { drag = null; canvas.style.cursor = 'default'; }
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+// Scroll to resize the background about the cursor, so alignment is preserved.
+canvas.addEventListener('wheel', e => {
+    if (!img) return;
+    e.preventDefault();
+    const p = canvasPos(e);
+    const f = e.deltaY < 0 ? 1.06 : 1 / 1.06;
+    const next = clamp(imgScale * f, imgFit * 0.1, imgFit * 4);
+    const k = next / imgScale;
+    imgX = p.x + (imgX - p.x) * k;
+    imgY = p.y + (imgY - p.y) * k;
+    imgScale = next;
+    syncInputs();
+    draw();
+}, { passive: false });
+
+document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); showDiagram = !showDiagram; draw(); return; }
+    if (!img) return;
+    const step = e.shiftKey ? 10 : 1;
+    const moves = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
+    if (moves[e.key]) {
+        e.preventDefault();
+        imgX += moves[e.key][0];
+        imgY += moves[e.key][1];
+        draw();
+    }
+});
+
+/* ------------------------------------------------------- background image */
+
+function fitImage() {
+    if (!img) return;
+    imgFit = Math.min(W / img.naturalWidth, H / img.naturalHeight);
+    imgScale = imgFit;
+    imgX = (W - img.naturalWidth * imgScale) / 2;
+    imgY = (H - img.naturalHeight * imgScale) / 2;
+    syncInputs();
+    draw();
+}
+
+function loadBlob(blob) {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const im = new Image();
+    im.onload = () => {
+        URL.revokeObjectURL(url);
+        img = im;
+        // The medium shading would hide the picture entirely, so step it aside.
+        document.getElementById('cShade').checked = false;
+        fitImage();
+    };
+    im.src = url;
+}
+
+document.getElementById('load').addEventListener('click', () => document.getElementById('file').click());
+document.getElementById('file').addEventListener('change', e => {
+    loadBlob(e.target.files[0]);
+    e.target.value = '';
+});
+document.getElementById('fit').addEventListener('click', fitImage);
+document.getElementById('clear').addEventListener('click', () => {
+    img = null;
+    document.getElementById('cShade').checked = true;
+    syncInputs();
+    draw();
+});
+
+document.addEventListener('paste', e => {
+    for (const item of e.clipboardData.items) {
+        if (item.type.startsWith('image/')) { loadBlob(item.getAsFile()); break; }
+    }
+});
+
+const dropUI = document.getElementById('drop');
+let dragDepth = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); if (++dragDepth === 1) dropUI.classList.add('show'); });
+document.addEventListener('dragover',  e => e.preventDefault());
+document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dropUI.classList.remove('show'); } });
+document.addEventListener('drop', e => {
+    e.preventDefault();
+    dragDepth = 0;
+    dropUI.classList.remove('show');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadBlob(f);
+});
+
+/* ---------------------------------------------------------------- inputs */
+
+const $ = id => document.getElementById(id);
+
+function syncInputs() {
+    $('n1').value = n1;   $('n1v').textContent = nLabel(n1).slice(4);
+    $('n2').value = n2;   $('n2v').textContent = nLabel(n2).slice(4);
+    $('tilt').value = Math.round(phi * R2D);       $('tiltv').textContent = `${Math.round(phi * R2D)}°`;
+    $('ang').value  = (theta * R2D).toFixed(1);    $('angv').textContent  = `${Math.abs(theta * R2D).toFixed(0)}°`;
+    $('dopv').textContent = `${$('dop').value}%`;
+    $('iopv').textContent = `${$('iop').value}%`;
+    $('isc').value = img ? Math.round(imgScale / imgFit * 100) : 100;
+    $('iscv').textContent = `${$('isc').value}%`;
+    $('side1').classList.toggle('on', sigma > 0);
+    $('side2').classList.toggle('on', sigma < 0);
+    ['load', 'fit', 'clear', 'iop', 'isc'].forEach(id => { $(id).disabled = !img && id !== 'load'; });
+}
+
+$('n1').addEventListener('input', e => { n1 = +e.target.value; syncInputs(); draw(); });
+$('n2').addEventListener('input', e => { n2 = +e.target.value; syncInputs(); draw(); });
+$('tilt').addEventListener('input', e => { setPhi(+e.target.value * D2R); syncInputs(); draw(); });
+$('ang').addEventListener('input',  e => { theta = clamp(+e.target.value * D2R, -MAX_T, MAX_T); syncInputs(); draw(); });
+$('dop').addEventListener('input', () => { syncInputs(); draw(); });
+$('iop').addEventListener('input', () => { syncInputs(); draw(); });
+$('isc').addEventListener('input', e => {
+    if (!img) return;
+    // Resize about the middle of the frame so the picture does not run away.
+    const next = imgFit * (+e.target.value / 100), k = next / imgScale;
+    imgX = C.x + (imgX - C.x) * k;
+    imgY = C.y + (imgY - C.y) * k;
+    imgScale = next;
+    syncInputs();
+    draw();
+});
+
+$('swap').addEventListener('click', () => {
+    const a = n1; n1 = n2; n2 = a;
+    syncInputs(); draw();
+});
+
+[$('side1'), $('side2')].forEach(b => b.addEventListener('click', () => {
+    sigma = +b.dataset.side;
+    syncInputs(); draw();
+}));
+
+$('reset').addEventListener('click', () => {
+    phi = 0; sigma = 1; theta = 40 * D2R; n1 = 1.00; n2 = 1.50;
+    $('dop').value = 100;
+    ['cNormal', 'cAngles', 'cRefl', 'cCrit', 'cLabels'].forEach(id => $(id).checked = true);
+    $('cShade').checked = !img;
+    syncInputs(); draw();
+});
+
+['cNormal', 'cAngles', 'cRefl', 'cCrit', 'cShade', 'cLabels']
+    .forEach(id => $(id).addEventListener('change', draw));
+
+function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    canvas.width  = Math.round(r.width  * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    draw();
+}
+
+syncInputs();
+new ResizeObserver(fit).observe(canvas);
+fit();
+</script>
+
+<!-- @include shared/zoom-overlay.js -->
+<script>
+(function () {
+  /* Zoom/pan overlay — activated by ?zoom=1, hidden by default (?zoom=0 or absent). */
+  var Q = new URLSearchParams(location.search);
+  if (!Q.has('zoom') || Q.get('zoom') === '0') return;
+
+  var css = document.createElement('style');
+  css.textContent =
+    '#_zui{position:fixed;top:8px;right:8px;display:flex;align-items:center;' +
+    'gap:4px;background:rgba(0,0,0,.6);border-radius:8px;padding:5px 10px;' +
+    'z-index:99999;font-family:Arial,sans-serif;user-select:none}' +
+    '#_zui button{width:28px;height:28px;border:none;border-radius:4px;' +
+    'background:rgba(255,255,255,.2);color:#fff;font-size:18px;' +
+    'cursor:pointer;display:flex;align-items:center;justify-content:center}' +
+    '#_zui button:hover{background:rgba(255,255,255,.35)}' +
+    '#_zlab{color:#fff;font-size:13px;min-width:34px;text-align:center}';
+  document.head.appendChild(css);
+
+  /* Attach to <html> so position:fixed stays viewport-relative even when body has a transform. */
+  var ui = document.createElement('div');
+  ui.id = '_zui';
+  ui.innerHTML =
+    '<button id="_zo">&#8722;</button>' +
+    '<span id="_zlab">1.0&#215;</span>' +
+    '<button id="_zi">+</button>' +
+    '<button id="_zr" title="Reset view">&#8634;</button>';
+  document.documentElement.appendChild(ui);
+
+  var Z = 1, tx = 0, ty = 0, drag = null;
+  var body = document.body;
+  var lab  = document.getElementById('_zlab');
+  var rst  = document.getElementById('_zr');
+
+  function apply() {
+    /* window._userZoom signals the old-style scale-to-fit controller to stand down. */
+    window._userZoom = Z > 1 ? Z : undefined;
+    var s = window._scalerFitScale || 1;
+    if (Z <= 1 && !tx && !ty) {
+      body.style.transform = '';
+      body.style.cursor    = '';
+      window.dispatchEvent(new Event('resize')); /* let the scaler re-fit if present */
+    } else {
+      body.style.transformOrigin = '0 0';
+      body.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (s * Z) + ')';
+      body.style.cursor    = 'grab';
+    }
+    lab.innerHTML         = Z.toFixed(1) + '&#215;';
+    rst.style.opacity     = (Z > 1 || tx || ty) ? '1' : '0.4';
+  }
+
+  document.getElementById('_zi').onclick = function () {
+    Z = Math.min(4, parseFloat((Z * 1.25).toFixed(2))); apply();
+  };
+  document.getElementById('_zo').onclick = function () {
+    Z = Math.max(1, parseFloat((Z / 1.25).toFixed(2))); apply();
+  };
+  rst.onclick = function () { Z = 1; tx = 0; ty = 0; apply(); };
+
+  document.documentElement.addEventListener('pointerdown', function (e) {
+    if (Z <= 1 || (e.target.closest && e.target.closest('#_zui'))) return;
+    drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+    body.style.cursor = 'grabbing';
+  });
+  document.documentElement.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    tx = drag.tx + (e.clientX - drag.x);
+    ty = drag.ty + (e.clientY - drag.y);
+    body.style.transform =
+      'translate(' + tx + 'px,' + ty + 'px) scale(' + ((window._scalerFitScale || 1) * Z) + ')';
+  });
+  document.documentElement.addEventListener('pointerup', function () {
+    drag = null;
+    if (Z > 1) body.style.cursor = 'grab';
+  });
+
+  document.documentElement.addEventListener('wheel', function (e) {
+    if (Z <= 1 && e.deltaY > 0) return;
+    e.preventDefault();
+    var factor = e.deltaY < 0 ? 1.1 : (1 / 1.1);
+    var newZ   = Math.max(1, Math.min(4, parseFloat((Z * factor).toFixed(3))));
+    if (newZ === Z) return;
+    var px = e.clientX, py = e.clientY;
+    tx = px + (tx - px) * (newZ / Z);
+    ty = py + (ty - py) * (newZ / Z);
+    if (newZ === 1) { tx = 0; ty = 0; }
+    Z = newZ;
+    apply();
+  }, { passive: false });
+})();
+</script>
+<!-- @end-include shared/zoom-overlay.js -->
+</body>
+</html>
