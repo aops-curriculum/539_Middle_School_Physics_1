@@ -1,0 +1,695 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="eigennode-aspect" content="7/6">
+<title>Lens Ray Tracer</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+        background: #f4f7fa;
+        font-family: Arial, Helvetica, sans-serif;
+        user-select: none;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 6px;
+        padding: 6px;
+    }
+    #hint { flex: 0 0 auto; font-size: 13px; color: #55606b; text-align: center; line-height: 1.35; }
+    #cwrap { flex: 1 1 auto; min-height: 0; width: 100%; display: flex; align-items: center; justify-content: center; }
+    /* The canvas is absolutely positioned inside #stage so that the DPR-scaled
+       backing store never feeds back into layout. */
+    #stage { position: relative; aspect-ratio: 8 / 5; height: min(100%, 61vw); width: auto; }
+    canvas {
+        position: absolute; inset: 0; width: 100%; height: 100%;
+        display: block; border-radius: 4px; box-shadow: 0 0 0 1px #d5dee7;
+        touch-action: none;
+    }
+    #controls {
+        flex: 0 0 auto; display: flex; flex-direction: column;
+        align-items: center; gap: 5px; font-size: 12.5px; color: #33404d; width: 100%;
+    }
+    .row { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 13px; }
+    #controls button {
+        font: inherit; padding: 3px 9px; border: 1px solid #b9c6d3;
+        border-radius: 5px; background: #fff; color: #33404d; cursor: pointer;
+    }
+    #controls button:hover { background: #e8eff6; }
+    #controls button.on { background: #1F3864; border-color: #1F3864; color: #fff; }
+    #controls button:disabled { opacity: .4; cursor: default; background: #fff; }
+    #controls button.src { padding: 3px 8px 3px 6px; }
+    #controls button.src i { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 4px; vertical-align: -1px; }
+    #controls label { display: inline-flex; align-items: center; gap: 4px; cursor: pointer; }
+    input[type=range] { width: 88px; vertical-align: middle; cursor: pointer; }
+    .val { display: inline-block; font-variant-numeric: tabular-nums; color: #55606b; min-width: 30px; }
+    .w2 { min-width: 62px; }
+    .sep { color: #c3cdd7; }
+    .note { color: #7d8894; }
+    #drop {
+        position: fixed; inset: 0; z-index: 500; background: rgba(31,56,100,0.55);
+        color: #fff; font-size: 26px; font-weight: bold;
+        display: none; align-items: center; justify-content: center; pointer-events: none;
+    }
+    #drop.show { display: flex; }
+</style>
+</head>
+<body>
+
+<p id="hint">Drag the <b>coloured dots</b> to move the light sources, and (in one-ray mode) the small dots on the lens to pick where each ray strikes.<br>
+Paste (Ctrl+V), drop, or load an image to trace over it &mdash; drag the background to move it, scroll to resize it. Press <b>space</b> to hide the diagram.</p>
+
+<div id="cwrap"><div id="stage"><canvas id="canvas"></canvas></div></div>
+
+<div id="controls">
+
+    <div class="row">
+        <label>Lens height <input type="range" id="lensH" min="60" max="330" step="1" value="200"><span class="val" id="lensHv"></span></label>
+        <label>R&#8321; <input type="range" id="r1"><span class="val w2" id="r1v"></span></label>
+        <label>R&#8322; <input type="range" id="r2"><span class="val w2" id="r2v"></span></label>
+        <label>Thickness <input type="range" id="thick" min="0" max="200" step="1" value="0"><span class="val" id="thickv"></span></label>
+        <label>n <input type="range" id="nLens" min="1.02" max="2.6" step="0.01" value="1.50"><span class="val" id="nLensv"></span></label>
+        <span class="sep">|</span>
+        <span class="val w2" id="fv"></span>
+    </div>
+
+    <div class="row">
+        <span>Light from:</span>
+        <button id="mInf" class="on">Infinity</button>
+        <button id="mPt">A point</button>
+        <span class="sep">|</span>
+        <span>Rays:</span>
+        <button id="rMany" class="on">Many</button>
+        <button id="rOne">One</button>
+        <label id="wrapCount">how many <input type="range" id="nRays" min="2" max="25" step="1" value="9"><span class="val" id="nRaysv"></span></label>
+        <label id="wrapHit">height on lens <input type="range" id="hit" min="-100" max="100" step="0.5" value="0"><span class="val" id="hitv"></span></label>
+    </div>
+
+    <div class="row">
+        <span>Sources:</span>
+        <button class="src on" data-src="0"><i style="background:#E53935"></i>1</button>
+        <button class="src" data-src="1"><i style="background:#F2A100"></i>2</button>
+        <button class="src" data-src="2"><i style="background:#2E9E4F"></i>3</button>
+        <span class="sep">|</span>
+        <label><input type="checkbox" id="cAxis" checked> Axis</label>
+        <label><input type="checkbox" id="cFocal" checked> Focal points</label>
+        <label><input type="checkbox" id="cArrow" checked> Arrows</label>
+        <label><input type="checkbox" id="cGlass" checked> Lens fill</label>
+        <label>Diagram opacity <input type="range" id="dop" min="10" max="100" step="1" value="100"><span class="val" id="dopv"></span></label>
+        <button id="reset">Reset</button>
+    </div>
+
+    <div class="row">
+        <span>Background:</span>
+        <button id="load">&#128247; Load image</button>
+        <button id="fitImg">Fit</button>
+        <button id="clearImg">Clear</button>
+        <label>opacity <input type="range" id="iop" min="0" max="100" step="1" value="100"><span class="val" id="iopv"></span></label>
+        <label>size <input type="range" id="isc" min="10" max="400" step="1" value="100"><span class="val" id="iscv"></span></label>
+        <span class="note">arrow keys nudge 1&nbsp;px</span>
+    </div>
+
+</div>
+
+<input type="file" id="file" accept="image/*" style="display:none">
+<div id="drop">Drop the image here</div>
+
+<script>
+const canvas = document.getElementById('canvas');
+const ctx = canvas.getContext('2d');
+const W = 960, H = 600;              // logical design grid (matches stage aspect 8/5)
+const AY = 300;                      // the optical axis
+const LX = 380;                      // where the lens sits along the axis
+const MIN_T = 10;                    // thinnest the lens is allowed to get, in either place
+const N_AIR = 1.0;
+const $ = id => document.getElementById(id);
+
+const COLORS = ['#E53935', '#F2A100', '#2E9E4F'];
+const INK = '#1F3864', GLASS = '#CFE3F5', GLASS_EDGE = '#8FB8DA';
+
+/* ------------------------------------------------------------------ state */
+/* Curvatures rather than radii, so a flat surface is just 0 and the sliders
+   pass through it continuously. c1/c2 are in the optics sign convention: the
+   centre of curvature of a surface sits at vertex + 1/c. The controls show the
+   friendlier "positive means it bulges outwards" radius instead. */
+let lensH = 200;
+let c1 =  1 / 230, c2 = -1 / 230;
+let nLens = 1.50;
+let extraT = 0;                      // pads the lens out into a flat rim, top and bottom
+let srcMode = 'inf';                 // 'inf' | 'point'
+let rayMode = 'many';                // 'many' | 'one'
+let nRays = 9;
+
+let sources = [];
+function defaultSources() {
+    return [
+        { on: true,  x: 110, y: AY,       hit:  0 },
+        { on: false, x: 110, y: AY -  70, hit:  35 },
+        { on: false, x: 110, y: AY +  70, hit: -35 }
+    ];
+}
+
+let showDiagram = true;
+let img = null, imgX = 0, imgY = 0, imgScale = 1, imgFit = 1;
+let drag = null, dragOff = { x: 0, y: 0 };
+
+/* --------------------------------------------------------------- geometry */
+
+const aperture = () => lensH / 2;
+
+// How far a surface bulges from its vertex out to the rim.
+function sag(c, a) {
+    if (Math.abs(c) < 1e-9) return 0;
+    const R = 1 / c;
+    return R - Math.sign(R) * Math.sqrt(Math.max(0, R * R - a * a));
+}
+
+// Centre thickness. The base value leaves whichever part of the lens is
+// thinnest -- the middle of a diverging lens, the rim of a converging one --
+// at MIN_T; extraT then slides the two caps apart, which keeps the height and
+// both curvatures fixed and simply grows the flat rim at top and bottom.
+function thickness() {
+    const a = aperture();
+    return Math.max(MIN_T, MIN_T + sag(c1, a) - sag(c2, a)) + extraT;
+}
+
+const vertex1 = () => LX - thickness() / 2;
+const vertex2 = () => LX + thickness() / 2;
+const surf = i => ({ vx: i === 1 ? vertex1() : vertex2(), c: i === 1 ? c1 : c2 });
+
+// x on a surface at height y above the axis.
+function surfX(S, y) {
+    if (Math.abs(S.c) < 1e-9) return S.vx;
+    const R = 1 / S.c;
+    return S.vx + R - Math.sign(R) * Math.sqrt(Math.max(0, R * R - y * y));
+}
+
+// Thick-lens focal length and the two focal points, written with curvatures so
+// that a flat surface needs no special case.
+function optics() {
+    const t = thickness(), n = nLens;
+    const invF = (n - 1) * (c1 - c2 + (n - 1) * t * c1 * c2 / n);
+    if (Math.abs(invF) < 1e-9) return { f: Infinity, front: null, back: null };
+    const f = 1 / invF;
+    return {
+        f,
+        back:  vertex2() + f * (1 - (n - 1) * t * c1 / n),
+        front: vertex1() - f * (1 + (n - 1) * t * c2 / n)
+    };
+}
+
+/* ------------------------------------------------------------ ray tracing */
+
+function edgeT(P, d) {
+    let t = Infinity;
+    if (d.x >  1e-9) t = Math.min(t, (W - P.x) / d.x);
+    if (d.x < -1e-9) t = Math.min(t, -P.x / d.x);
+    if (d.y >  1e-9) t = Math.min(t, (H - P.y) / d.y);
+    if (d.y < -1e-9) t = Math.min(t, -P.y / d.y);
+    return t === Infinity ? 0 : t;
+}
+
+const step = (P, d, t) => ({ x: P.x + d.x * t, y: P.y + d.y * t });
+
+// Nearest forward intersection with a surface, restricted to the correct half
+// of the sphere and to the part of it inside the aperture.
+function hitSurface(P, d, S, a) {
+    if (Math.abs(S.c) < 1e-9) {
+        if (Math.abs(d.x) < 1e-12) return null;
+        const t = (S.vx - P.x) / d.x;
+        if (t <= 1e-6) return null;
+        const p = step(P, d, t);
+        if (Math.abs(p.y - AY) > a) return null;
+        return { t, p, n: { x: 1, y: 0 } };
+    }
+    const R = 1 / S.c, Cx = S.vx + R;
+    const ox = P.x - Cx, oy = P.y - AY;
+    const b = ox * d.x + oy * d.y;
+    const disc = b * b - (ox * ox + oy * oy - R * R);
+    if (disc < 0) return null;
+    const sq = Math.sqrt(disc);
+    for (const t of [-b - sq, -b + sq]) {
+        if (t <= 1e-6) continue;
+        const p = step(P, d, t);
+        if (Math.abs(p.y - AY) > a) continue;
+        if ((p.x - Cx) * R > 0) continue;              // the far half of the sphere
+        const inv = 1 / Math.abs(R);
+        return { t, p, n: { x: (p.x - Cx) * inv, y: (p.y - AY) * inv } };
+    }
+    return null;
+}
+
+// The flat band around the edge of the lens. A thick enough lens lets steep
+// rays out through here instead of through the second face.
+function hitRim(P, d) {
+    if (Math.abs(d.y) < 1e-12) return null;
+    const a = aperture();
+    const xa = surfX(surf(1), a), xb = surfX(surf(2), a);
+    const lo = Math.min(xa, xb), hi = Math.max(xa, xb);
+    let best = null;
+    for (const sgn of [1, -1]) {
+        const t = (AY + sgn * a - P.y) / d.y;
+        if (t <= 1e-6) continue;
+        const x = P.x + d.x * t;
+        if (x < lo - 1e-6 || x > hi + 1e-6) continue;
+        if (!best || t < best.t) best = { t, p: { x, y: AY + sgn * a }, n: { x: 0, y: sgn } };
+    }
+    return best;
+}
+
+// Vector Snell's law. n must be unit; it gets flipped to face the incoming ray.
+function refract(d, n, mu) {
+    let nx = n.x, ny = n.y;
+    if (nx * d.x + ny * d.y > 0) { nx = -nx; ny = -ny; }
+    const ci = -(d.x * nx + d.y * ny);
+    const s2 = mu * mu * (1 - ci * ci);
+    if (s2 > 1) return null;                            // total internal reflection
+    const ct = Math.sqrt(1 - s2), k = mu * ci - ct;
+    return { x: mu * d.x + k * nx, y: mu * d.y + k * ny };
+}
+
+// origin -> first surface -> through the glass -> second surface -> onwards.
+function trace(origin, d) {
+    const a = aperture(), pts = [origin];
+    const h1 = hitSurface(origin, d, surf(1), a);
+    if (!h1) { pts.push(step(origin, d, edgeT(origin, d))); return { pts, missed: true }; }
+    pts.push(h1.p);
+
+    let dir = refract(d, h1.n, N_AIR / nLens);
+    if (!dir) return { pts, stopped: true };
+
+    // Inside the glass the ray leaves by whichever comes first: the second face
+    // or, on a thick lens, the flat rim.
+    const h2 = hitSurface(h1.p, dir, surf(2), a), hr = hitRim(h1.p, dir);
+    const exit = (h2 && hr) ? (h2.t <= hr.t ? h2 : hr) : (h2 || hr);
+    if (!exit) { pts.push(step(h1.p, dir, edgeT(h1.p, dir))); return { pts, stopped: true }; }
+    pts.push(exit.p);
+
+    dir = refract(dir, exit.n, nLens / N_AIR);
+    if (!dir) return { pts, stopped: true };
+    pts.push(step(exit.p, dir, edgeT(exit.p, dir)));
+    return { pts, ok: true };
+}
+
+// Heights on the first surface that this source's rays are aimed at.
+function rayHeights(s) {
+    const a = aperture() * 0.96;
+    if (rayMode === 'one') return [Math.max(-a, Math.min(a, s.hit))];
+    if (nRays === 1) return [0];
+    return Array.from({ length: nRays }, (_, i) => -a + 2 * a * i / (nRays - 1));
+}
+
+// A ray aimed at a given point on the first surface: either straight out of the
+// source, or parallel to the direction the distant source lies in.
+function rayFor(s, y) {
+    const target = { x: surfX(surf(1), y), y: AY + y };
+    if (srcMode === 'point') {
+        const dx = target.x - s.x, dy = target.y - s.y, L = Math.hypot(dx, dy);
+        if (L < 1e-6) return null;
+        return { origin: { x: s.x, y: s.y }, d: { x: dx / L, y: dy / L } };
+    }
+    const dx = LX - s.x, dy = AY - s.y, L = Math.hypot(dx, dy);
+    if (L < 1e-6) return null;
+    const d = { x: dx / L, y: dy / L };
+    const back = { x: -d.x, y: -d.y };
+    return { origin: step(target, back, edgeT(target, back)), d };
+}
+
+/* --------------------------------------------------------------- drawing */
+
+function line(pts, color, w) {
+    ctx.strokeStyle = color; ctx.lineWidth = w;
+    ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+    ctx.beginPath();
+    pts.forEach((p, i) => i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y));
+    ctx.stroke();
+}
+
+function arrowHead(p, d, size, color) {
+    const px = -d.y, py = d.x;
+    ctx.beginPath();
+    ctx.moveTo(p.x + d.x * size, p.y + d.y * size);
+    ctx.lineTo(p.x - d.x * size * 0.5 + px * size * 0.6, p.y - d.y * size * 0.5 + py * size * 0.6);
+    ctx.lineTo(p.x - d.x * size * 0.5 - px * size * 0.6, p.y - d.y * size * 0.5 - py * size * 0.6);
+    ctx.closePath(); ctx.fillStyle = color; ctx.fill();
+}
+
+function label(t, x, y, color, size, align) {
+    ctx.font = `600 ${size}px Arial, Helvetica, sans-serif`;
+    ctx.textAlign = align || 'center'; ctx.textBaseline = 'middle';
+    ctx.lineJoin = 'round'; ctx.lineWidth = 4;
+    ctx.strokeStyle = 'rgba(255,255,255,0.9)'; ctx.strokeText(t, x, y);
+    ctx.fillStyle = color; ctx.fillText(t, x, y);
+}
+
+function lensPath() {
+    const a = aperture(), S1 = surf(1), S2 = surf(2), N = 72;
+    ctx.beginPath();
+    for (let i = 0; i <= N; i++) {
+        const y = -a + 2 * a * i / N;
+        const x = surfX(S1, y);
+        i ? ctx.lineTo(x, AY + y) : ctx.moveTo(x, AY + y);
+    }
+    for (let i = N; i >= 0; i--) {
+        const y = -a + 2 * a * i / N;
+        ctx.lineTo(surfX(S2, y), AY + y);
+    }
+    ctx.closePath();
+}
+
+function dot(p, fill, r) {
+    ctx.beginPath(); ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+    ctx.fillStyle = fill; ctx.fill();
+    ctx.lineWidth = 2; ctx.strokeStyle = '#fff'; ctx.stroke();
+}
+
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+    ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, W, H);
+
+    if (img) {
+        ctx.save();
+        ctx.globalAlpha = +$('iop').value / 100;
+        ctx.imageSmoothingQuality = 'high';
+        ctx.drawImage(img, imgX, imgY, img.naturalWidth * imgScale, img.naturalHeight * imgScale);
+        ctx.restore();
+    }
+    if (!showDiagram) return;
+
+    ctx.save();
+    ctx.globalAlpha = +$('dop').value / 100;
+
+    if ($('cAxis').checked) {
+        ctx.setLineDash([8, 7]);
+        line([{ x: 0, y: AY }, { x: W, y: AY }], '#B9C6D3', 1.5);
+        ctx.setLineDash([]);
+    }
+
+    if ($('cGlass').checked) {
+        lensPath();
+        ctx.fillStyle = GLASS; ctx.fill();
+    }
+    lensPath();
+    ctx.strokeStyle = GLASS_EDGE; ctx.lineWidth = 2; ctx.stroke();
+
+    if ($('cFocal').checked) {
+        const o = optics();
+        for (const [x, tag] of [[o.front, 'F'], [o.back, 'F']]) {
+            if (x === null || !isFinite(x) || x < 8 || x > W - 8) continue;
+            ctx.strokeStyle = INK; ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(x - 6, AY - 6); ctx.lineTo(x + 6, AY + 6);
+            ctx.moveTo(x + 6, AY - 6); ctx.lineTo(x - 6, AY + 6);
+            ctx.stroke();
+            label(tag, x, AY + 22, INK, 14);
+        }
+    }
+
+    const showArrow = $('cArrow').checked;
+    sources.forEach((s, i) => {
+        if (!s.on) return;
+        const color = COLORS[i];
+        for (const y of rayHeights(s)) {
+            const r = rayFor(s, y);
+            if (!r) continue;
+            const tr = trace(r.origin, r.d);
+            line(tr.pts, color, 2);
+            if (showArrow && tr.ok && tr.pts.length >= 2) {
+                const p0 = tr.pts[tr.pts.length - 2], p1 = tr.pts[tr.pts.length - 1];
+                const dx = p1.x - p0.x, dy = p1.y - p0.y, L = Math.hypot(dx, dy);
+                if (L > 26) arrowHead({ x: p1.x - dx / L * 11, y: p1.y - dy / L * 11 },
+                                      { x: dx / L, y: dy / L }, 9, color);
+            }
+        }
+    });
+
+    // Handles last, so they stay on top of the rays.
+    sources.forEach((s, i) => {
+        if (!s.on) return;
+        if (srcMode === 'inf') {
+            ctx.setLineDash([5, 5]);
+            line([{ x: s.x, y: s.y }, { x: s.x + (LX - s.x) * 0.13, y: s.y + (AY - s.y) * 0.13 }], COLORS[i], 1.5);
+            ctx.setLineDash([]);
+            label('∞', s.x, s.y - 17, COLORS[i], 16);
+        }
+        dot({ x: s.x, y: s.y }, COLORS[i], 9);
+        if (rayMode === 'one') {
+            const y = Math.max(-aperture() * 0.96, Math.min(aperture() * 0.96, s.hit));
+            dot({ x: surfX(surf(1), y), y: AY + y }, COLORS[i], 6);
+        }
+    });
+
+    ctx.restore();
+}
+
+/* ----------------------------------------------------------- interaction */
+
+function canvasPos(e) {
+    const r = canvas.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+}
+
+function hitTest(p) {
+    if (!showDiagram) return img ? 'img' : null;
+    for (let i = sources.length - 1; i >= 0; i--) {
+        const s = sources[i];
+        if (!s.on) continue;
+        if (rayMode === 'one') {
+            const y = Math.max(-aperture() * 0.96, Math.min(aperture() * 0.96, s.hit));
+            if (Math.hypot(p.x - surfX(surf(1), y), p.y - (AY + y)) < 15) return { kind: 'hit', i };
+        }
+        if (Math.hypot(p.x - s.x, p.y - s.y) < 17) return { kind: 'src', i };
+    }
+    return img ? 'img' : null;
+}
+
+function applyDrag(p) {
+    if (drag === 'img' && img) {
+        imgX = p.x - dragOff.x;
+        imgY = p.y - dragOff.y;
+    } else if (drag.kind === 'src') {
+        const s = sources[drag.i];
+        // Sources stay to the left of the glass so the light always runs left to right.
+        s.x = Math.max(14, Math.min(vertex1() - 30, p.x));
+        s.y = Math.max(12, Math.min(H - 12, p.y));
+    } else if (drag.kind === 'hit') {
+        const a = aperture() * 0.96;
+        sources[drag.i].hit = Math.max(-a, Math.min(a, p.y - AY));
+        syncInputs();
+    }
+    draw();
+}
+
+canvas.addEventListener('pointerdown', e => {
+    const p = canvasPos(e);
+    drag = hitTest(p);
+    if (!drag) return;
+    if (drag === 'img') dragOff = { x: p.x - imgX, y: p.y - imgY };
+    canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener('pointermove', e => {
+    const p = canvasPos(e);
+    if (!drag) {
+        const h = hitTest(p);
+        canvas.style.cursor = h === 'img' ? 'move' : h ? 'grab' : 'default';
+        return;
+    }
+    canvas.style.cursor = 'grabbing';
+    applyDrag(p);
+});
+function endDrag() { drag = null; canvas.style.cursor = 'default'; }
+canvas.addEventListener('pointerup', endDrag);
+canvas.addEventListener('pointercancel', endDrag);
+
+canvas.addEventListener('wheel', e => {
+    if (!img) return;
+    e.preventDefault();
+    const p = canvasPos(e);
+    const f = e.deltaY < 0 ? 1.06 : 1 / 1.06;
+    const next = Math.max(imgFit * 0.1, Math.min(imgFit * 4, imgScale * f));
+    const k = next / imgScale;
+    imgX = p.x + (imgX - p.x) * k;
+    imgY = p.y + (imgY - p.y) * k;
+    imgScale = next;
+    syncInputs(); draw();
+}, { passive: false });
+
+document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.code === 'Space') { e.preventDefault(); showDiagram = !showDiagram; draw(); return; }
+    if (!img) return;
+    const d = e.shiftKey ? 10 : 1;
+    const m = { ArrowLeft: [-d, 0], ArrowRight: [d, 0], ArrowUp: [0, -d], ArrowDown: [0, d] }[e.key];
+    if (m) { e.preventDefault(); imgX += m[0]; imgY += m[1]; draw(); }
+});
+
+/* ------------------------------------------------------- background image */
+
+function fitImage() {
+    if (!img) return;
+    imgFit = Math.min(W / img.naturalWidth, H / img.naturalHeight);
+    imgScale = imgFit;
+    imgX = (W - img.naturalWidth * imgScale) / 2;
+    imgY = (H - img.naturalHeight * imgScale) / 2;
+    syncInputs(); draw();
+}
+
+function loadBlob(blob) {
+    if (!blob) return;
+    const url = URL.createObjectURL(blob);
+    const im = new Image();
+    im.onload = () => {
+        URL.revokeObjectURL(url);
+        img = im;
+        $('cGlass').checked = false;      // the fill would hide the picture underneath
+        fitImage();
+    };
+    im.src = url;
+}
+
+$('load').addEventListener('click', () => $('file').click());
+$('file').addEventListener('change', e => { loadBlob(e.target.files[0]); e.target.value = ''; });
+$('fitImg').addEventListener('click', fitImage);
+$('clearImg').addEventListener('click', () => { img = null; $('cGlass').checked = true; syncInputs(); draw(); });
+
+document.addEventListener('paste', e => {
+    for (const it of e.clipboardData.items) {
+        if (it.type.startsWith('image/')) { loadBlob(it.getAsFile()); break; }
+    }
+});
+const dropUI = $('drop');
+let dragDepth = 0;
+document.addEventListener('dragenter', e => { e.preventDefault(); if (++dragDepth === 1) dropUI.classList.add('show'); });
+document.addEventListener('dragover',  e => e.preventDefault());
+document.addEventListener('dragleave', () => { if (--dragDepth <= 0) { dragDepth = 0; dropUI.classList.remove('show'); } });
+document.addEventListener('drop', e => {
+    e.preventDefault(); dragDepth = 0; dropUI.classList.remove('show');
+    const f = e.dataTransfer.files[0];
+    if (f && f.type.startsWith('image/')) loadBlob(f);
+});
+
+/* ---------------------------------------------------------------- inputs */
+
+// A surface cannot curve tighter than a hemisphere across the aperture, so the
+// curvature sliders are re-ranged whenever the lens height changes.
+function curvRange() { return 1 / (aperture() * 1.02); }
+
+// Positive bulges outwards, negative caves in, and 0 curvature reads as flat.
+function radiusLabel(c) {
+    if (Math.abs(c) < 1e-5) return 'flat';
+    const R = Math.round(1 / c);
+    return R < 0 ? `−${-R}` : `${R}`;
+}
+
+function syncInputs() {
+    const mx = curvRange();
+    // c1/c2 are stored in the optics convention; the sliders show "bulges out".
+    [['r1', () => c1, v => c1 =  v,  1], ['r2', () => c2, v => c2 = -v, -1]].forEach(([id, get, set, sgn]) => {
+        const el = $(id);
+        el.min = -mx; el.max = mx; el.step = mx / 500;
+        el.value = sgn * get();
+        $(id + 'v').textContent = radiusLabel(sgn * get());
+    });
+    $('lensH').value = lensH;  $('lensHv').textContent = Math.round(lensH);
+    $('thick').value = extraT; $('thickv').textContent = Math.round(thickness());
+    $('nLens').value = nLens;  $('nLensv').textContent = nLens.toFixed(2);
+    $('nRays').value = nRays;  $('nRaysv').textContent = nRays;
+    $('hit').min = -aperture() * 0.96;
+    $('hit').max =  aperture() * 0.96;
+    const first = sources.find(s => s.on);
+    if (first) $('hit').value = first.hit;
+    $('hitv').textContent = Math.round(+$('hit').value);
+    $('dopv').textContent = $('dop').value + '%';
+    $('iopv').textContent = $('iop').value + '%';
+    $('isc').value = img ? Math.round(imgScale / imgFit * 100) : 100;
+    $('iscv').textContent = $('isc').value + '%';
+
+    const f = optics().f;
+    $('fv').textContent = isFinite(f) ? `f = ${f > 0 ? '' : '−'}${Math.abs(Math.round(f))}` : 'f = ∞';
+
+    $('mInf').classList.toggle('on', srcMode === 'inf');
+    $('mPt').classList.toggle('on', srcMode === 'point');
+    $('rMany').classList.toggle('on', rayMode === 'many');
+    $('rOne').classList.toggle('on', rayMode === 'one');
+    document.querySelectorAll('button.src').forEach(b => b.classList.toggle('on', sources[+b.dataset.src].on));
+    $('wrapCount').style.display = rayMode === 'many' ? '' : 'none';
+    $('wrapHit').style.display   = rayMode === 'one'  ? '' : 'none';
+    ['fitImg', 'clearImg', 'iop', 'isc'].forEach(id => $(id).disabled = !img);
+}
+
+function clampCurvatures() {
+    const mx = curvRange();
+    c1 = Math.max(-mx, Math.min(mx, c1));
+    c2 = Math.max(-mx, Math.min(mx, c2));
+}
+
+$('lensH').addEventListener('input', e => {
+    lensH = +e.target.value;
+    clampCurvatures();
+    const a = aperture() * 0.96;
+    sources.forEach(s => s.hit = Math.max(-a, Math.min(a, s.hit)));
+    syncInputs(); draw();
+});
+$('thick').addEventListener('input', e => { extraT = +e.target.value; syncInputs(); draw(); });
+$('r1').addEventListener('input', e => { c1 =  +e.target.value; syncInputs(); draw(); });
+$('r2').addEventListener('input', e => { c2 = -+e.target.value; syncInputs(); draw(); });
+$('nLens').addEventListener('input', e => { nLens = +e.target.value; syncInputs(); draw(); });
+$('nRays').addEventListener('input', e => { nRays = +e.target.value; syncInputs(); draw(); });
+$('hit').addEventListener('input', e => {
+    sources.forEach(s => { if (s.on) s.hit = +e.target.value; });
+    syncInputs(); draw();
+});
+['dop', 'iop'].forEach(id => $(id).addEventListener('input', () => { syncInputs(); draw(); }));
+$('isc').addEventListener('input', e => {
+    if (!img) return;
+    const next = imgFit * (+e.target.value / 100), k = next / imgScale;
+    imgX = W / 2 + (imgX - W / 2) * k;
+    imgY = H / 2 + (imgY - H / 2) * k;
+    imgScale = next;
+    syncInputs(); draw();
+});
+
+$('mInf').addEventListener('click', () => { srcMode = 'inf';   syncInputs(); draw(); });
+$('mPt').addEventListener('click',  () => { srcMode = 'point'; syncInputs(); draw(); });
+$('rMany').addEventListener('click', () => { rayMode = 'many'; syncInputs(); draw(); });
+$('rOne').addEventListener('click',  () => { rayMode = 'one';  syncInputs(); draw(); });
+
+document.querySelectorAll('button.src').forEach(b => b.addEventListener('click', () => {
+    const s = sources[+b.dataset.src];
+    s.on = !s.on;
+    if (!sources.some(x => x.on)) s.on = true;      // always leave one lit
+    syncInputs(); draw();
+}));
+
+['cAxis', 'cFocal', 'cArrow', 'cGlass'].forEach(id => $(id).addEventListener('change', draw));
+
+$('reset').addEventListener('click', () => {
+    lensH = 200; c1 = 1 / 230; c2 = -1 / 230; nLens = 1.50; extraT = 0;
+    srcMode = 'inf'; rayMode = 'many'; nRays = 9;
+    sources = defaultSources();
+    $('dop').value = 100;
+    ['cAxis', 'cFocal', 'cArrow'].forEach(id => $(id).checked = true);
+    $('cGlass').checked = !img;
+    syncInputs(); draw();
+});
+
+function fit() {
+    const dpr = window.devicePixelRatio || 1;
+    const r = canvas.getBoundingClientRect();
+    if (!r.width || !r.height) return;
+    canvas.width  = Math.round(r.width  * dpr);
+    canvas.height = Math.round(r.height * dpr);
+    ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+    draw();
+}
+
+sources = defaultSources();
+syncInputs();
+new ResizeObserver(fit).observe(canvas);
+fit();
+</script>
+</body>
+</html>

@@ -830,6 +830,13 @@
       "description": "Turns InDesign rotation angles into the rotation angle for a refracted ray. Solves in either direction, or for either index of refraction, and flags total internal reflection.",
       "emoji": "🧮",
       "category": "light"
+    },
+    {
+      "path": "Light/lens_ray_tracer.html",
+      "title": "Lens Ray Tracer",
+      "description": "Traces light through both curved surfaces of a lens. Set the height, thickness, index, and the radius of curvature of each face, then send in parallel light or light from up to three coloured points.",
+      "emoji": "🔍",
+      "category": "light"
     }
   ]
 }
