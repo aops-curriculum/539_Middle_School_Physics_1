@@ -841,7 +841,7 @@
     {
       "path": "chess-position-builder.html",
       "title": "Position Builder &mdash; Asymptote chessboard",
-      "description": "New simulation - description pending.",
+      "description": "Build any chess position on an interactive board and instantly generate Asymptote code for it. Learn how visual game states translate into formal code representation for mathematical diagrams.",
       "emoji": "🔬",
       "category": "other"
     }
