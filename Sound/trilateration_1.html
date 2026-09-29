@@ -91,6 +91,7 @@ canvas { display:block; }
 
   <div id="controls">
     <button class="btn" id="clear-btn">✕ Clear</button>
+    <button class="btn" id="mode-btn" aria-pressed="false" title="While on, any drag turns the globe">⟳ Rotate</button>
     <label class="check" id="locations-label" style="display:none">
       <input type="checkbox" id="show-locations">
       Show Locations
@@ -98,7 +99,8 @@ canvas { display:block; }
     <div id="hint">
       Drag on globe to draw circle<br>
       Click center dot to move<br>
-      Right-drag to rotate · Scroll to zoom
+      Drag off the globe or use Rotate to turn it<br>
+      Scroll or pinch to zoom
     </div>
   </div>
 
@@ -177,14 +179,18 @@ function fit() {
 if (window.ResizeObserver) new ResizeObserver(fit).observe(wrap);
 fit();
 
-// OrbitControls — in draw mode left-click is reserved for drawing; right-drag rotates
+// OrbitControls — left-drag rotates unless it starts on the globe in draw mode
+// (the pointerdown handler below turns controls off for that drag); right-drag
+// always rotates, and one finger rotates on touchscreens the same way
 const controls = new OrbitControls(camera, renderer.domElement);
 controls.enableDamping  = true;
 controls.dampingFactor  = 0.08;
 controls.minDistance    = 7;
 controls.maxDistance    = 25;
 controls.enablePan      = false;
-controls.mouseButtons   = { LEFT: THREE.MOUSE.NONE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+controls.mouseButtons   = { LEFT: THREE.MOUSE.ROTATE, MIDDLE: THREE.MOUSE.DOLLY, RIGHT: THREE.MOUSE.ROTATE };
+controls.touches        = { ONE: THREE.TOUCH.ROTATE, TWO: THREE.TOUCH.DOLLY_ROTATE };
+renderer.domElement.style.touchAction = 'none';
 
 renderer.domElement.addEventListener('contextmenu', e => e.preventDefault());
 
@@ -522,31 +528,36 @@ function circleHit(e) {
   return circles.find(c => c.hitSphere === hits[0].object) || null;
 }
 
-// ─── Mouse interaction ────────────────────────────────────────────────────────
+// ─── Pointer interaction (mouse, trackpad, touch) ─────────────────────────────
 
-renderer.domElement.addEventListener('mousedown', e => {
-  if (e.button !== 0) return;
+let rotateMode    = false;  // Rotate button on: every drag turns the globe
+let activePointer = null;   // pointer that is drawing or moving a circle
+
+// Capture phase, so this runs before OrbitControls and can claim the drag
+renderer.domElement.addEventListener('pointerdown', e => {
+  if (e.button !== 0 || rotateMode || istate !== 'idle') return;
 
   const hitC = circleHit(e);
   if (hitC) {
     controls.enabled = false;
     istate = 'moving'; movingCircle = hitC;
     renderer.domElement.style.cursor = 'grabbing';
-    return;
-  }
-  const hit = globeHit(e);
-  if (hit) {
+  } else {
+    const hit = globeHit(e);
+    if (!hit) return;  // off the globe → OrbitControls rotates
     controls.enabled = false;
     istate = 'drawing';
     drawCenter = { lat:hit.lat, lon:hit.lon };
     drawRadius = 0;
   }
-  // If no hit → OrbitControls is NONE for left button in draw mode, so nothing happens
-});
+  activePointer = e.pointerId;
+  renderer.domElement.setPointerCapture(e.pointerId);
+}, true);
 
 const liveRadiusDiv = document.getElementById('live-radius');
 
-renderer.domElement.addEventListener('mousemove', e => {
+renderer.domElement.addEventListener('pointermove', e => {
+  if (istate !== 'idle' && e.pointerId !== activePointer) return;
   if (istate === 'drawing') {
     const hit = globeHit(e);
     if (hit) {
@@ -571,10 +582,12 @@ renderer.domElement.addEventListener('mousemove', e => {
     return;
   }
   // Cursor feedback in idle state
-  renderer.domElement.style.cursor = circleHit(e) ? 'grab' : 'crosshair';
+  if (e.pointerType === 'mouse')
+    renderer.domElement.style.cursor = (rotateMode || circleHit(e)) ? 'grab' : 'crosshair';
 });
 
-window.addEventListener('mouseup', () => {
+function endPointer(e) {
+  if (istate !== 'idle' && e.pointerId !== activePointer) return;
   if (istate === 'drawing' && drawRadius >= MIN_RADIUS_KM && drawCenter) {
     addCircle(drawCenter.lat, drawCenter.lon, drawRadius);
   }
@@ -582,12 +595,22 @@ window.addEventListener('mouseup', () => {
   liveRadiusDiv.style.display = 'none';
   if (istate !== 'idle') controls.enabled = true;
   istate = 'idle'; movingCircle = null; drawCenter = null; drawRadius = 0;
-  renderer.domElement.style.cursor = 'crosshair';
-});
+  activePointer = null;
+  renderer.domElement.style.cursor = rotateMode ? 'grab' : 'crosshair';
+}
+window.addEventListener('pointerup', endPointer);
+window.addEventListener('pointercancel', endPointer);
 
 // ─── UI ───────────────────────────────────────────────────────────────────────
 
 document.getElementById('clear-btn').addEventListener('click', clearAllCircles);
+const modeBtn = document.getElementById('mode-btn');
+modeBtn.addEventListener('click', () => {
+  rotateMode = !rotateMode;
+  modeBtn.classList.toggle('active', rotateMode);
+  modeBtn.setAttribute('aria-pressed', String(rotateMode));
+  renderer.domElement.style.cursor = rotateMode ? 'grab' : 'crosshair';
+});
 const _showLocCb = document.getElementById('show-locations');
 if (_showLocCb) _showLocCb.addEventListener('change', () => setExtraLocationsVisible(_showLocCb.checked));
 
