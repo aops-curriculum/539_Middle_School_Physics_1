@@ -81,6 +81,40 @@ function extractTitle(filePath) {
 }
 
 /**
+ * Build a one-sentence overview for a new simulation from its own HTML:
+ * meta description, else the first intro paragraph/subtitle, else a stub.
+ */
+function extractDescription(filePath, title) {
+  try {
+    const content = fs.readFileSync(path.join(ROOT_DIR, filePath), 'utf8');
+    const clean = t => t
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&')
+      .replace(/\s+/g, ' ').trim();
+    const candidates = [];
+    const meta = content.match(/<meta[^>]+name=["']description["'][^>]*content=["']([^"']+)["']/i)
+      || content.match(/<meta[^>]+content=["']([^"']+)["'][^>]*name=["']description["']/i);
+    if (meta) candidates.push(meta[1]);
+    const re = /<(p|div|span)[^>]*class=["'][^"']*(subtitle|description|intro|lead|instructions)[^"']*["'][^>]*>([\s\S]*?)<\/>/gi;
+    let m;
+    while ((m = re.exec(content))) candidates.push(clean(m[3]));
+    const body = content.replace(/<(script|style)[\s\S]*?<\/>/gi, '');
+    const pRe = /<p[^>]*>([\s\S]*?)<\/p>/gi;
+    while ((m = pRe.exec(body))) candidates.push(clean(m[1]));
+    for (const c of candidates) {
+      const text = clean(c);
+      if (text.length < 20 || text.length > 400) continue;
+      const first = text.match(/^.*?[.!?](\s|$)/);
+      const sentence = (first ? first[0] : text).trim();
+      if (sentence.length >= 20) return sentence;
+    }
+  } catch (e) {
+    // Ignore errors
+  }
+  return `Interactive simulation: ${title}.`;
+}
+
+/**
  * Detect category from file path
  */
 function detectCategory(filePath) {
@@ -468,7 +502,7 @@ async function main() {
       const newSim = {
         path: file.path,
         title: title,
-        description: `New simulation - description pending.`,
+        description: extractDescription(file.path, title),
         emoji: getDefaultEmoji(category),
         category: category
       };
