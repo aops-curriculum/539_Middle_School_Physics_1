@@ -844,6 +844,13 @@
       "description": "Build any chess position on an interactive board and instantly generate Asymptote code for it. Learn how visual game states translate into formal code representation for mathematical diagrams.",
       "emoji": "🔬",
       "category": "other"
+    },
+    {
+      "path": "Light/least_time_mud.html",
+      "title": "Mud and Asphalt: Least Time",
+      "description": "Interactive simulation: Mud and Asphalt: Least Time.",
+      "emoji": "💡",
+      "category": "light"
     }
   ]
 }
