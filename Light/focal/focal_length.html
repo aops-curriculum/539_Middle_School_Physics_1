@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <meta name="eigennode-aspect" content="150/113">
+  <meta name="eigennode-aspect" content="256/225">
   <title>Focal Length Photos</title>
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -15,13 +15,13 @@
       font-family: Arial, sans-serif;
       user-select: none;
     }
-    /* .photo-wrap holds the 150:113 aspect ratio and is centred by the flex body
+    /* .photo-wrap holds the 256:225 aspect ratio (the cropped band of each photo) and is centred by the flex body
        on the black background, so the photo letterboxes (black strips) instead of
        stretching when the iframe shape differs. */
     .photo-wrap {
       position: relative;
-      aspect-ratio: 150 / 113;
-      height: min(100%, 75.333vw);   /* (113/150)*100 */
+      aspect-ratio: 256 / 225;
+      height: min(100%, 87.891vw);   /* (225/256)*100 */
       width: auto;
     }
     canvas {
@@ -110,9 +110,13 @@
       'IMG_20260512_123458.jpg',
     ];
 
-    const W = 600, H = 452;   // logical coordinate grid — matches eigennode-aspect 150/113
+    // The photos are portrait (3072x4080 once the browser applies their EXIF
+    // rotation). We show only the horizontal band that holds the screen, rail and
+    // tape measure, cutting the empty floor above and below, at true proportions.
+    const W = 768, H = 675;   // logical coordinate grid — matches eigennode-aspect 256/225
+    const CROP_TOP = 0.17;    // fraction of the photo height cut off the top
     const ZOOM = 3;
-    const LENS_R = 88;        // lens radius in logical pixels
+    const LENS_R = 110;       // lens radius in logical pixels
 
     const canvas = document.getElementById('canvas');
     const ctx    = canvas.getContext('2d');
@@ -138,20 +142,30 @@
     }
     new ResizeObserver(fit).observe(canvas);
 
+    // Source rectangle of the cropped band, in the image's natural pixels.
+    function cropOf(img) {
+      const sw = img.naturalWidth;
+      const sh = sw * H / W;
+      const sy = Math.min(img.naturalHeight * CROP_TOP, img.naturalHeight - sh);
+      return { sy: Math.max(0, sy), sw, sh };
+    }
+
     function drawBase() {
       ctx.clearRect(0, 0, W, H);
-      ctx.drawImage(cache[idx], 0, 0, W, H);
+      const img = cache[idx];
+      const c = cropOf(img);
+      ctx.drawImage(img, 0, c.sy, c.sw, c.sh, 0, 0, W, H);
     }
 
     function drawLens(mx, my) {
       const img = cache[idx];
       // Convert lens radius from logical px to image px for the source crop
-      const scaleX = img.naturalWidth  / W;
-      const scaleY = img.naturalHeight / H;
-      const srcR_x = (LENS_R / ZOOM) * scaleX;
-      const srcR_y = (LENS_R / ZOOM) * scaleY;
-      const srcX   = mx * scaleX - srcR_x;
-      const srcY   = my * scaleY - srcR_y;
+      const c = cropOf(img);
+      const scale  = c.sw / W;             // same scale both ways: no distortion
+      const srcR_x = (LENS_R / ZOOM) * scale;
+      const srcR_y = srcR_x;
+      const srcX   = mx * scale - srcR_x;
+      const srcY   = c.sy + my * scale - srcR_y;
       const srcW   = srcR_x * 2;
       const srcH   = srcR_y * 2;
 

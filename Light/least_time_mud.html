@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="eigennode-aspect" content="4/3">
+  <title>Mud and Asphalt: Least Time</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #1a1a2e;
+      font-family: Arial, sans-serif;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    canvas {
+      aspect-ratio: 4 / 3;
+      height: min(100%, 75vw);
+      width: auto;
+      display: block;
+      touch-action: none;
+    }
+  </style>
+</head>
+<body>
+  <canvas id="canvas" width="640" height="480"></canvas>
+  <script>
+    // A child runs from START (in the mud) to FINISH (on the asphalt).
+    // Drag the crossing point P along the boundary and watch the total time.
+    // Geometry matches the script's START/FINISH diagram (x10 m), speed ratio 6.
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    const W = 640, H = 480;               // logical grid (eigennode-aspect 4/3)
+
+    const V_MUD = 1, V_ASPHALT = 6;       // m/s
+    const XMIN = -30, XMAX = 30, YMAX = 40;
+    const PX = 9, OX = 50, OY = 16;       // 9 px per meter
+    const X = x => OX + (x - XMIN) * PX;
+    const Y = y => OY + (YMAX - y) * PX;
+    const fromY = py => YMAX - (py - OY) / PX;
+
+    const START = { x: -25, y: 3 };
+    const FINISH = { x: 25, y: 35 };
+    let py = 19;                           // crossing height (m); starts on the straight line
+    let best = Infinity;
+    let dragging = false;
+
+    const COL = {
+      mud: '#6b4a2b', mudDot: '#553a20', asphalt: '#3b3d42', asphaltDot: '#55585e',
+      path: '#ff4d4d', straight: '#e8e8e8', text: '#f2f2f2', dim: '#b8b8c8',
+      panel: '#12121f', btn: '#2e7d32', btnHi: '#43a047'
+    };
+
+    // Deterministic speckles so the texture doesn't flicker between redraws
+    const speckles = [];
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    for (let i = 0; i < 700; i++) speckles.push({ x: XMIN + rnd() * 60, y: rnd() * YMAX, r: 0.6 + rnd() * 1.4 });
+
+    const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
+    function times(y) {
+      const P = { x: 0, y };
+      const dm = dist(START, P), da = dist(P, FINISH);
+      return { dm, da, tm: dm / V_MUD, ta: da / V_ASPHALT, t: dm / V_MUD + da / V_ASPHALT };
+    }
+    const STRAIGHT_Y = START.y + (FINISH.y - START.y) * (0 - START.x) / (FINISH.x - START.x);
+    const straight = times(STRAIGHT_Y);
+
+    // Buttons (logical coords)
+    const upBtn = { x: 560, y: 400, w: 34, h: 30, label: '▲' };
+    const dnBtn = { x: 600, y: 400, w: 34, h: 30, label: '▼' };
+    const resetBtn = { x: 560, y: 438, w: 74, h: 30, label: 'reset' };
+
+    function fit() {
+      const dpr = window.devicePixelRatio || 1;
+      const cw = canvas.clientWidth, ch = canvas.clientHeight;
+      if (!cw || !ch) return;
+      canvas.width = Math.round(cw * dpr);
+      canvas.height = Math.round(ch * dpr);
+      ctx.setTransform(canvas.width / W, 0, 0, canvas.height / H, 0, 0);
+      draw();
+    }
+
+    function setY(y) {
+      py = Math.max(0.5, Math.min(YMAX - 0.5, Math.round(y * 10) / 10));
+      const t = times(py).t;
+      if (t < best) best = t;
+      draw();
+    }
+
+    function button(b) {
+      ctx.fillStyle = COL.btn;
+      ctx.beginPath(); ctx.roundRect(b.x, b.y, b.w, b.h, 5); ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.font = 'bold 14px Arial';
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(b.label, b.x + b.w / 2, b.y + b.h / 2 + 1);
+    }
+
+    function label(text, x, y, opts = {}) {
+      ctx.font = opts.font || '13px Arial';
+      ctx.textAlign = opts.align || 'center';
+      ctx.textBaseline = 'middle';
+      if (opts.bg) {
+        const w = ctx.measureText(text).width + 8;
+        const x0 = opts.align === 'left' ? x - 4 : opts.align === 'right' ? x - w + 4 : x - w / 2;
+        ctx.fillStyle = 'rgba(0,0,0,0.55)';
+        ctx.fillRect(x0, y - 9, w, 18);
+      }
+      ctx.fillStyle = opts.color || COL.text;
+      ctx.fillText(text, x, y);
+    }
+
+    function bar(y, name, tm, ta, total, isPath) {
+      const x0 = 118, scale = 7.5;         // px per second
+      label(name, 12, y + 9, { align: 'left', color: isPath ? COL.path : COL.straight, font: 'bold 13px Arial' });
+      ctx.fillStyle = COL.mud; ctx.fillRect(x0, y, tm * scale, 18);
+      ctx.fillStyle = '#8a8d94'; ctx.fillRect(x0 + tm * scale, y, ta * scale, 18);
+      ctx.strokeStyle = isPath ? COL.path : COL.straight; ctx.lineWidth = 1.5;
+      ctx.strokeRect(x0, y, (tm + ta) * scale, 18);
+      label(`mud ${tm.toFixed(1)} s`, x0 + 6, y + 9, { align: 'left', font: '12px Arial' });
+      label(`${ta.toFixed(1)} s`, x0 + (tm + ta / 2) * scale, y + 9, { font: '11px Arial', color: '#111' });
+      label(`= ${total.toFixed(1)} s`, x0 + (tm + ta) * scale + 6, y + 9, { align: 'left', font: 'bold 13px Arial' });
+    }
+
+    function draw() {
+      ctx.clearRect(0, 0, W, H);
+
+      // Regions
+      ctx.fillStyle = COL.mud; ctx.fillRect(X(XMIN), Y(YMAX), X(0) - X(XMIN), YMAX * PX);
+      ctx.fillStyle = COL.asphalt; ctx.fillRect(X(0), Y(YMAX), X(XMAX) - X(0), YMAX * PX);
+      for (const s of speckles) {
+        ctx.fillStyle = s.x < 0 ? COL.mudDot : COL.asphaltDot;
+        ctx.beginPath(); ctx.arc(X(s.x), Y(s.y), s.r, 0, 2 * Math.PI); ctx.fill();
+      }
+      ctx.strokeStyle = '#fff'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(X(0), Y(YMAX)); ctx.lineTo(X(0), Y(0)); ctx.stroke();
+      label('MUD: 1 m/s', X(-15), Y(38), { font: 'bold 14px Arial', bg: true });
+      label('ASPHALT: 6 m/s', X(15), Y(38), { font: 'bold 14px Arial', bg: true });
+
+      // Straight-line path for comparison
+      ctx.strokeStyle = COL.straight; ctx.lineWidth = 1.5; ctx.setLineDash([3, 5]);
+      ctx.beginPath(); ctx.moveTo(X(START.x), Y(START.y)); ctx.lineTo(X(FINISH.x), Y(FINISH.y)); ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Chosen path
+      const T = times(py);
+      ctx.strokeStyle = COL.path; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(X(START.x), Y(START.y)); ctx.lineTo(X(0), Y(py)); ctx.lineTo(X(FINISH.x), Y(FINISH.y)); ctx.stroke();
+
+      // Segment lengths
+      label(`${T.dm.toFixed(1)} m`, (X(START.x) + X(0)) / 2, (Y(START.y) + Y(py)) / 2 + (py > START.y + 4 ? -14 : 14), { bg: true, font: '12px Arial' });
+      label(`${T.da.toFixed(1)} m`, (X(0) + X(FINISH.x)) / 2, (Y(py) + Y(FINISH.y)) / 2 + 14, { bg: true, font: '12px Arial' });
+
+      // Endpoints
+      for (const [p, name, dy] of [[START, 'START', 16], [FINISH, 'FINISH', -16]]) {
+        ctx.fillStyle = '#fff';
+        ctx.beginPath(); ctx.arc(X(p.x), Y(p.y), 5, 0, 2 * Math.PI); ctx.fill();
+        label(name, X(p.x), Y(p.y) + dy, { font: 'bold 13px Arial', bg: true });
+      }
+
+      // Draggable crossing point
+      ctx.fillStyle = '#ffd54f'; ctx.strokeStyle = '#000'; ctx.lineWidth = 1.5;
+      ctx.beginPath(); ctx.arc(X(0), Y(py), 8, 0, 2 * Math.PI); ctx.fill(); ctx.stroke();
+      if (!dragging && best === Infinity) label('drag me', X(0) + 12, Y(py), { align: 'left', bg: true, font: '12px Arial', color: '#ffd54f' });
+
+      // Readout panel
+      ctx.fillStyle = COL.panel; ctx.fillRect(0, 388, W, H - 388);
+      bar(398, 'Red path', T.tm, T.ta, T.t, true);
+      bar(426, 'Straight line', straight.tm, straight.ta, straight.t, false);
+      label(best === Infinity ? 'Drag the yellow point (or use the arrows) to change where the child crosses.'
+                              : `Fastest time you've found: ${best.toFixed(1)} s`, 12, 464, { align: 'left', color: COL.dim });
+      button(upBtn); button(dnBtn); button(resetBtn);
+    }
+
+    // Pointer handling
+    function toLogical(e) {
+      const r = canvas.getBoundingClientRect();
+      return { x: (e.clientX - r.left) * W / r.width, y: (e.clientY - r.top) * H / r.height };
+    }
+    const inRect = (p, b) => p.x >= b.x && p.x <= b.x + b.w && p.y >= b.y && p.y <= b.y + b.h;
+
+    canvas.addEventListener('pointerdown', e => {
+      const p = toLogical(e);
+      if (inRect(p, upBtn)) return setY(py + 0.5);
+      if (inRect(p, dnBtn)) return setY(py - 0.5);
+      if (inRect(p, resetBtn)) { best = Infinity; py = STRAIGHT_Y; return draw(); }
+      if (Math.abs(p.x - X(0)) < 22 && p.y < 388) {
+        dragging = true; canvas.setPointerCapture(e.pointerId); setY(fromY(p.y));
+      }
+    });
+    canvas.addEventListener('pointermove', e => {
+      const p = toLogical(e);
+      if (dragging) return setY(fromY(p.y));
+      const hot = (Math.abs(p.x - X(0)) < 22 && p.y < 388) || [upBtn, dnBtn, resetBtn].some(b => inRect(p, b));
+      canvas.style.cursor = hot ? 'pointer' : 'default';
+    });
+    canvas.addEventListener('pointerup', () => { dragging = false; draw(); });
+    window.addEventListener('keydown', e => {
+      if (e.key === 'ArrowUp') { e.preventDefault(); setY(py + 0.5); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); setY(py - 0.5); }
+    });
+
+    new ResizeObserver(fit).observe(canvas);
+    fit();
+  </script>
+</body>
+</html>
