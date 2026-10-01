@@ -475,16 +475,9 @@
       "category": "light"
     },
     {
-      "path": "Light/rotate_octagon.html",
+      "path": "Light/michelson_octagon.html",
       "title": "Michelson Speed of Light Experiment",
-      "description": "Spin the octagonal mirror in the Michelson apparatus and see whether the return beam hits the observer's eye. Focuses on the discrete-face geometry of the rotating mirror.",
-      "emoji": "💡",
-      "category": "light"
-    },
-    {
-      "path": "Light/spin_octagon.html",
-      "title": "Michelson Speed of Light Experiment",
-      "description": "Set the spin rate of the Michelson octagonal mirror in revolutions per second and watch the reflected light beam align or miss the observer. Connects mirror angular speed to the transit time of light over 35 km.",
+      "description": "Michelson's rotating octagon mirror, with two modes: turn the octagon by hand to find the narrow range of angles that sends light to the observer (?mode=rotate), or set a spin rate in rev/s and find the speed where the returning light lines up again (?mode=spin). With no mode, a switch picks between them. Replaces rotate_octagon.html and spin_octagon.html.",
       "emoji": "💡",
       "category": "light"
     },

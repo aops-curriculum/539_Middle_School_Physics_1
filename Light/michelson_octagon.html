@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="eigennode-aspect" content="10/7">
+<title>Michelson Speed of Light Experiment</title>
+<!--
+  One file for both octagon interactives in MS07.
+    ?mode=rotate  turn the octagon by hand (replaces rotate_octagon.html)
+    ?mode=spin    set a spin rate in rev/s (replaces spin_octagon.html)
+    (no mode)     both, with a "Turn by hand / Spin" switch at the top right
+    ?zoom=1       zoom/pan overlay, same as the other Light sims
+-->
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; }
+    body {
+        background: #0a0a1a;
+        font-family: Arial, sans-serif;
+        user-select: none;
+        color: #e0e0e0;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    #container {
+        position: relative;
+        aspect-ratio: 10/7;
+        height: min(100%, 70vw);
+        width: auto;
+        max-width: 100%;
+    }
+    canvas {
+        background: #0a0a1a;
+        display: block;
+        position: absolute;
+        inset: 0;
+        width: 100%;
+        height: 100%;
+    }
+    /* ── Rotate-mode controls ─────────────────── */
+    .rot-ctrl {
+        position: absolute;
+        left: 55%;
+        top: 4.76%;
+        display: flex;
+        flex-direction: column;
+        gap: 2px;
+        width: 23%;          /* stays clear of the Pause button at any size */
+    }
+    .rot-label-row { display: flex; align-items: baseline; gap: 4px; }
+    .rot-label { font-size: 10px; color: #667; }
+    .rot-val { font-family: 'Consolas',monospace; font-size: 11px; color: #4fc3f7; }
+    .rot-row { display: flex; align-items: center; gap: 3px; }
+    .rot-row input[type=range] { width: 100%; accent-color: #4fc3f7; height: 14px; }
+    .fine-btn {
+        width: 20px; height: 18px;
+        background: rgba(42,42,74,0.85);
+        border: 1px solid #445;
+        border-radius: 2px;
+        color: #889;
+        font-size: 9px;
+        cursor: pointer;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+        margin-left: 2px;
+    }
+    .fine-btn:hover { background: #4a4a6a; color: #fff; }
+    /* ── Spin-mode controls ───────────────────── */
+    .speed-ctrl {
+        position: absolute;
+        left: 58.33%;
+        top: 4.76%;
+        display: flex;
+        align-items: center;
+        gap: 1px;
+    }
+    .speed-label {
+        font-size: 10px;
+        color: #667;
+        position: absolute;
+        left: 58.33%;
+        top: 1.9%;
+    }
+    .sign-btn {
+        width: 18px; height: 26px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        border-radius: 2px; color: #ccc; font-size: 14px; cursor: pointer;
+        display: flex; align-items: center; justify-content: center;
+    }
+    .sign-btn:hover { background: #3a3a5a; }
+    .digit-col { display: flex; flex-direction: column; align-items: center; }
+    .digit-col button {
+        width: 22px; height: 13px; background: rgba(42,42,74,0.85); border: 1px solid #445;
+        color: #889; font-size: 8px; cursor: pointer; display: flex;
+        align-items: center; justify-content: center; border-radius: 2px; padding: 0;
+    }
+    .digit-col button:hover { background: #4a4a6a; color: #fff; }
+    .digit-val {
+        font-size: 16px; font-family: 'Consolas','Courier New',monospace;
+        color: #4fc3f7; width: 22px; text-align: center; line-height: 1.2;
+    }
+    .unit-label { font-size: 10px; color: #889; margin-left: 2px; }
+    /* ── Buttons ──────────────────────────────── */
+    .reset-btn {
+        position: absolute;
+        right: 1.33%;
+        top: 1.9%;
+        padding: 4px 10px;
+        background: rgba(76,175,80,0.8);
+        border: none;
+        border-radius: 3px;
+        color: white;
+        font-size: 11px;
+        font-weight: bold;
+        cursor: pointer;
+    }
+    .reset-btn:hover { background: rgba(76,175,80,1); }
+    /* Mode switch (only when no ?mode= is given) */
+    .mode-switch {
+        position: absolute;
+        right: 1.33%;
+        top: 9.5%;
+        display: flex;
+        border: 1px solid #445;
+        border-radius: 3px;
+        overflow: hidden;
+    }
+    .mode-switch button {
+        padding: 3px 8px;
+        background: rgba(42,42,74,0.85);
+        border: none;
+        color: #889;
+        font-size: 10px;
+        cursor: pointer;
+    }
+    .mode-switch button + button { border-left: 1px solid #445; }
+    .mode-switch button:hover { background: #3a3a5a; color: #fff; }
+    .mode-switch button.on { background: rgba(79,195,247,0.25); color: #4fc3f7; font-weight: bold; }
+    .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<div id="container">
+    <canvas id="sim" width="600" height="420"></canvas>
+    <!-- Rotate mode -->
+    <div class="rot-ctrl" id="rotCtrl">
+        <div class="rot-label-row">
+            <span class="rot-label">Rotation</span>
+            <span class="rot-val" id="rotVal">0.0&deg;</span>
+            <button class="fine-btn" id="fineDown">&#9660;</button>
+            <button class="fine-btn" id="fineUp">&#9650;</button>
+        </div>
+        <div class="rot-row">
+            <input type="range" id="rotSlider" min="0" max="45" step="1" value="0">
+        </div>
+    </div>
+    <!-- Spin mode -->
+    <span class="speed-label" id="speedLbl">Spin Rate</span>
+    <div class="speed-ctrl" id="speedCtrl">
+        <div class="sign-btn" id="signBtn">+</div>
+        <div class="digit-col"><button data-digit="0" data-dir="up">&#9650;</button><span class="digit-val" id="d0">0</span><button data-digit="0" data-dir="down">&#9660;</button></div>
+        <div class="digit-col"><button data-digit="1" data-dir="up">&#9650;</button><span class="digit-val" id="d1">0</span><button data-digit="1" data-dir="down">&#9660;</button></div>
+        <div class="digit-col"><button data-digit="2" data-dir="up">&#9650;</button><span class="digit-val" id="d2">0</span><button data-digit="2" data-dir="down">&#9660;</button></div>
+        <span class="unit-label">rev/s</span>
+    </div>
+    <button class="reset-btn" id="pauseBtn" style="right:10.83%;">Pause</button>
+    <button class="reset-btn" id="resetBtn">Reset</button>
+    <div class="mode-switch hidden" id="modeSwitch">
+        <button id="modeRotate">Turn by hand</button>
+        <button id="modeSpin">Spin</button>
+    </div>
+</div>
+
+<script>
+// ── Mode from query param ──────────────────────────────
+const Q = new URLSearchParams(location.search);
+const FIXED_MODE = ['rotate','spin'].includes(Q.get('mode')) ? Q.get('mode') : null;
+let MODE = FIXED_MODE || 'rotate';
+
+const canvas = document.getElementById('sim');
+const ctx = canvas.getContext('2d');
+const W = 600, H = 420;
+const dpr = window.devicePixelRatio || 1;
+canvas.width = W * dpr; canvas.height = H * dpr;
+ctx.scale(dpr, dpr);
+const DEG = Math.PI / 180;
+const EYE_GLOW_DUR = 0.2;
+const speedScale = 0.0002;
+
+// ── Layout ─────────────────────────────────────────────
+const OCT_CX = 125, OCT_CY = 340, OCT_R = 22;
+const INRADIUS = OCT_R * Math.cos(Math.PI / 8);
+const BASE_ANGLE = 22.5 * DEG;   // spin mode starts here (the aligned angle)
+
+const FACE0_MID_X = OCT_CX + INRADIUS * Math.cos(45 * DEG);
+const FACE0_MID_Y = OCT_CY + INRADIUS * Math.sin(45 * DEG);
+const FACE6_MID_X = OCT_CX + INRADIUS * Math.cos(315 * DEG);
+const FACE6_MID_Y = OCT_CY + INRADIUS * Math.sin(315 * DEG);
+
+const SOURCE = { x: FACE0_MID_X, y: 390 };
+const PHOTON_DIR = { x: 0, y: -1 };
+
+const MIRROR_X = 530;
+const MIRROR_H = 10;
+const MIRROR_TILT = 0.5 * Math.atan((FACE0_MID_Y - FACE6_MID_Y) / (MIRROR_X - FACE0_MID_X));
+const MN = { x: -Math.cos(MIRROR_TILT), y: -Math.sin(MIRROR_TILT) };
+
+const MIRROR_CY = FACE0_MID_Y;
+const MIRROR_TOP = MIRROR_CY - MIRROR_H / 2;
+const MIRROR_BOT = MIRROR_CY + MIRROR_H / 2;
+// Spin mode uses a narrower reflecting strip (as in the old spin_octagon.html)
+const MIRROR_HIT_H = 2;
+const MIRROR_HIT_TOP = MIRROR_CY - MIRROR_HIT_H / 2;
+const MIRROR_HIT_BOT = MIRROR_CY + MIRROR_HIT_H / 2;
+
+// Physical constants
+const DIST_KM = 35.4;
+const C_LIGHT_KM = 299792;
+const OUT_DIST = MIRROR_X - FACE0_MID_X;
+const RET_DIST = Math.hypot(MIRROR_X - FACE6_MID_X, FACE0_MID_Y - FACE6_MID_Y);
+const M_PER_PX = DIST_KM * 1000 / OUT_DIST;
+
+function getSimSpeed() {
+    return C_LIGHT_KM * 1000 * speedScale / M_PER_PX;
+}
+
+// Observer
+const _rd = { x: 1 - 2*MN.x*MN.x, y: -2*MN.x*MN.y };
+const _n6 = { x: Math.cos(315*DEG), y: Math.sin(315*DEG) };
+const _dn6 = _rd.x*_n6.x + _rd.y*_n6.y;
+const _od = { x: _rd.x - 2*_dn6*_n6.x, y: _rd.y - 2*_dn6*_n6.y };
+const OBS_Y = 55;
+const OBS_X = FACE6_MID_X + _od.x * (OBS_Y - FACE6_MID_Y) / _od.y;
+const OBSERVER = { x: OBS_X, y: OBS_Y };
+const OBS_RADIUS = 6;
+
+// ── State ──────────────────────────────────────────────
+let discreteAngleDeg = 0, fineAngleDeg = 0;      // rotate mode
+let speedSign = 1, digits = [0, 0, 0];           // spin mode
+let photons = [], eyeGlow = 0, simTime = 0, photonAccum = 0, prevTS = null;
+let paused = false;
+let lastEmittedSlot = -1;
+
+function spinRate() { return digits[0]*100 + digits[1]*10 + digits[2]; }
+function getOmega() { return MODE === 'spin' ? speedSign * spinRate() * speedScale : 0; }
+// Octagon angle at sim time t
+function octAngle(t) {
+    if (MODE === 'rotate') return (discreteAngleDeg + fineAngleDeg) * DEG;
+    return BASE_ANGLE + getOmega() * 2 * Math.PI * t;
+}
+// Dots per face in spin mode: ceil(5000/speed) keeps ~8 dots per sim second.
+function getNPerFace() {
+    const s = spinRate();
+    return s === 0 ? 1 : Math.ceil(5000 / s);
+}
+
+// ── Vector helpers ─────────────────────────────────────
+function v(x,y){return{x,y}}
+function vadd(a,b){return v(a.x+b.x,a.y+b.y)}
+function vsub(a,b){return v(a.x-b.x,a.y-b.y)}
+function vsc(a,s){return v(a.x*s,a.y*s)}
+function vdot(a,b){return a.x*b.x+a.y*b.y}
+function vlen(a){return Math.hypot(a.x,a.y)}
+function vnorm(a){const l=vlen(a);return l<1e-12?v(0,0):v(a.x/l,a.y/l)}
+function vrefl(d,n){return vsub(d,vsc(n,2*vdot(d,n)))}
+function vcross(a,b){return a.x*b.y-a.y*b.x}
+
+// ── Octagon ────────────────────────────────────────────
+function octVerts(ang) {
+    const vs = [];
+    for (let k = 0; k < 8; k++) {
+        const a = ang + k * Math.PI / 4;
+        vs.push(v(OCT_CX + OCT_R * Math.cos(a), OCT_CY + OCT_R * Math.sin(a)));
+    }
+    return vs;
+}
+function faceN(vs, i) {
+    const mid = vsc(vadd(vs[i], vs[(i+1)%8]), 0.5);
+    return vnorm(vsub(mid, v(OCT_CX, OCT_CY)));
+}
+
+// ── Ray intersections ──────────────────────────────────
+function raySeg(o, d, p1, p2) {
+    const s = vsub(p2, p1);
+    const den = d.x * s.y - d.y * s.x;
+    if (Math.abs(den) < 1e-10) return null;
+    const t = ((p1.x-o.x)*s.y - (p1.y-o.y)*s.x) / den;
+    const u = ((p1.x-o.x)*d.y - (p1.y-o.y)*d.x) / den;
+    if (t > 0.05 && u >= -0.001 && u <= 1.001)
+        return { t, pt: vadd(o, vsc(d, t)) };
+    return null;
+}
+function rayOct(o, d, vs) {
+    let best = null;
+    for (let i = 0; i < 8; i++) {
+        const h = raySeg(o, d, vs[i], vs[(i+1)%8]);
+        if (h && (!best || h.t < best.t)) best = {...h, face: i};
+    }
+    return best;
+}
+function rayMirror(o, d) {
+    if (Math.abs(d.x) < 1e-10) return null;
+    const t = (MIRROR_X - o.x) / d.x;
+    if (t < 0.01) return null;
+    const y = o.y + t * d.y;
+    const top = MODE === 'spin' ? MIRROR_HIT_TOP : MIRROR_TOP;
+    const bot = MODE === 'spin' ? MIRROR_HIT_BOT : MIRROR_BOT;
+    if (y >= top && y <= bot)
+        return { t, pt: v(MIRROR_X, y) };
+    return null;
+}
+function toEdge(o, d) {
+    let tm = 1e9;
+    if (d.x > 1e-10) tm = Math.min(tm, (W-o.x)/d.x);
+    if (d.x < -1e-10) tm = Math.min(tm, -o.x/d.x);
+    if (d.y > 1e-10) tm = Math.min(tm, (H-o.y)/d.y);
+    if (d.y < -1e-10) tm = Math.min(tm, -o.y/d.y);
+    return vadd(o, vsc(d, Math.max(Math.min(tm, 2000), 1)));
+}
+
+// ── Photon path computation ────────────────────────────
+// The octagon's angle is read when the dot leaves the source and again when
+// it comes back from Mt. San Antonio. With a still octagon those are equal.
+function computePath(spawn) {
+    const simSpd = getSimSpeed();
+    const segs = [];
+    const dir0 = PHOTON_DIR;
+
+    const vs0 = octVerts(octAngle(spawn));
+    const h0 = rayOct(SOURCE, dir0, vs0);
+    if (!h0) {
+        const edge = toEdge(SOURCE, dir0);
+        segs.push({s:SOURCE, e:edge, dur:vlen(vsub(edge,SOURCE))/simSpd});
+        return segs;
+    }
+    const leg1Dur = h0.t / simSpd;
+    const hPt = h0.pt, hF = h0.face;
+    const n1 = faceN(vs0, hF);
+    segs.push({s:SOURCE, e:hPt, dur:leg1Dur});
+
+    if (vdot(dir0, n1) >= 0) {
+        const edge = toEdge(hPt, dir0);
+        segs.push({s:hPt, e:edge, dur:vlen(vsub(edge,hPt))/simSpd});
+        return segs;
+    }
+
+    const r1 = vrefl(dir0, n1);
+
+    const mH = rayMirror(hPt, r1);
+    if (!mH) {
+        const edge = toEdge(hPt, r1);
+        segs.push({s:hPt, e:edge, dur:vlen(vsub(edge,hPt))/simSpd});
+        return segs;
+    }
+    const leg2Dur = mH.t / simSpd;
+    segs.push({s:hPt, e:mH.pt, dur:leg2Dur});
+
+    const r2 = vrefl(r1, MN);
+    const tAtMirror = spawn + leg2Dur;
+    const leg3Est = RET_DIST / simSpd;
+    const vsR = octVerts(octAngle(tAtMirror + leg3Est));
+    const hR = rayOct(mH.pt, r2, vsR);
+    if (!hR) {
+        const edge = toEdge(mH.pt, r2);
+        segs.push({s:mH.pt, e:edge, dur:vlen(vsub(edge,mH.pt))/simSpd});
+        return segs;
+    }
+    const leg3Dur = hR.t / simSpd;
+    const rPt = hR.pt, rF = hR.face;
+    segs.push({s:mH.pt, e:rPt, dur:leg3Dur});
+
+    const n3 = faceN(vsR, rF);
+    const r3 = vrefl(r2, n3);
+
+    const toObs = vsub(OBSERVER, rPt);
+    const along = vdot(toObs, r3);
+    if (along > 0) {
+        const perp = Math.abs(vcross(toObs, r3));
+        if (perp < OBS_RADIUS) {
+            segs.push({s:rPt, e:vadd(rPt,vsc(r3,along)), dur:along/simSpd, eye:true});
+            return segs;
+        }
+    }
+    const edge = toEdge(rPt, r3);
+    segs.push({s:rPt, e:edge, dur:vlen(vsub(edge,rPt))/simSpd});
+    return segs;
+}
+
+// ── Photon tracking ────────────────────────────────────
+const EYE_LINGER = 0.15;   // seconds a dot stays visible at the eye after arriving
+
+function pPos(p, now) {
+    let el = now - p.t0;
+    for (const seg of p.segs) {
+        if (el <= seg.dur + 0.0003) {
+            const f = Math.max(0, Math.min(1, seg.dur > 0 ? el / seg.dur : 1));
+            return {x:seg.s.x+f*(seg.e.x-seg.s.x), y:seg.s.y+f*(seg.e.y-seg.s.y), ok:true};
+        }
+        el -= seg.dur;
+    }
+    if (hitsEye(p)) {
+        const last = p.segs[p.segs.length - 1];
+        if (now - p.t0 - tDur(p) < EYE_LINGER) return {x: last.e.x, y: last.e.y, ok: true};
+    }
+    return {ok:false};
+}
+function tDur(p) { let t=0; for (const s of p.segs) t+=s.dur; return t; }
+function hitsEye(p) { return p.segs.length>0 && p.segs[p.segs.length-1].eye; }
+
+// ── Drawing ────────────────────────────────────────────
+function drawOctagon(ang) {
+    const vs = octVerts(ang);
+    ctx.beginPath();
+    ctx.moveTo(vs[0].x, vs[0].y);
+    for (let i=1;i<8;i++) ctx.lineTo(vs[i].x, vs[i].y);
+    ctx.closePath();
+    ctx.fillStyle = 'rgba(100,160,220,0.18)';
+    ctx.fill();
+    ctx.strokeStyle = '#6ab0e8';
+    ctx.lineWidth = 2;
+    ctx.stroke();
+}
+function drawMirror() {
+    ctx.save();
+    ctx.translate(MIRROR_X, MIRROR_CY);
+    ctx.rotate(MIRROR_TILT);
+    ctx.fillStyle = '#b0b8c8';
+    ctx.fillRect(-3, -MIRROR_H/2, 6, MIRROR_H);
+    ctx.strokeStyle = '#d0d8e0';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(-3, -MIRROR_H/2, 6, MIRROR_H);
+    ctx.restore();
+}
+function drawSource() {
+    const {x,y} = SOURCE;
+    const g = ctx.createRadialGradient(x,y,2,x,y,14);
+    g.addColorStop(0,'rgba(255,230,150,0.9)');
+    g.addColorStop(0.5,'rgba(255,200,80,0.3)');
+    g.addColorStop(1,'rgba(255,200,80,0)');
+    ctx.fillStyle = g; ctx.fillRect(x-16,y-16,32,32);
+    ctx.beginPath(); ctx.arc(x,y,5,0,Math.PI*2);
+    ctx.fillStyle='#ffe090'; ctx.fill();
+}
+function drawEye(gf) {
+    const {x,y} = OBSERVER;
+    if (gf > 0.01) {
+        const g2 = ctx.createRadialGradient(x,y,0,x,y,30);
+        g2.addColorStop(0,`rgba(140,255,200,${0.5*gf})`);
+        g2.addColorStop(0.5,`rgba(140,255,200,${0.15*gf})`);
+        g2.addColorStop(1,'rgba(140,255,200,0)');
+        ctx.fillStyle = g2; ctx.fillRect(x-32,y-32,64,64);
+        const g = ctx.createRadialGradient(x,y,1,x,y,12);
+        g.addColorStop(0,`rgba(220,255,240,${0.9*gf})`);
+        g.addColorStop(1,'rgba(180,255,220,0)');
+        ctx.fillStyle = g; ctx.fillRect(x-14,y-14,28,28);
+    }
+    ctx.beginPath(); ctx.ellipse(x,y,6,4,0,0,Math.PI*2);
+    ctx.fillStyle = gf>0.01 ? `rgba(220,255,240,${0.4+0.6*gf})` : 'rgba(200,210,220,0.25)';
+    ctx.fill();
+    ctx.strokeStyle = gf>0.01 ? `rgba(150,255,200,${0.5+0.5*gf})` : '#556';
+    ctx.lineWidth = 1.5; ctx.stroke();
+    ctx.beginPath(); ctx.arc(x,y,2,0,Math.PI*2);
+    ctx.fillStyle = gf>0.01 ? `rgba(100,255,180,${0.6+0.4*gf})` : '#445';
+    ctx.fill();
+}
+function drawLabels() {
+    ctx.font = 'bold 12px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText('Mt. Wilson', OCT_CX, OCT_CY + OCT_R + 16);
+    ctx.fillText('Mirror', MIRROR_X, MIRROR_TOP - 8);
+    ctx.fillText('Mt. San Antonio', MIRROR_X, MIRROR_BOT + 16);
+    ctx.fillText('Light source', SOURCE.x, SOURCE.y + 20);
+    ctx.fillText('Observer', OBSERVER.x, OBSERVER.y - 18);
+}
+function drawScaleBar() {
+    const barKm = 10;
+    const barPx = barKm * 1000 / M_PER_PX;
+    const x0 = 200, y0 = H - 18;
+    ctx.strokeStyle = '#778899';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(x0, y0 - 4); ctx.lineTo(x0, y0 + 4);
+    ctx.moveTo(x0, y0); ctx.lineTo(x0 + barPx, y0);
+    ctx.moveTo(x0 + barPx, y0 - 4); ctx.lineTo(x0 + barPx, y0 + 4);
+    ctx.stroke();
+    ctx.font = '11px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText(barKm + ' km', x0 + barPx / 2, y0 - 7);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#6a8899';
+    ctx.fillText('Slow-motion: 1/5,000', W - 10, y0);
+}
+function drawPhotons(now) {
+    for (const p of photons) {
+        const pos = pPos(p, now);
+        if (!pos.ok) continue;
+        ctx.beginPath(); ctx.arc(pos.x,pos.y,1.8,0,Math.PI*2);
+        ctx.fillStyle='#fffde0'; ctx.fill();
+        const g = ctx.createRadialGradient(pos.x,pos.y,0,pos.x,pos.y,4);
+        g.addColorStop(0,'rgba(255,253,220,0.45)');
+        g.addColorStop(1,'rgba(255,253,220,0)');
+        ctx.fillStyle = g; ctx.fillRect(pos.x-5,pos.y-5,10,10);
+    }
+}
+
+// ── Simulation loop ────────────────────────────────────
+function update(dt) {
+    simTime += dt;
+    const omega = Math.abs(getOmega());
+    if (omega > 1e-6) {
+        // Emission is locked to the octagon: slot 0 fires at simTime = 0, when
+        // the octagon is at exactly 22.5°, and there are ceil(5000/speed) slots
+        // per face. Total firing rate ≈ 8 dots per sim second.
+        const NPF = getNPerFace();
+        const phase = 8 * NPF * omega * simTime;
+        while (lastEmittedSlot + 1 <= Math.floor(phase)) {
+            lastEmittedSlot++;
+            const t_emit = lastEmittedSlot / (8 * NPF * omega);
+            photons.push({t0: t_emit, segs: computePath(t_emit)});
+        }
+    } else {
+        photonAccum += 5 * dt;
+        const nNew = Math.floor(photonAccum);
+        photonAccum -= nNew;
+        for (let i = 0; i < nNew; i++) {
+            photons.push({t0: simTime, segs: computePath(simTime)});
+        }
+    }
+    const alive = [];
+    for (const p of photons) {
+        const td = tDur(p), age = simTime - p.t0;
+        if (hitsEye(p) && age >= td && age - dt < td) eyeGlow = EYE_GLOW_DUR;
+        const keepFor = hitsEye(p) ? td + EYE_LINGER : td + 0.05;
+        if (age < keepFor) alive.push(p);
+    }
+    photons = alive;
+    eyeGlow = Math.max(0, eyeGlow - dt);
+}
+
+// ── Zoomed inset view (around the observer) ────────────
+const ZOOM = 5;
+const INSET_W = 120, INSET_H = 120;
+const INSET_X = 195, INSET_Y = 8;
+
+function drawZoomedInset() {
+    const cx = OBSERVER.x, cy = OBSERVER.y;
+    const srcW = INSET_W / ZOOM, srcH = INSET_H / ZOOM;
+    const sx = cx - srcW / 2, sy = cy - srcH / 2;
+
+    ctx.save();
+    ctx.setLineDash([3, 3]);
+    ctx.strokeStyle = '#667';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(sx, sy, srcW, srcH);
+    ctx.setLineDash([]);
+    ctx.strokeStyle = '#445';
+    ctx.lineWidth = 0.7;
+    ctx.setLineDash([4, 4]);
+    ctx.beginPath();
+    ctx.moveTo(sx + srcW, sy);
+    ctx.lineTo(INSET_X, INSET_Y);
+    ctx.moveTo(sx + srcW, sy + srcH);
+    ctx.lineTo(INSET_X, INSET_Y + INSET_H);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.restore();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(INSET_X, INSET_Y, INSET_W, INSET_H);
+    ctx.clip();
+    ctx.fillStyle = '#0a0a1a';
+    ctx.fillRect(INSET_X, INSET_Y, INSET_W, INSET_H);
+    ctx.translate(INSET_X - sx * ZOOM, INSET_Y - sy * ZOOM);
+    ctx.scale(ZOOM, ZOOM);
+    drawOctagon(octAngle(simTime));
+    drawEye(eyeGlow / EYE_GLOW_DUR);
+    drawPhotons(simTime);
+    ctx.restore();
+
+    ctx.strokeStyle = '#556';
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(INSET_X, INSET_Y, INSET_W, INSET_H);
+    ctx.font = '9px Arial,sans-serif';
+    ctx.fillStyle = '#778899';
+    ctx.textAlign = 'center';
+    ctx.fillText('Zoomed view (5×)', INSET_X + INSET_W / 2, INSET_Y + INSET_H + 12);
+}
+
+function draw() {
+    ctx.clearRect(0, 0, W, H);
+    drawMirror();
+    drawOctagon(octAngle(simTime));
+    drawSource();
+    drawEye(eyeGlow / EYE_GLOW_DUR);
+    drawPhotons(simTime);
+    drawLabels();
+    drawScaleBar();
+    drawZoomedInset();
+}
+function loop(ts) {
+    if (prevTS === null) prevTS = ts;
+    const dt = Math.min((ts - prevTS) / 1000, 0.05);
+    prevTS = ts;
+    if (!paused) update(dt);
+    draw();
+    requestAnimationFrame(loop);
+}
+
+// ── Controls ───────────────────────────────────────────
+function resetSim() {
+    simTime = 0; lastEmittedSlot = -1; photons = []; eyeGlow = 0;
+    photonAccum = 0; prevTS = null;
+}
+// Rotate mode
+const rotSlider = document.getElementById('rotSlider');
+const rotValEl = document.getElementById('rotVal');
+function updateRotDisplay() {
+    rotValEl.innerHTML = (discreteAngleDeg + fineAngleDeg).toFixed(1) + '&deg;';
+}
+rotSlider.addEventListener('input', () => {
+    discreteAngleDeg = parseFloat(rotSlider.value);
+    updateRotDisplay();
+});
+document.getElementById('fineUp').addEventListener('click', () => {
+    fineAngleDeg = Math.round((fineAngleDeg + 0.1) * 10) / 10;
+    updateRotDisplay();
+});
+document.getElementById('fineDown').addEventListener('click', () => {
+    fineAngleDeg = Math.round((fineAngleDeg - 0.1) * 10) / 10;
+    updateRotDisplay();
+});
+// Spin mode
+function updateSpeedDisplay() {
+    document.getElementById('signBtn').textContent = speedSign >= 0 ? '+' : '−';
+    for (let i=0;i<3;i++) document.getElementById('d'+i).textContent = digits[i];
+}
+document.getElementById('signBtn').addEventListener('click', () => {
+    speedSign *= -1; resetSim(); updateSpeedDisplay();
+});
+document.querySelectorAll('.digit-col button').forEach(btn => {
+    btn.addEventListener('click', () => {
+        const i = parseInt(btn.dataset.digit);
+        const place = [100, 10, 1][i];
+        const dir = btn.dataset.dir === 'up' ? 1 : -1;
+        if (i === 0 && dir === 1 && digits[0] === 9) return;
+        let val = speedSign * spinRate();
+        val += dir * place;
+        speedSign = val < 0 ? -1 : 1;
+        let absVal = Math.abs(val);
+        if (absVal > 999) absVal = 999;
+        digits[0] = Math.floor(absVal / 100);
+        digits[1] = Math.floor((absVal % 100) / 10);
+        digits[2] = absVal % 10;
+        resetSim(); updateSpeedDisplay();
+    });
+});
+// Shared
+document.getElementById('pauseBtn').addEventListener('click', () => {
+    paused = !paused;
+    document.getElementById('pauseBtn').textContent = paused ? 'Resume' : 'Pause';
+});
+document.getElementById('resetBtn').addEventListener('click', () => {
+    discreteAngleDeg = 0; fineAngleDeg = 0; rotSlider.value = 0; updateRotDisplay();
+    speedSign = 1; digits = [0,0,0]; updateSpeedDisplay();
+    resetSim();
+});
+// Mode switch
+function setMode(m) {
+    MODE = m;
+    const rot = m === 'rotate';
+    document.getElementById('rotCtrl').classList.toggle('hidden', !rot);
+    document.getElementById('speedLbl').classList.toggle('hidden', rot);
+    document.getElementById('speedCtrl').classList.toggle('hidden', rot);
+    document.getElementById('modeRotate').classList.toggle('on', rot);
+    document.getElementById('modeSpin').classList.toggle('on', !rot);
+    resetSim();
+}
+if (!FIXED_MODE) {
+    document.getElementById('modeSwitch').classList.remove('hidden');
+    document.getElementById('modeRotate').addEventListener('click', () => setMode('rotate'));
+    document.getElementById('modeSpin').addEventListener('click', () => setMode('spin'));
+}
+document.title = 'Michelson Speed of Light Experiment' +
+    (FIXED_MODE ? ' — ' + (FIXED_MODE === 'rotate' ? 'Rotate' : 'Spin') : '');
+
+setMode(MODE);
+updateRotDisplay();
+updateSpeedDisplay();
+requestAnimationFrame(loop);
+</script>
+<!-- @include shared/zoom-overlay.js -->
+<script>
+(function () {
+  /* Zoom/pan overlay — activated by ?zoom=1, hidden by default (?zoom=0 or absent). */
+  var Q = new URLSearchParams(location.search);
+  if (!Q.has('zoom') || Q.get('zoom') === '0') return;
+
+  var css = document.createElement('style');
+  css.textContent =
+    '#_zui{position:fixed;top:8px;right:8px;display:flex;align-items:center;' +
+    'gap:4px;background:rgba(0,0,0,.6);border-radius:8px;padding:5px 10px;' +
+    'z-index:99999;font-family:Arial,sans-serif;user-select:none}' +
+    '#_zui button{width:28px;height:28px;border:none;border-radius:4px;' +
+    'background:rgba(255,255,255,.2);color:#fff;font-size:18px;' +
+    'cursor:pointer;display:flex;align-items:center;justify-content:center}' +
+    '#_zui button:hover{background:rgba(255,255,255,.35)}' +
+    '#_zlab{color:#fff;font-size:13px;min-width:34px;text-align:center}';
+  document.head.appendChild(css);
+
+  /* Attach to <html> so position:fixed stays viewport-relative even when body has a transform. */
+  var ui = document.createElement('div');
+  ui.id = '_zui';
+  ui.innerHTML =
+    '<button id="_zo">&#8722;</button>' +
+    '<span id="_zlab">1.0&#215;</span>' +
+    '<button id="_zi">+</button>' +
+    '<button id="_zr" title="Reset view">&#8634;</button>';
+  document.documentElement.appendChild(ui);
+
+  var Z = 1, tx = 0, ty = 0, drag = null;
+  var body = document.body;
+  var lab  = document.getElementById('_zlab');
+  var rst  = document.getElementById('_zr');
+
+  function apply() {
+    /* window._userZoom signals the old-style scale-to-fit controller to stand down. */
+    window._userZoom = Z > 1 ? Z : undefined;
+    var s = window._scalerFitScale || 1;
+    if (Z <= 1 && !tx && !ty) {
+      body.style.transform = '';
+      body.style.cursor    = '';
+      window.dispatchEvent(new Event('resize')); /* let the scaler re-fit if present */
+    } else {
+      body.style.transformOrigin = '0 0';
+      body.style.transform = 'translate(' + tx + 'px,' + ty + 'px) scale(' + (s * Z) + ')';
+      body.style.cursor    = 'grab';
+    }
+    lab.innerHTML         = Z.toFixed(1) + '&#215;';
+    rst.style.opacity     = (Z > 1 || tx || ty) ? '1' : '0.4';
+  }
+
+  document.getElementById('_zi').onclick = function () {
+    Z = Math.min(4, parseFloat((Z * 1.25).toFixed(2))); apply();
+  };
+  document.getElementById('_zo').onclick = function () {
+    Z = Math.max(1, parseFloat((Z / 1.25).toFixed(2))); apply();
+  };
+  rst.onclick = function () { Z = 1; tx = 0; ty = 0; apply(); };
+
+  document.documentElement.addEventListener('pointerdown', function (e) {
+    if (Z <= 1 || (e.target.closest && e.target.closest('#_zui'))) return;
+    drag = { x: e.clientX, y: e.clientY, tx: tx, ty: ty };
+    body.style.cursor = 'grabbing';
+  });
+  document.documentElement.addEventListener('pointermove', function (e) {
+    if (!drag) return;
+    tx = drag.tx + (e.clientX - drag.x);
+    ty = drag.ty + (e.clientY - drag.y);
+    body.style.transform =
+      'translate(' + tx + 'px,' + ty + 'px) scale(' + ((window._scalerFitScale || 1) * Z) + ')';
+  });
+  document.documentElement.addEventListener('pointerup', function () {
+    drag = null;
+    if (Z > 1) body.style.cursor = 'grab';
+  });
+
+  document.documentElement.addEventListener('wheel', function (e) {
+    if (Z <= 1 && e.deltaY > 0) return;
+    e.preventDefault();
+    var factor = e.deltaY < 0 ? 1.1 : (1 / 1.1);
+    var newZ   = Math.max(1, Math.min(4, parseFloat((Z * factor).toFixed(3))));
+    if (newZ === Z) return;
+    var px = e.clientX, py = e.clientY;
+    tx = px + (tx - px) * (newZ / Z);
+    ty = py + (ty - py) * (newZ / Z);
+    if (newZ === 1) { tx = 0; ty = 0; }
+    Z = newZ;
+    apply();
+  }, { passive: false });
+})();
+</script>
+<!-- @end-include shared/zoom-overlay.js -->
+</body>
+</html>

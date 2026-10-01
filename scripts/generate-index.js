@@ -18,6 +18,11 @@ const SCAN_DIRS = [
 
 // Files to exclude from scanning
 const EXCLUDE_FILES = ['index.html'];
+// Superseded files kept only so old links still load; not listed in the index.
+const SUPERSEDED_FILES = [
+  'Light/rotate_octagon.html',  // replaced by Light/michelson_octagon.html?mode=rotate
+  'Light/spin_octagon.html'     // replaced by Light/michelson_octagon.html?mode=spin
+];
 const EXCLUDE_PATTERNS = [/^test\s/i]; // Files starting with "test "
 
 /**
@@ -47,6 +52,7 @@ function scanForHtmlFiles() {
       if (file === 'index.html') continue;
 
       const relativePath = dir.path === '.' ? file : `${dir.path}/${file}`;
+      if (SUPERSEDED_FILES.includes(relativePath)) continue;
       found.push({
         path: relativePath,
         category: dir.category
