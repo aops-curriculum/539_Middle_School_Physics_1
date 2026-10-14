@@ -419,7 +419,7 @@
     function getPos(e) {
       const r = canvas.getBoundingClientRect();
       const src = e.touches ? e.touches[0] : e;
-      return { x: (src.clientX - r.left) * canvas.clientWidth / r.width, y: (src.clientY - r.top) * canvas.clientHeight / r.height };
+      return { x: (src.clientX - r.left) * W / r.width, y: (src.clientY - r.top) * H / r.height };
     }
 
     const HIT = 18; // hit-test radius in px
