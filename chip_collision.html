@@ -484,8 +484,34 @@ button:disabled {
   speedInput.addEventListener('change', () => {
     speedInput.value = clampSpeed(speedInput.value);
   });
+  // Read starting values from the iframe link (the "query string").
+  // Example link: chip.html?nRed=2&nBlue=5&speed=6.5
+  function applyUrlParams() {
+    // window.location.search is the text from the "?" onward,
+    // e.g. "?nRed=2&nBlue=5&speed=6.5".
+    // URLSearchParams splits that text into names and values for us.
+    const params = new URLSearchParams(window.location.search);
 
-  readStackCounts();
+    // Helper: returns the parameter's text, or null if it is missing or blank.
+    function getParam(name) {
+      if (!params.has(name)) return null;
+      const raw = params.get(name).trim();
+      return raw === '' ? null : raw;
+    }
+
+    const redParam = getParam('nRed');
+    const blueParam = getParam('nBlue');
+    const speedParam = getParam('speed');
+
+    // Only overwrite a box if the link actually supplied a value.
+    // clampN / clampSpeed (already in your code) force the value into
+    // the allowed range, so nBlue=50 becomes 10 and nBlue=banana becomes 3.
+    if (redParam !== null) nRedInput.value = clampN(redParam);
+    if (blueParam !== null) nBlueInput.value = clampN(blueParam);
+    if (speedParam !== null) speedInput.value = clampSpeed(speedParam);
+  }
+  applyUrlParams();   // NEW: put link values into the input boxes first
+  readStackCounts();  // then read the boxes into the nRed / nBlue variables
   layoutStacks();
   draw();
 })();
