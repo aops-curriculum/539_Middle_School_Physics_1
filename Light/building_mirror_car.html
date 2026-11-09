@@ -105,6 +105,9 @@ document.title = mirrorType === 'concave' ? 'Sun Reflection off Concave Glass Sk
 // Show curvature slider for non-flat modes
 if (isCurved) {
   document.getElementById('curveContainer').style.display = '';
+  // A barely convex building acts like a flat one and can put two rays on the car.
+  // From curvature 26 up, only one ray hits at a time at every sun angle; 30 leaves margin.
+  if (mirrorType === 'convex') curveSlider.min = 30;
   curveSlider.addEventListener('input', draw);
 }
 
